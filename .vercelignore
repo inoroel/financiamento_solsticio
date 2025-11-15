@@ -1,0 +1,11 @@
+# Arquivos a ignorar no deploy da Vercel
+node_modules/
+.env
+.env.local
+.env.production
+*.log
+.DS_Store
+test_credentials.txt
+scripts/test-db-connection.js
+SETUP_LOCAL.md
+
