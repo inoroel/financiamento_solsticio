@@ -78,6 +78,7 @@ web_modules/
 .env.test.local
 .env.production.local
 .env.local
+.env.production
 
 # parcel-bundler cache (https://parceljs.org/)
 .cache
@@ -134,3 +135,50 @@ dist
 .yarn/build-state.yml
 .yarn/install-state.gz
 .pnp.*
+
+# =================================================================
+# PROJETO ESPECÍFICO - Financiamento Solstício
+# =================================================================
+
+# Credenciais e arquivos sensíveis
+test_credentials.txt
+*.pem
+*.key
+*.crt
+*.cert
+credentials.json
+secrets.json
+
+# Arquivos de configuração local
+.env.*
+!.env.template
+!.env.example
+
+# Vercel
+.vercel
+.vercelignore.local
+
+# Arquivos temporários e de backup
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Arquivos de documentação temporários
+last prompt.md
+*.md.bak
+
+# Logs específicos do projeto
+logs/
+*.log.*
+
+# Arquivos de migração executados (opcional - descomente se não quiser versionar)
+# scripts/migration-*.sql.executed
