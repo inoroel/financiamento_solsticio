@@ -1,43 +1,19 @@
 // Serviço de processamento de webhooks do Banco do Brasil
 const crypto = require('crypto');
-const fs = require('fs');
-const path = require('path');
 const { processConfirmedTransaction, getCobranca } = require('./dbService');
+const { validateClientCertificateFromRequest } = require('./bbCertificateValidator');
 require('dotenv').config();
 
 /**
- * Valida o certificado do cliente (mTLS) se fornecido pelo BB
- * O BB valida o certificado do servidor durante a conexão TLS
- * Este método valida o certificado do cliente se o BB enviar
+ * Valida o certificado do cliente (mTLS) do Banco do Brasil
+ * IMPORTANTE: Valida que a requisição realmente vem do BB, não de qualquer origem
  * @param {Object} req - Objeto da requisição Express
- * @returns {boolean} true se válido ou se validação não for necessária
+ * @returns {boolean} true se válido e pertence ao BB
  */
 function validateClientCertificate(req) {
-  // O BB valida o certificado do servidor durante o handshake TLS
-  // Se o BB enviar um certificado de cliente, validamos aqui
-  const clientCert = req.socket?.getPeerCertificate?.(true);
-  
-  if (!clientCert || Object.keys(clientCert).length === 0) {
-    // Se não houver certificado de cliente, é uma conexão TLS normal
-    // O BB já validou o certificado do servidor durante o handshake
-    return true;
-  }
-  
-  // Se houver certificado de cliente, validamos
-  try {
-    // Verifica se o certificado é válido
-    const cert = clientCert.raw ? Buffer.from(clientCert.raw) : null;
-    if (!cert) {
-      return false;
-    }
-    
-    // Valida o certificado usando a cadeia
-    // Nota: A validação completa é feita pelo servidor HTTPS/TLS
-    return true;
-  } catch (error) {
-    console.error('❌ Erro ao validar certificado do cliente:', error.message);
-    return false;
-  }
+  // Valida se o certificado do cliente pertence ao Banco do Brasil
+  // Isso garante que apenas o BB pode acessar o endpoint do webhook
+  return validateClientCertificateFromRequest(req);
 }
 
 /**

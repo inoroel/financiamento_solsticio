@@ -73,11 +73,54 @@ O código foi atualizado para:
    - Processa a transação
    - Salva dados no banco
 
+## Validação mTLS - Certificado do Cliente (BB)
+
+### Como Funciona
+
+O código agora valida que a requisição realmente vem do Banco do Brasil:
+
+1. **BB envia certificado de cliente** durante o handshake TLS
+2. **Servidor valida** se o certificado pertence ao BB
+3. **Compara** com os certificados confiáveis armazenados
+4. **Rejeita** se não for do BB
+
+### Certificados do BB
+
+Os certificados do BB estão em:
+
+- `certificados-webhook-bb/producao/` - Certificados de produção
+- `certificados-webhook-bb/sandbox/` - Certificados de sandbox
+
+O sistema seleciona automaticamente:
+
+- **Ambiente**: baseado em `NODE_ENV` ou `BB_ENVIRONMENT`
+- **Data**: usa certificados "Apos" ou "Ate" baseado na data atual
+
+### Configuração
+
+Variáveis de ambiente (opcional):
+
+```bash
+# Exige certificado de cliente (mais seguro)
+BB_REQUIRE_CLIENT_CERT=true
+
+# Define ambiente explicitamente
+BB_ENVIRONMENT=production
+```
+
+### Segurança
+
+- ✅ **Validação mTLS**: Garante que apenas o BB pode acessar o webhook
+- ✅ **Certificados confiáveis**: Carregados automaticamente do diretório
+- ✅ **Cache**: Certificados são cacheados por 1 hora para performance
+- ✅ **Logs**: Registra tentativas de acesso não autorizadas
+
 ## Importante
 
 - ✅ **Certificado do servidor** é apresentado automaticamente pela Vercel
 - ✅ **Cadeia completa** foi enviada ao BB para validação
 - ✅ **Validação TLS** acontece automaticamente durante o handshake
+- ✅ **Validação mTLS** garante que apenas o BB pode acessar o webhook
 - ✅ **Código** valida assinatura adicional (HMAC) para segurança extra
 
 ## Renovação do Certificado
@@ -95,4 +138,3 @@ O certificado Let's Encrypt é renovado automaticamente pela Vercel. Quando isso
 - Documentação BB: https://apoio.developers.bb.com.br
 - Certificado válido até: 23/01/2026
 - Arquivo: `certificado-bb-vercel.pem`
-
