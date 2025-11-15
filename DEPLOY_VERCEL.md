@@ -11,6 +11,7 @@ Este guia te ajudará a fazer o deploy do backend na Vercel e configurar tudo co
 ## 🔧 Passo 1: Preparar o Código
 
 O código já está preparado para Vercel! Os arquivos necessários estão criados:
+
 - ✅ `vercel.json` - Configuração do Vercel
 - ✅ `server.js` - Servidor Express
 - ✅ Código compatível com Vercel Postgres
@@ -27,30 +28,35 @@ O código já está preparado para Vercel! Os arquivos necessários estão criad
 Na tela de configuração do projeto, adicione as seguintes variáveis de ambiente:
 
 ### Banco do Brasil (Homologação)
+
 ```
 BB_CLIENT_ID=eyJpZCI6IjAzIiwiY29kaWdvUHVibGljYWRvciI6MCwiY29kaWdvU29mdHdhcmUiOjE2MDMzMSwic2VxdWVuY2lhbEluc3RhbGFjYW8iOjF9
 BB_CLIENT_SECRET=eyJpZCI6ImZkNTZlZWQtNDVjMi00N2Y1LTgzY2QiLCJjb2RpZ29QdWJsaWNhZG9yIjowLCJjb2RpZ29Tb2Z0d2FyZSI6MTYwMzMxLCJzZXF1ZW5jaWFsSW5zdGFsYWNhbyI6MSwic2VxdWVuY2lhbENyZWRlbmNpYWwiOjEsImFtYmllbnRlIjoiaG9tb2xvZ2FjYW8iLCJpYXQiOjE3NjI4NzU5NjcxODh9
 BB_DEV_APP_KEY=f20c4119840240ddb677505713b9be80
-BB_CHAVE_PIX=hmtestes2@bb.com.br
-BB_AUTH_URL=https://oauth.hm.bb.com.br/oauth/token
-BB_API_BASE_URL=https://api.hm.bb.com.br
+BB_CHAVE_PIX=solsticiodosom@gmail.com.br
+BB_AUTH_URL=https://oauth.bb.com.br/oauth/token
+BB_API_BASE_URL=https://api.bb.com.br
 ```
 
 ### Segurança
+
 ```
 NODE_ENV=production
 WEBHOOK_SECRET=seu_secret_forte_aqui
 ALLOWED_ORIGINS=https://seu-dominio-frontend.com
 ```
 
-**Importante**: 
+**Importante**:
+
 - Gere um `WEBHOOK_SECRET` forte: `openssl rand -hex 32`
 - Configure `ALLOWED_ORIGINS` com o domínio do seu frontend (separado por vírgula se houver múltiplos)
 
 ### Porta (opcional)
+
 ```
 PORT=3000
 ```
+
 A Vercel define automaticamente, mas pode ser útil para logs.
 
 ## 🗄️ Passo 4: Configurar Vercel Postgres
@@ -63,6 +69,7 @@ A Vercel define automaticamente, mas pode ser útil para logs.
 6. Clique em **"Create"**
 
 A Vercel configurará automaticamente as variáveis:
+
 - `POSTGRES_URL`
 - `POSTGRES_PRISMA_URL`
 - `POSTGRES_URL_NON_POOLING`
@@ -78,11 +85,13 @@ A Vercel configurará automaticamente as variáveis:
 ## ✅ Passo 6: Verificar Deploy
 
 ### Teste Health Check
+
 ```bash
 curl https://seu-projeto.vercel.app/health
 ```
 
 Deve retornar:
+
 ```json
 {
   "status": "healthy",
@@ -92,6 +101,7 @@ Deve retornar:
 ```
 
 ### Teste Criar Cobrança
+
 ```bash
 curl -X POST https://seu-projeto.vercel.app/api/gerar-pix \
   -H "Content-Type: application/json" \
@@ -118,6 +128,7 @@ curl -X POST https://seu-projeto.vercel.app/api/gerar-pix \
 ## 📊 Passo 8: Monitorar Logs
 
 Na Vercel, você pode ver os logs em tempo real:
+
 1. Vá em **"Deployments"**
 2. Clique no deployment mais recente
 3. Aba **"Functions"** → `server.js`
@@ -126,24 +137,29 @@ Na Vercel, você pode ver os logs em tempo real:
 ## 🔍 Troubleshooting
 
 ### Erro: "Cannot find module '@vercel/postgres'"
+
 - Verifique se `package.json` tem a dependência
 - A Vercel instala automaticamente, mas pode precisar de rebuild
 
 ### Erro: "Database connection failed"
+
 - Verifique se o Vercel Postgres está criado
 - Verifique se as variáveis `POSTGRES_URL` estão configuradas (devem ser automáticas)
 - Veja os logs para mais detalhes
 
 ### Erro: "WEBHOOK_SECRET not configured"
+
 - Configure a variável `WEBHOOK_SECRET` nas configurações do projeto
 - Em produção, isso é obrigatório
 
 ### Webhook não funciona
+
 - Verifique se a URL está correta: `https://seu-projeto.vercel.app/api/webhook/pix`
 - Verifique se o `WEBHOOK_SECRET` está configurado no Portal BB e na Vercel
 - Veja os logs da Vercel para erros
 
 ### CORS bloqueando requisições
+
 - Configure `ALLOWED_ORIGINS` com o domínio do frontend
 - Em desenvolvimento, pode deixar vazio (mas não recomendado)
 
@@ -162,6 +178,7 @@ Na Vercel, você pode ver os logs em tempo real:
 ## 🔄 Atualizações Futuras
 
 Para atualizar o código:
+
 1. Faça commit e push das mudanças
 2. A Vercel detecta automaticamente e faz novo deploy
 3. Ou faça deploy manual: `vercel --prod`
@@ -169,21 +186,25 @@ Para atualizar o código:
 ## 🛠️ Comandos Úteis
 
 ### Instalar Vercel CLI (opcional)
+
 ```bash
 npm i -g vercel
 ```
 
 ### Deploy manual via CLI
+
 ```bash
 vercel
 ```
 
 ### Ver logs via CLI
+
 ```bash
 vercel logs
 ```
 
 ### Ver variáveis de ambiente
+
 ```bash
 vercel env ls
 ```
@@ -191,6 +212,7 @@ vercel env ls
 ## 📚 Próximos Passos
 
 Após o deploy bem-sucedido:
+
 1. ✅ Teste todos os endpoints
 2. ✅ Configure o webhook no Portal BB
 3. ✅ Teste o webhook com uma transação real
@@ -200,10 +222,10 @@ Após o deploy bem-sucedido:
 ## 🔐 Segurança em Produção
 
 Lembre-se:
+
 - ✅ `WEBHOOK_SECRET` configurado e forte
 - ✅ `ALLOWED_ORIGINS` configurado com domínios permitidos
 - ✅ `NODE_ENV=production`
 - ✅ Logs não expõem dados sensíveis
 - ✅ Rate limiting ativo
 - ✅ Headers de segurança (Helmet) ativos
-
