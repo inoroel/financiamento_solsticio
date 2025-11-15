@@ -225,9 +225,15 @@ router.post('/webhook/pix', webhookLimiter, async (req, res) => {
     const signature = req.headers['x-signature'] || req.headers['x-bb-signature'];
 
     // Log mínimo (sem dados sensíveis)
+    // IMPORTANTE: O BB valida o certificado do SERVIDOR durante o handshake TLS
+    // O certificado usado é o primeiro da cadeia (certificado do servidor *.vercel.app)
+    // A cadeia completa foi enviada ao BB para validação da confiança
     console.log('📨 Webhook recebido do Banco do Brasil', {
       hasSignature: !!signature,
-      hasBody: !!webhookBody && Object.keys(webhookBody).length > 0
+      hasBody: !!webhookBody && Object.keys(webhookBody).length > 0,
+      protocol: req.protocol,
+      secure: req.secure,
+      // O certificado do servidor já foi validado pelo BB durante o handshake TLS
     });
 
     // Processa o webhook
@@ -237,7 +243,8 @@ router.post('/webhook/pix', webhookLimiter, async (req, res) => {
     // Em uma implementação completa, você pode armazenar os dados do doador
     // temporariamente na criação da cobrança e recuperá-los aqui.
     
-    const result = await processWebhook(webhookBody, signature);
+    // Passa o objeto req para validação do certificado do cliente (mTLS) se necessário
+    const result = await processWebhook(webhookBody, signature, null, req);
 
     if (!result || !result.success) {
       return res.status(400).json({

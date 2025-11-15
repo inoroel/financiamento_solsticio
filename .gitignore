@@ -148,6 +148,8 @@ test_credentials.txt
 *.cert
 credentials.json
 secrets.json
+certificado-bb-vercel.pem
+certificados-webhook-bb/
 
 # Arquivos de configuração local
 .env.*

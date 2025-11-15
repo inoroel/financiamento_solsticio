@@ -13,7 +13,8 @@ Guia objetivo para fazer deploy do backend na Vercel em 5 minutos.
 
 Na tela de configuração, adicione estas variáveis (Settings → Environment Variables):
 
-### Obrigatórias:
+### Obrigatórias
+
 ```
 BB_CLIENT_ID=eyJpZCI6IjAzIiwiY29kaWdvUHVibGljYWRvciI6MCwiY29kaWdvU29mdHdhcmUiOjE2MDMzMSwic2VxdWVuY2lhbEluc3RhbGFjYW8iOjF9
 
@@ -33,25 +34,32 @@ WEBHOOK_SECRET=seu_secret_forte_aqui
 ```
 
 **Importante**: Gere um `WEBHOOK_SECRET` forte:
+
 ```bash
 openssl rand -hex 32
 ```
 
-### Opcionais (configure depois se necessário):
+### Opcionais (configure depois se necessário)
+
 ```
 ALLOWED_ORIGINS=https://seu-frontend.com
 ```
 
-## 🗄️ Passo 3: Criar Vercel Postgres
+## 🗄️ Passo 3: Criar Banco de Dados Postgres
 
 1. No dashboard do projeto, vá em **"Storage"**
-2. Clique em **"Create Database"**
-3. Selecione **"Postgres"**
-4. Escolha o plano **Free**
-5. Dê um nome: `financiamento-solsticio`
-6. Clique em **"Create"**
+2. Clique em **"Create Database"** ou **"Create New"**
+3. Na lista de opções, escolha uma das seguintes (todas são Postgres compatíveis):
+   - **Prisma Postgres** (recomendado) - "Instant Serverless Postgres"
+   - **Neon** - "Serverless Postgres"
+   - **Supabase** - "Postgres backend"
+4. Clique em **"Continue"**
+5. Escolha o plano **Free** (se disponível)
+6. Dê um nome: `financiamento-solsticio`
+7. Finalize a criação
 
 ✅ A Vercel configura automaticamente:
+
 - `POSTGRES_URL`
 - `POSTGRES_PRISMA_URL`
 - `POSTGRES_URL_NON_POOLING`
@@ -66,7 +74,7 @@ ALLOWED_ORIGINS=https://seu-frontend.com
 
 ## 🧪 Passo 5: Testar
 
-### No Frontend Local:
+### No Frontend Local
 
 1. Abra `public/index.html` no navegador
 2. No topo, selecione **"Vercel (Produção)"**
@@ -74,13 +82,14 @@ ALLOWED_ORIGINS=https://seu-frontend.com
 4. Clique em **"Testar Conexão"**
 5. Deve mostrar: ✅ Conectado!
 
-### Teste Direto:
+### Teste Direto
 
 ```bash
 curl https://seu-projeto.vercel.app/health
 ```
 
 Deve retornar:
+
 ```json
 {
   "status": "healthy",
@@ -108,20 +117,23 @@ Deve retornar:
 ## 🐛 Problemas Comuns
 
 **Erro: "Database connection failed"**
+
 - Aguarde alguns segundos após criar o Postgres
 - Faça um novo deploy
 
 **Erro: "WEBHOOK_SECRET not configured"**
+
 - Configure a variável `WEBHOOK_SECRET` na Vercel
 
 **CORS bloqueando**
+
 - Configure `ALLOWED_ORIGINS` com o domínio do frontend
 - Ou deixe vazio temporariamente para testes
 
-## 🎉 Pronto!
+## 🎉 Pronto!_
 
 Agora você pode:
+
 - ✅ Testar o backend na Vercel usando o frontend local
 - ✅ Verificar se tudo funciona antes de entregar para o designer
 - ✅ Configurar o webhook e testar pagamentos reais
-
