@@ -30,6 +30,14 @@ app.use(cors(corsOptions));
 app.use(requestLogger); // Logging de requisições
 
 // =================================================================
+// SERVE ARQUIVOS ESTÁTICOS (Frontend de teste)
+// =================================================================
+if (process.env.NODE_ENV !== 'production' || process.env.SERVE_FRONTEND === 'true') {
+  app.use(express.static('public'));
+  console.log('📁 Servindo arquivos estáticos da pasta public/');
+}
+
+// =================================================================
 // ROTAS
 // =================================================================
 app.use('/api', pixRoutes);
@@ -101,9 +109,6 @@ if (process.env.VERCEL !== '1') {
   startServer().catch(console.error);
 }
 
-// Exporta o app para Vercel (serverless function)
-module.exports = app;
-
 // Tratamento de erros não capturados
 process.on('unhandledRejection', (reason, promise) => {
   console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
@@ -111,7 +116,10 @@ process.on('unhandledRejection', (reason, promise) => {
 
 process.on('uncaughtException', (error) => {
   console.error('❌ Uncaught Exception:', error);
-  process.exit(1);
+  if (process.env.VERCEL !== '1') {
+    process.exit(1);
+  }
 });
 
+// Exporta o app para Vercel (serverless function)
 module.exports = app;

@@ -1,0 +1,767 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teste API PIX - Financiamento Solstício</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            opacity: 0.9;
+            font-size: 14px;
+        }
+
+        .content {
+            padding: 30px;
+        }
+
+        .section {
+            margin-bottom: 30px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            border-left: 4px solid #667eea;
+        }
+
+        .section h2 {
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 20px;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            color: #555;
+            font-weight: 500;
+            font-size: 14px;
+        }
+
+        input, select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+
+        input:focus, select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .checkbox-group input[type="checkbox"] {
+            width: auto;
+        }
+
+        .doador-fields {
+            margin-top: 15px;
+            padding: 15px;
+            background: white;
+            border-radius: 8px;
+            border: 2px dashed #e0e0e0;
+        }
+
+        .doador-fields.hidden {
+            display: none;
+        }
+
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            width: 100%;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 8px;
+            display: none;
+        }
+
+        .result.success {
+            background: #d4edda;
+            border: 2px solid #28a745;
+            color: #155724;
+            display: block;
+        }
+
+        .result.error {
+            background: #f8d7da;
+            border: 2px solid #dc3545;
+            color: #721c24;
+            display: block;
+        }
+
+        .result.info {
+            background: #d1ecf1;
+            border: 2px solid #17a2b8;
+            color: #0c5460;
+            display: block;
+        }
+
+        .qrcode-container {
+            text-align: center;
+            margin-top: 20px;
+            padding: 20px;
+            background: white;
+            border-radius: 10px;
+        }
+
+        .qrcode-container img {
+            max-width: 300px;
+            border: 4px solid #667eea;
+            border-radius: 10px;
+            padding: 10px;
+            background: white;
+        }
+
+        .qrcode-text {
+            margin-top: 15px;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            word-break: break-all;
+            font-size: 12px;
+            font-family: monospace;
+        }
+
+        .info-box {
+            background: #fff3cd;
+            border: 2px solid #ffc107;
+            color: #856404;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+
+        .info-box strong {
+            display: block;
+            margin-bottom: 5px;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255,255,255,.3);
+            border-radius: 50%;
+            border-top-color: white;
+            animation: spin 1s ease-in-out infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .api-url {
+            background: #e9ecef;
+            padding: 10px;
+            border-radius: 5px;
+            font-family: monospace;
+            font-size: 12px;
+            margin-bottom: 15px;
+        }
+
+        .api-config {
+            background: #fff3cd;
+            border: 2px solid #ffc107;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .api-config h3 {
+            margin-bottom: 15px;
+            color: #856404;
+            font-size: 16px;
+        }
+
+        .api-config-row {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .api-config-row select {
+            flex: 1;
+        }
+
+        .api-config-row input {
+            flex: 2;
+            display: none;
+        }
+        
+        .api-config-row input[style*="block"] {
+            display: block !important;
+        }
+
+        .api-config-row button {
+            flex: 0 0 auto;
+            padding: 12px 20px;
+            width: auto;
+        }
+
+        .api-status {
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 12px;
+            display: none;
+        }
+
+        .api-status.connected {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #28a745;
+            display: block;
+        }
+
+        .api-status.disconnected {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #dc3545;
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>💰 Teste API PIX</h1>
+            <p>Financiamento Solstício - Backend Test</p>
+        </div>
+
+        <div class="content">
+            <!-- Configuração da API -->
+            <div class="api-config">
+                <h3>⚙️ Configuração da API</h3>
+                <div class="api-config-row">
+                    <select id="apiEnv">
+                        <option value="local">Localhost</option>
+                        <option value="vercel">Vercel (Produção)</option>
+                        <option value="custom">URL Customizada</option>
+                    </select>
+                    <input type="text" id="apiUrlInput" placeholder="https://seu-projeto.vercel.app" style="display: none;">
+                    <button type="button" id="testConnectionBtn">Testar Conexão</button>
+                </div>
+                <div class="api-url" id="apiUrlDisplay">API: http://localhost:3000</div>
+                <div class="api-status" id="apiStatus"></div>
+            </div>
+
+            <div class="info-box">
+                <strong>ℹ️ Informações:</strong>
+                <p>Configure a URL da API acima para testar com backend local ou Vercel.</p>
+            </div>
+
+            <!-- Seção 1: Criar Cobrança PIX -->
+            <div class="section">
+                <h2>1. Criar Cobrança PIX</h2>
+                <form id="createChargeForm">
+                    <div class="form-group">
+                        <label for="valor">Valor (R$)</label>
+                        <input type="number" id="valor" step="0.01" min="0.01" max="100000" value="10.50" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="cid">ID da Campanha</label>
+                        <input type="text" id="cid" value="01" required>
+                    </div>
+
+                    <div class="form-group">
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="anonimo" checked>
+                            <label for="anonimo">Doação anônima</label>
+                        </div>
+                    </div>
+
+                    <div class="doador-fields hidden" id="doadorFields">
+                        <div class="form-group">
+                            <label for="nome">Nome do Doador *</label>
+                            <input type="text" id="nome" placeholder="Seu nome completo">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="whatsapp">WhatsApp *</label>
+                            <input type="text" id="whatsapp" placeholder="5511999999999" pattern="[0-9]{10,15}">
+                        </div>
+                    </div>
+
+                    <button type="submit" id="createBtn">
+                        <span id="createBtnText">Criar Cobrança PIX</span>
+                    </button>
+                </form>
+
+                <div id="createResult" class="result"></div>
+                <div id="qrcodeContainer" class="qrcode-container" style="display: none;">
+                    <h3>QR Code PIX</h3>
+                    <div id="qrcode"></div>
+                    <div class="qrcode-text" id="qrcodeText"></div>
+                    <p style="margin-top: 10px; font-size: 12px; color: #666;">
+                        Escaneie com seu app de pagamento ou copie o código acima
+                    </p>
+                </div>
+            </div>
+
+            <!-- Seção 2: Consultar Cobrança -->
+            <div class="section">
+                <h2>2. Consultar Status da Cobrança</h2>
+                <form id="consultForm">
+                    <div class="form-group">
+                        <label for="txid">TXID</label>
+                        <input type="text" id="txid" placeholder="solsticiocampanha01..." required>
+                    </div>
+                    <button type="submit" id="consultBtn">
+                        <span id="consultBtnText">Consultar Status</span>
+                    </button>
+                </form>
+
+                <div id="consultResult" class="result"></div>
+            </div>
+
+            <!-- Seção 3: Health Check -->
+            <div class="section">
+                <h2>3. Health Check</h2>
+                <button type="button" id="healthBtn">
+                    <span id="healthBtnText">Verificar Status do Servidor</span>
+                </button>
+                <div id="healthResult" class="result"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+    <script>
+        // Configuração da API - com suporte a múltiplos ambientes
+        let API_URL = localStorage.getItem('apiUrl') || 'http://localhost:3000';
+        
+        // Elementos de configuração
+        const apiEnvSelect = document.getElementById('apiEnv');
+        const apiUrlInput = document.getElementById('apiUrlInput');
+        const apiUrlDisplay = document.getElementById('apiUrlDisplay');
+        const testConnectionBtn = document.getElementById('testConnectionBtn');
+        const apiStatus = document.getElementById('apiStatus');
+
+        // Inicializa configuração salva
+        const savedEnv = localStorage.getItem('apiEnv') || 'local';
+        const savedCustomUrl = localStorage.getItem('customApiUrl') || '';
+        
+        apiEnvSelect.value = savedEnv;
+        if (savedCustomUrl) {
+            apiUrlInput.value = savedCustomUrl;
+        }
+        
+        updateApiUrl();
+        updateApiUrlDisplay();
+
+        // Atualiza URL da API baseado no ambiente selecionado
+        function updateApiUrl() {
+            const env = apiEnvSelect.value;
+            
+            switch(env) {
+                case 'local':
+                    API_URL = 'http://localhost:3000';
+                    apiUrlInput.style.display = 'none';
+                    break;
+                case 'vercel':
+                    // Se tiver URL customizada salva, usa ela, senão pede para configurar
+                    if (savedCustomUrl && savedCustomUrl.includes('vercel.app')) {
+                        API_URL = savedCustomUrl;
+                        apiUrlInput.value = savedCustomUrl;
+                    } else {
+                        API_URL = '';
+                        apiUrlInput.placeholder = 'https://seu-projeto.vercel.app';
+                    }
+                    apiUrlInput.style.display = 'block';
+                    break;
+                case 'custom':
+                    API_URL = apiUrlInput.value || savedCustomUrl || '';
+                    apiUrlInput.style.display = 'block';
+                    apiUrlInput.placeholder = 'https://sua-api.com';
+                    break;
+            }
+            
+            if (API_URL) {
+                localStorage.setItem('apiUrl', API_URL);
+                localStorage.setItem('apiEnv', env);
+                if (env === 'custom' || env === 'vercel') {
+                    localStorage.setItem('customApiUrl', API_URL);
+                }
+            }
+            
+            updateApiUrlDisplay();
+        }
+
+        // Atualiza display da URL
+        function updateApiUrlDisplay() {
+            if (API_URL) {
+                apiUrlDisplay.textContent = `API: ${API_URL}`;
+                apiStatus.className = 'api-status';
+                apiStatus.textContent = '';
+            } else {
+                apiUrlDisplay.textContent = 'API: Não configurada';
+                apiStatus.className = 'api-status disconnected';
+                apiStatus.textContent = '⚠️ Configure a URL da API acima';
+            }
+        }
+
+        // Event listeners para configuração
+        apiEnvSelect.addEventListener('change', function() {
+            updateApiUrl();
+            if (this.value === 'vercel' && !apiUrlInput.value) {
+                apiStatus.className = 'api-status disconnected';
+                apiStatus.textContent = '⚠️ Digite a URL do seu projeto Vercel';
+            }
+        });
+
+        apiUrlInput.addEventListener('input', function() {
+            if (apiEnvSelect.value === 'vercel' || apiEnvSelect.value === 'custom') {
+                API_URL = this.value.trim();
+                if (API_URL) {
+                    localStorage.setItem('apiUrl', API_URL);
+                    localStorage.setItem('customApiUrl', API_URL);
+                    updateApiUrlDisplay();
+                }
+            }
+        });
+
+        // Testar conexão
+        testConnectionBtn.addEventListener('click', async function() {
+            if (!API_URL) {
+                apiStatus.className = 'api-status disconnected';
+                apiStatus.textContent = '❌ Configure a URL da API primeiro';
+                return;
+            }
+
+            testConnectionBtn.disabled = true;
+            testConnectionBtn.textContent = 'Testando...';
+            apiStatus.className = 'api-status';
+            apiStatus.textContent = '🔄 Testando conexão...';
+
+            try {
+                const response = await fetch(`${API_URL}/health`);
+                const data = await response.json();
+
+                if (response.ok && data.status === 'healthy') {
+                    apiStatus.className = 'api-status connected';
+                    apiStatus.textContent = `✅ Conectado! Banco: ${data.database}`;
+                } else {
+                    apiStatus.className = 'api-status disconnected';
+                    apiStatus.textContent = `⚠️ Servidor respondeu mas status: ${data.status}`;
+                }
+            } catch (error) {
+                apiStatus.className = 'api-status disconnected';
+                apiStatus.textContent = `❌ Erro: ${error.message}. Verifique a URL e se o servidor está rodando.`;
+            } finally {
+                testConnectionBtn.disabled = false;
+                testConnectionBtn.textContent = 'Testar Conexão';
+            }
+        });
+
+        // Elementos do DOM
+        const anonimoCheckbox = document.getElementById('anonimo');
+        const doadorFields = document.getElementById('doadorFields');
+        const createChargeForm = document.getElementById('createChargeForm');
+        const consultForm = document.getElementById('consultForm');
+        const healthBtn = document.getElementById('healthBtn');
+
+        // Toggle campos do doador
+        anonimoCheckbox.addEventListener('change', function() {
+            if (this.checked) {
+                doadorFields.classList.add('hidden');
+                document.getElementById('nome').required = false;
+                document.getElementById('whatsapp').required = false;
+            } else {
+                doadorFields.classList.remove('hidden');
+                document.getElementById('nome').required = true;
+                document.getElementById('whatsapp').required = true;
+            }
+        });
+
+        // Criar cobrança PIX
+        createChargeForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const createBtn = document.getElementById('createBtn');
+            const createBtnText = document.getElementById('createBtnText');
+            const createResult = document.getElementById('createResult');
+            const qrcodeContainer = document.getElementById('qrcodeContainer');
+            
+            createBtn.disabled = true;
+            createBtnText.innerHTML = '<span class="loading"></span> Criando...';
+            createResult.className = 'result';
+            qrcodeContainer.style.display = 'none';
+
+            const valor = parseFloat(document.getElementById('valor').value);
+            const cid = document.getElementById('cid').value;
+            const anonimo = document.getElementById('anonimo').checked;
+
+            const body = {
+                valor: valor,
+                cid: cid
+            };
+
+            if (!anonimo) {
+                const nome = document.getElementById('nome').value;
+                const whatsapp = document.getElementById('whatsapp').value;
+                
+                if (!nome || !whatsapp) {
+                    showResult(createResult, 'error', 'Para doações identificadas, nome e WhatsApp são obrigatórios.');
+                    createBtn.disabled = false;
+                    createBtnText.textContent = 'Criar Cobrança PIX';
+                    return;
+                }
+
+                body.doador = {
+                    nome: nome,
+                    whatsapp: whatsapp,
+                    anonimo: false
+                };
+            }
+
+            try {
+                const response = await fetch(`${API_URL}/api/gerar-pix`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(body)
+                });
+
+                const data = await response.json();
+
+                if (response.ok && data.success) {
+                    showResult(createResult, 'success', 
+                        `✅ Cobrança criada com sucesso!<br>` +
+                        `TXID: <strong>${data.txid}</strong><br>` +
+                        `Valor: R$ ${data.valor.toFixed(2)}<br>` +
+                        `Status: ${data.status}`
+                    );
+                    
+                    // Mostra QR Code
+                    if (data.brCode) {
+                        showQRCode(data.brCode, data.txid);
+                    }
+                } else {
+                    showResult(createResult, 'error', 
+                        `❌ Erro: ${data.error || 'Erro desconhecido'}`
+                    );
+                }
+            } catch (error) {
+                showResult(createResult, 'error', 
+                    `❌ Erro ao conectar com a API: ${error.message}<br>` +
+                    `Verifique se o servidor está rodando em ${API_URL}`
+                );
+            } finally {
+                createBtn.disabled = false;
+                createBtnText.textContent = 'Criar Cobrança PIX';
+            }
+        });
+
+        // Consultar cobrança
+        consultForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const consultBtn = document.getElementById('consultBtn');
+            const consultBtnText = document.getElementById('consultBtnText');
+            const consultResult = document.getElementById('consultResult');
+            
+            consultBtn.disabled = true;
+            consultBtnText.innerHTML = '<span class="loading"></span> Consultando...';
+            consultResult.className = 'result';
+
+            const txid = document.getElementById('txid').value;
+
+            try {
+                const response = await fetch(`${API_URL}/api/cobranca/${encodeURIComponent(txid)}`);
+                const data = await response.json();
+
+                if (response.ok && data.success) {
+                    let html = `✅ <strong>Cobrança encontrada!</strong><br><br>`;
+                    html += `TXID: <strong>${data.txid}</strong><br>`;
+                    html += `Status: <strong>${data.status}</strong><br>`;
+                    html += `Valor: R$ ${data.valor ? data.valor.toFixed(2) : 'N/A'}<br>`;
+                    
+                    if (data.criadoEm) {
+                        html += `Criado em: ${new Date(data.criadoEm).toLocaleString('pt-BR')}<br>`;
+                    }
+                    
+                    if (data.pagamento) {
+                        html += `<br><strong>💰 Pagamento Confirmado!</strong><br>`;
+                        html += `EndToEndId: ${data.pagamento.endToEndId}<br>`;
+                        if (data.pagamento.horario) {
+                            html += `Horário: ${new Date(data.pagamento.horario).toLocaleString('pt-BR')}`;
+                        }
+                    }
+                    
+                    showResult(consultResult, 'success', html);
+                } else {
+                    showResult(consultResult, 'error', 
+                        `❌ ${data.error || 'Cobrança não encontrada'}`
+                    );
+                }
+            } catch (error) {
+                showResult(consultResult, 'error', 
+                    `❌ Erro ao conectar com a API: ${error.message}`
+                );
+            } finally {
+                consultBtn.disabled = false;
+                consultBtnText.textContent = 'Consultar Status';
+            }
+        });
+
+        // Health check
+        healthBtn.addEventListener('click', async function() {
+            const healthBtnText = document.getElementById('healthBtnText');
+            const healthResult = document.getElementById('healthResult');
+            
+            healthBtn.disabled = true;
+            healthBtnText.innerHTML = '<span class="loading"></span> Verificando...';
+            healthResult.className = 'result';
+
+            try {
+                const response = await fetch(`${API_URL}/health`);
+                const data = await response.json();
+
+                if (response.ok) {
+                    let html = `✅ <strong>Servidor ${data.status}</strong><br><br>`;
+                    html += `Banco de dados: <strong>${data.database}</strong><br>`;
+                    html += `Timestamp: ${new Date(data.timestamp).toLocaleString('pt-BR')}`;
+                    showResult(healthResult, data.status === 'healthy' ? 'success' : 'error', html);
+                } else {
+                    showResult(healthResult, 'error', '❌ Servidor não está respondendo corretamente');
+                }
+            } catch (error) {
+                showResult(healthResult, 'error', 
+                    `❌ Erro ao conectar: ${error.message}<br>` +
+                    `Verifique se o servidor está rodando em ${API_URL}`
+                );
+            } finally {
+                healthBtn.disabled = false;
+                healthBtnText.textContent = 'Verificar Status do Servidor';
+            }
+        });
+
+        // Função auxiliar para mostrar resultados
+        function showResult(element, type, message) {
+            element.className = `result ${type}`;
+            element.innerHTML = message;
+        }
+
+        // Função para gerar e mostrar QR Code
+        function showQRCode(brCode, txid) {
+            const qrcodeContainer = document.getElementById('qrcodeContainer');
+            const qrcodeDiv = document.getElementById('qrcode');
+            const qrcodeText = document.getElementById('qrcodeText');
+
+            qrcodeContainer.style.display = 'block';
+            qrcodeDiv.innerHTML = '';
+
+            // Gera QR Code usando a biblioteca
+            QRCode.toCanvas(qrcodeDiv, brCode, {
+                width: 300,
+                margin: 2,
+                color: {
+                    dark: '#000000',
+                    light: '#FFFFFF'
+                }
+            }, function (error) {
+                if (error) {
+                    qrcodeDiv.innerHTML = '<p style="color: red;">Erro ao gerar QR Code</p>';
+                }
+            });
+
+            // Mostra o código para copiar
+            qrcodeText.innerHTML = `<strong>Código PIX (Copiar e Colar):</strong><br>${brCode}`;
+        }
+
+        // Auto-preenche TXID após criar cobrança
+        window.addEventListener('message', function(e) {
+            if (e.data.type === 'txid-created') {
+                document.getElementById('txid').value = e.data.txid;
+            }
+        });
+
+        // Atualiza TXID no campo de consulta quando uma cobrança é criada
+        const originalShowResult = showResult;
+        showResult = function(element, type, message) {
+            originalShowResult(element, type, message);
+            if (element.id === 'createResult' && type === 'success') {
+                const txidMatch = message.match(/TXID: <strong>(.*?)<\/strong>/);
+                if (txidMatch) {
+                    document.getElementById('txid').value = txidMatch[1];
+                }
+            }
+        };
+    </script>
+</body>
+</html>
+
