@@ -3,7 +3,7 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const { testConnection, initializeDatabase } = require('./config/database');
-const pixRoutes = require('./routes/pixRoutes');
+const paymentRoutes = require('./routes/paymentRoutes');
 const { requestLogger, errorHandler, notFoundHandler } = require('./middleware/errorHandler');
 const { helmetConfig } = require('./middleware/security');
 
@@ -40,7 +40,7 @@ if (process.env.NODE_ENV !== 'production' || process.env.SERVE_FRONTEND === 'tru
 // =================================================================
 // ROTAS
 // =================================================================
-app.use('/api', pixRoutes);
+app.use('/api', paymentRoutes);
 
 // Rota de health check
 app.get('/health', async (req, res) => {
@@ -83,9 +83,10 @@ async function startServer() {
         console.log(`📍 Porta: ${PORT}`);
         console.log(`🌐 Ambiente: ${process.env.NODE_ENV || 'development'}`);
         console.log('\n📋 Endpoints disponíveis:');
-        console.log(`   POST   http://localhost:${PORT}/api/gerar-pix`);
-        console.log(`   GET    http://localhost:${PORT}/api/cobranca/:txid`);
-        console.log(`   POST   http://localhost:${PORT}/api/webhook/pix`);
+        console.log(`   POST   http://localhost:${PORT}/api/gerar-pagamento`);
+        console.log(`   GET    http://localhost:${PORT}/api/cobranca/:tid`);
+        console.log(`   GET    http://localhost:${PORT}/api/cobranca/txid/:txid`);
+        console.log(`   POST   http://localhost:${PORT}/api/webhook/pagamento`);
         console.log(`   GET    http://localhost:${PORT}/health\n`);
       });
     } else {

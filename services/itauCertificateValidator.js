@@ -109,13 +109,20 @@ function validateItauCertificate(clientCert) {
     const itauCertificates = loadItauCertificates();
     
     if (itauCertificates.length === 0) {
-      // Se não houver certificados carregados, loga mas permite (para desenvolvimento)
+      // Se não houver certificados carregados, rejeita em produção
       if (process.env.NODE_ENV === 'production') {
         console.error('❌ CRÍTICO: Certificados CA do Itaú não carregados em produção!');
         return false;
       }
-      console.warn('⚠️  Certificados CA do Itaú não disponíveis - validação desabilitada (apenas em desenvolvimento)');
-      return true; // Permite em desenvolvimento se não houver certificados
+      // Em desenvolvimento, ainda valida se o certificado é válido (mesmo sem CA específica)
+      // Mas não permite certificados inválidos
+      if (!clientCert.valid) {
+        console.error('❌ Certificado do cliente inválido');
+        return false;
+      }
+      console.warn('⚠️  Certificados CA do Itaú não disponíveis - validação básica apenas (desenvolvimento)');
+      // Permite apenas se certificado for válido (mesmo sem validação da CA específica)
+      return clientCert.valid;
     }
 
     // Valida se o certificado do cliente foi emitido por uma das CAs do Itaú

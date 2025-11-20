@@ -130,7 +130,15 @@ async function createPixCharge(txid, valor, solicitacaoPagador = "Doação para 
     }
     
     // Limita tamanho da mensagem (prevenção de DoS)
-    const mensagemSanitizada = solicitacaoPagador ? sanitizeString(solicitacaoPagador).slice(0, 140) : null;
+    // Sanitiza e valida caracteres perigosos antes de limitar tamanho
+    let mensagemSanitizada = null;
+    if (solicitacaoPagador) {
+      mensagemSanitizada = sanitizeString(solicitacaoPagador);
+      // Remove caracteres de controle e valida formato
+      mensagemSanitizada = mensagemSanitizada.replace(/[\x00-\x1F\x7F]/g, '');
+      // Limita tamanho após sanitização
+      mensagemSanitizada = mensagemSanitizada.slice(0, 140);
+    }
     
     // Valida expiração (máximo 24 horas, padrão 86400 se não informado)
     const expiracaoValidada = expiracao ? Math.min(Math.max(parseInt(expiracao) || 86400, 60), 86400) : 86400;
@@ -193,10 +201,25 @@ async function createPixCharge(txid, valor, solicitacaoPagador = "Doação para 
     
     // O Itaú retorna o QR Code no campo 'emv' (EMV/BR Code)
     // Também pode retornar 'imagem_base64' para exibição
+    // Validação: verifica se a resposta tem estrutura válida
+    if (!response.data || !response.data.txid) {
+      throw new Error('Resposta inválida da API Itaú: txid não encontrado');
+    }
+    
+    // Fallback robusto para brCode (QR Code)
+    const brCode = response.data.emv 
+      || response.data.loc?.location 
+      || response.data.location 
+      || null;
+    
+    if (!brCode) {
+      console.warn('⚠️  QR Code não encontrado na resposta do Itaú');
+    }
+    
     return {
-      status: response.data.status,
+      status: response.data.status || 'ATIVA',
       txid: response.data.txid,
-      brCode: response.data.emv || response.data.loc?.location || null, // EMV é o QR Code
+      brCode: brCode,
       expiracao: response.data.calendario?.expiracao || expiracao,
       valor: parseFloat(response.data.valor?.original) || valor,
       chave: response.data.chave || CHAVE_PIX,
@@ -246,14 +269,13 @@ async function consultPixCharge(txid) {
 
     console.log(`\n🔍 Consultando cobrança Itaú com identificador: ${txid}`);
 
-    // O Itaú usa PATCH para consultar/atualizar cobranças
-    // Com body vazio, funciona como consulta
+    // O Itaú usa GET para consultar cobranças (conforme documentação PIX v2)
+    // PATCH é usado apenas para atualizar, não para consultar
     const endpoint = `/cobrancas_imediata_pix/${encodeURIComponent(txid)}`;
     const correlationId = generateCorrelationId();
 
-    const response = await axios.patch(
+    const response = await axios.get(
       `${API_BASE_URL}${endpoint}`,
-      {}, // Body vazio para consulta
       { 
         headers: { 
           'Authorization': `Bearer ${token}`,

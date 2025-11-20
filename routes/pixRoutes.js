@@ -235,14 +235,22 @@ router.post('/webhook/pix', webhookLimiter, async (req, res) => {
     });
 
     // Processa o webhook
-    // Nota: Os dados do doador devem ser recuperados da cobrança original
-    // ou passados de outra forma. Por enquanto, processamos sem dados do doador
-    // pois eles devem ser salvos apenas quando o pagamento for confirmado.
-    // Em uma implementação completa, você pode armazenar os dados do doador
-    // temporariamente na criação da cobrança e recuperá-los aqui.
+    // IMPORTANTE: Recupera dados do doador da cobrança original (armazenados temporariamente)
+    // Os dados só são salvos na tabela doadores após confirmação do pagamento
+    let doadorData = null;
+    if (webhookBody.txid || webhookBody.pix?.[0]?.txid) {
+      const txid = webhookBody.txid || webhookBody.pix?.[0]?.txid;
+      const cobranca = await require('../services/dbService').getCobranca(txid);
+      if (cobranca && cobranca.dados_doador_temp) {
+        // JSONB pode vir como objeto ou string, verifica tipo
+        doadorData = typeof cobranca.dados_doador_temp === 'string' 
+          ? JSON.parse(cobranca.dados_doador_temp) 
+          : cobranca.dados_doador_temp;
+      }
+    }
     
     // Passa o objeto req para validação do certificado do cliente (mTLS) se necessário
-    const result = await processWebhook(webhookBody, signature, null, req);
+    const result = await processWebhook(webhookBody, signature, doadorData, req);
 
     if (!result || !result.success) {
       return res.status(400).json({
@@ -260,8 +268,26 @@ router.post('/webhook/pix', webhookLimiter, async (req, res) => {
 
   } catch (error) {
     console.error('❌ Erro inesperado no endpoint /api/webhook/pix:', error.message);
-           // Retorna 200 mesmo em caso de erro para evitar retentativas do Itaú
-    // Mas loga o erro para investigação
+    // Loga detalhes do erro apenas em desenvolvimento
+    if (process.env.NODE_ENV === 'development') {
+      console.error('Stack:', error.stack);
+    }
+    
+    // Retorna 200 para evitar retentativas do Itaú, mas apenas para erros não críticos
+    // Erros de segurança (validação falhou) devem retornar 400/401
+    const isSecurityError = error.message.includes('Assinatura') || 
+                           error.message.includes('Certificado') ||
+                           error.message.includes('inválido');
+    
+    if (isSecurityError) {
+      // Erros de segurança: retorna 401 para indicar problema de autenticação
+      return res.status(401).json({
+        success: false,
+        error: 'Erro de validação de segurança'
+      });
+    }
+    
+    // Outros erros: retorna 200 para evitar retentativas, mas loga para investigação
     res.status(200).json({
       success: false,
       error: 'Erro ao processar webhook (logado para investigação)'

@@ -33,13 +33,25 @@ function validateWebhookSignature(payload, signature) {
       console.error('❌ CRÍTICO: WEBHOOK_SECRET não configurado em produção!');
       return false; // Rejeita em produção se não tiver secret
     }
+    // Em desenvolvimento, ainda exige assinatura se fornecida
+    // Mas não rejeita se não houver secret configurado (apenas para testes locais)
+    if (signature) {
+      console.warn('⚠️  WEBHOOK_SECRET não configurado - não é possível validar assinatura');
+      return false; // Rejeita se houver assinatura mas não houver secret para validar
+    }
     console.warn('⚠️  WEBHOOK_SECRET não configurado - validação de assinatura desabilitada (apenas em desenvolvimento)');
-    return true; // Aceita apenas em desenvolvimento
+    return true; // Aceita apenas em desenvolvimento E sem assinatura
   }
   
+  // Em produção, assinatura é obrigatória
   if (!signature) {
-    console.error('❌ Webhook recebido sem assinatura');
-    return false;
+    if (process.env.NODE_ENV === 'production') {
+      console.error('❌ Webhook recebido sem assinatura em produção');
+      return false;
+    }
+    console.warn('⚠️  Webhook recebido sem assinatura (desenvolvimento)');
+    // Em desenvolvimento, permite sem assinatura apenas se não houver secret configurado
+    return false; // Por padrão, exige assinatura se secret estiver configurado
   }
   
   // Implementa validação HMAC conforme documentação do Itaú
@@ -118,9 +130,18 @@ async function processWebhook(webhookBody, signature = null, doadorData = null, 
       throw new Error('Certificado do cliente inválido ou ausente');
     }
     
-    // 2. Valida assinatura (se configurado)
-    if (signature && !validateWebhookSignature(webhookBody, signature)) {
-      throw new Error('Assinatura do webhook inválida');
+    // 2. Valida assinatura (obrigatória em produção, opcional em desenvolvimento)
+    // Sempre valida se signature for fornecida, independente do ambiente
+    if (signature) {
+      if (!validateWebhookSignature(webhookBody, signature)) {
+        throw new Error('Assinatura do webhook inválida');
+      }
+    } else if (process.env.NODE_ENV === 'production') {
+      // Em produção, assinatura é obrigatória
+      throw new Error('Webhook recebido sem assinatura em produção');
+    } else {
+      // Em desenvolvimento, apenas loga aviso
+      console.warn('⚠️  Webhook recebido sem assinatura (desenvolvimento)');
     }
     
     // 3. Extrai dados do webhook

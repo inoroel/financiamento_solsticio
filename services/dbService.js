@@ -8,21 +8,34 @@ const { sql } = require('../config/database');
  */
 async function saveCobranca(cobranca) {
   try {
-    const { txid, valor, status, campanhaId, chavePix, brCode, expiracao, dadosDoadorTemp } = cobranca;
+    const { 
+      txid, valor, status, campanhaId, tipoPagamento, chavePix, brCode, expiracao, 
+      redeTid, dadosPagamento, dadosDoadorTemp 
+    } = cobranca;
     
     // @vercel/postgres trata JSONB automaticamente quando passamos um objeto
     await sql`
-      INSERT INTO cobrancas (txid, valor, status, campanha_id, chave_pix, brcode, expiracao, dados_doador_temp)
-      VALUES (${txid}, ${valor}, ${status}, ${campanhaId || null}, ${chavePix}, ${brCode}, ${expiracao}, ${dadosDoadorTemp})
+      INSERT INTO cobrancas (
+        txid, valor, status, campanha_id, tipo_pagamento, chave_pix, brcode, expiracao, 
+        rede_tid, dados_pagamento, dados_doador_temp
+      )
+      VALUES (
+        ${txid}, ${valor}, ${status}, ${campanhaId || null}, 
+        ${tipoPagamento || 'PIX'}, ${chavePix || null}, ${brCode}, ${expiracao}, 
+        ${redeTid || null}, ${dadosPagamento || null}, ${dadosDoadorTemp}
+      )
       ON CONFLICT (txid) DO UPDATE SET
         status = EXCLUDED.status,
         brcode = EXCLUDED.brcode,
+        tipo_pagamento = EXCLUDED.tipo_pagamento,
+        rede_tid = EXCLUDED.rede_tid,
+        dados_pagamento = EXCLUDED.dados_pagamento,
         dados_doador_temp = EXCLUDED.dados_doador_temp,
         atualizado_em = CURRENT_TIMESTAMP
     `;
     
     console.log(`✅ Cobrança ${txid} salva no banco de dados`);
-    return { txid, valor, status };
+    return { txid, valor, status, tipoPagamento: tipoPagamento || 'PIX' };
   } catch (error) {
     console.error('❌ Erro ao salvar cobrança no banco:', error.message);
     return null;
@@ -124,27 +137,49 @@ async function saveDoador(doadorData) {
  */
 async function processConfirmedTransaction(webhookData, doadorData = null) {
   try {
-    const { txid, valor, status, endToEndId, horario } = webhookData;
+    const { 
+      txid, rede_tid, tipo_pagamento, valor, status, horario, 
+      bandeira, parcelas, endToEndId 
+    } = webhookData;
     
     // @vercel/postgres não suporta transações tradicionais com BEGIN/COMMIT
     // Fazemos as operações sequencialmente e garantimos atomicidade através da lógica
     
     // 1. Verifica se a cobrança existe e obtém dados do doador temporários
-    const cobranca = await sql`
-      SELECT * FROM cobrancas WHERE txid = ${txid}
-    `;
-    
-    if (cobranca.rows.length === 0) {
-      throw new Error(`Cobrança ${txid} não encontrada`);
+    // Busca por txid ou rede_tid
+    let cobranca = null;
+    if (txid) {
+      cobranca = await sql`
+        SELECT * FROM cobrancas WHERE txid = ${txid}
+      `;
     }
     
-    // Verifica se já foi processada (idempotência)
-    const existingTransacao = await sql`
-      SELECT * FROM transacoes WHERE cobranca_txid = ${txid} AND status = 'CONFIRMADA'
-    `;
+    // Se não encontrou por txid, tenta por rede_tid
+    if ((!cobranca || cobranca.rows.length === 0) && rede_tid) {
+      cobranca = await sql`
+        SELECT * FROM cobrancas WHERE rede_tid = ${rede_tid}
+      `;
+    }
     
-    if (existingTransacao.rows.length > 0) {
-      console.log(`ℹ️  Transação ${txid} já foi processada anteriormente`);
+    if (!cobranca || cobranca.rows.length === 0) {
+      throw new Error(`Cobrança ${txid || rede_tid} não encontrada`);
+    }
+    
+    // Verifica se já foi processada (idempotência) - por txid ou rede_tid
+    let existingTransacao = null;
+    if (txid) {
+      existingTransacao = await sql`
+        SELECT * FROM transacoes WHERE cobranca_txid = ${txid} AND status = 'CONFIRMADA'
+      `;
+    }
+    if ((!existingTransacao || existingTransacao.rows.length === 0) && rede_tid) {
+      existingTransacao = await sql`
+        SELECT * FROM transacoes WHERE rede_tid = ${rede_tid} AND status = 'CONFIRMADA'
+      `;
+    }
+    
+    if (existingTransacao && existingTransacao.rows.length > 0) {
+      console.log(`ℹ️  Transação ${txid || rede_tid} já foi processada anteriormente`);
       return {
         transacao: existingTransacao.rows[0],
         doador: existingTransacao.rows[0].doador_id ? { id: existingTransacao.rows[0].doador_id } : null
@@ -152,8 +187,17 @@ async function processConfirmedTransaction(webhookData, doadorData = null) {
     }
     
     // 2. Recupera dados do doador da cobrança (se não fornecidos explicitamente)
-    // JSONB já vem como objeto do PostgreSQL, não precisa fazer parse
-    const dadosDoadorFinal = doadorData || cobranca.rows[0].dados_doador_temp || null;
+    // JSONB pode vir como objeto ou string dependendo do driver, verifica tipo
+    let dadosDoadorTemp = cobranca.rows[0].dados_doador_temp;
+    if (dadosDoadorTemp && typeof dadosDoadorTemp === 'string') {
+      try {
+        dadosDoadorTemp = JSON.parse(dadosDoadorTemp);
+      } catch (error) {
+        console.warn('⚠️  Erro ao fazer parse de dados_doador_temp:', error.message);
+        dadosDoadorTemp = null;
+      }
+    }
+    const dadosDoadorFinal = doadorData || dadosDoadorTemp || null;
     
     // 3. Cria o doador APENAS APÓS confirmação do pagamento (se dados fornecidos)
     // IMPORTANTE: Esta é a única função que salva dados do doador no banco
@@ -201,36 +245,47 @@ async function processConfirmedTransaction(webhookData, doadorData = null) {
     }
     
     // 4. Cria o registro de transação confirmada
+    const txidFinal = txid || cobranca.rows[0].txid;
     const transacaoResult = await sql`
       INSERT INTO transacoes (
         cobranca_txid, 
         doador_id, 
         valor, 
-        status, 
+        status,
+        tipo_pagamento,
+        rede_tid,
+        bandeira_cartao,
+        parcelas,
         confirmado_em, 
         dados_webhook
       )
       VALUES (
-        ${txid}, 
+        ${txidFinal}, 
         ${doadorId}, 
         ${valor}, 
-        ${status}, 
+        ${status},
+        ${tipo_pagamento || 'PIX'},
+        ${rede_tid || null},
+        ${bandeira || null},
+        ${parcelas || null},
         ${horario ? new Date(horario) : new Date()}, 
         ${JSON.stringify(webhookData)}
       )
-      RETURNING id, cobranca_txid, doador_id, valor, status, confirmado_em
+      RETURNING id, cobranca_txid, doador_id, valor, status, tipo_pagamento, rede_tid, confirmado_em
     `;
     
     // 5. Atualiza o status da cobrança e remove dados temporários (última operação)
     await sql`
       UPDATE cobrancas 
       SET status = ${status}, 
+          rede_tid = COALESCE(${rede_tid || null}, rede_tid),
+          tipo_pagamento = COALESCE(${tipo_pagamento || null}, tipo_pagamento),
           atualizado_em = CURRENT_TIMESTAMP,
           dados_doador_temp = NULL
-      WHERE txid = ${txid}
+      WHERE txid = ${txidFinal}
     `;
     
-    console.log(`✅ Transação ${txid} processada e confirmada no banco de dados`);
+    console.log(`✅ Transação ${txidFinal} processada e confirmada no banco de dados`);
     
     return {
       transacao: transacaoResult.rows[0],
@@ -273,12 +328,43 @@ async function getTransacao(txid) {
   }
 }
 
+/**
+ * Busca uma transação pelo rede_tid
+ * @param {string} rede_tid - Transaction ID da e-Rede
+ * @returns {Object|null} Transação encontrada ou null
+ */
+async function getTransacaoByRedeTid(rede_tid) {
+  try {
+    const result = await sql`
+      SELECT 
+        t.*,
+        c.valor as valor_cobranca,
+        c.status as status_cobranca,
+        d.nome as doador_nome,
+        d.whatsapp as doador_whatsapp,
+        d.anonimo as doador_anonimo
+      FROM transacoes t
+      LEFT JOIN cobrancas c ON t.cobranca_txid = c.txid
+      LEFT JOIN doadores d ON t.doador_id = d.id
+      WHERE t.rede_tid = ${rede_tid}
+      ORDER BY t.criado_em DESC
+      LIMIT 1
+    `;
+    
+    return result.rows.length > 0 ? result.rows[0] : null;
+  } catch (error) {
+    console.error('❌ Erro ao buscar transação por rede_tid:', error.message);
+    return null;
+  }
+}
+
 module.exports = {
   saveCobranca,
   getCobranca,
   updateCobrancaStatus,
   saveDoador,
   processConfirmedTransaction,
-  getTransacao
+  getTransacao,
+  getTransacaoByRedeTid
 };
 
