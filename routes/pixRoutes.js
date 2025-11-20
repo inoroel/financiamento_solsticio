@@ -85,7 +85,7 @@ router.post('/gerar-pix', createChargeLimiter, async (req, res) => {
       });
     }
 
-    // Cria a cobrança no Banco do Brasil
+    // Cria a cobrança no Itaú
     // Sanitiza o nome antes de usar na mensagem (prevenção XSS)
     const nomeSanitizado = doador?.anonimo === false && doador?.nome
       ? sanitizeString(doador.nome)
@@ -99,7 +99,7 @@ router.post('/gerar-pix', createChargeLimiter, async (req, res) => {
     
     if (!cobranca) {
       return res.status(500).json({ 
-        error: 'Não foi possível gerar a cobrança Pix no Banco do Brasil.' 
+        error: 'Não foi possível gerar a cobrança Pix no Itaú.' 
       });
     }
 
@@ -125,7 +125,7 @@ router.post('/gerar-pix', createChargeLimiter, async (req, res) => {
     });
 
     if (!cobrancaSalva) {
-      console.warn(`⚠️  Cobrança criada no BB mas não salva no DB: ${txid}`);
+      console.warn(`⚠️  Cobrança criada no Itaú mas não salva no DB: ${txid}`);
       // Não falha a requisição, mas registra o problema
     }
 
@@ -173,12 +173,12 @@ router.get('/cobranca/:txid', consultChargeLimiter, async (req, res) => {
       });
     }
 
-    // Consulta no Banco do Brasil para obter status atualizado
-    const cobrancaBB = await consultPixCharge(txid);
+    // Consulta no Itaú para obter status atualizado
+    const cobrancaItau = await consultPixCharge(txid);
     
-    if (!cobrancaBB) {
+    if (!cobrancaItau) {
       return res.status(404).json({ 
-        error: 'Cobrança não encontrada no Banco do Brasil.' 
+        error: 'Cobrança não encontrada no Itaú.' 
       });
     }
 
@@ -186,20 +186,20 @@ router.get('/cobranca/:txid', consultChargeLimiter, async (req, res) => {
     const cobrancaDB = await getCobranca(txid);
 
     // Atualiza o status no banco local se necessário
-    if (cobrancaDB && cobrancaDB.status !== cobrancaBB.status) {
-      await require('../services/dbService').updateCobrancaStatus(txid, cobrancaBB.status);
+    if (cobrancaDB && cobrancaDB.status !== cobrancaItau.status) {
+      await require('../services/dbService').updateCobrancaStatus(txid, cobrancaItau.status);
     }
 
     // Retorna os dados combinados
     res.status(200).json({
       success: true,
-      txid: cobrancaBB.txid,
-      status: cobrancaBB.status,
-      valor: cobrancaBB.valor,
-      brCode: cobrancaBB.brCode,
-      criadoEm: cobrancaBB.criadoEm,
-      atualizadoEm: cobrancaBB.atualizadoEm,
-      pagamento: cobrancaBB.pagamento,
+      txid: cobrancaItau.txid,
+      status: cobrancaItau.status,
+      valor: cobrancaItau.valor,
+      brCode: cobrancaItau.brCode,
+      criadoEm: cobrancaItau.criadoEm,
+      atualizadoEm: cobrancaItau.atualizadoEm,
+      pagamento: cobrancaItau.pagamento,
       // Dados do banco local
       campanhaId: cobrancaDB?.campanha_id || null
     });
@@ -215,25 +215,23 @@ router.get('/cobranca/:txid', consultChargeLimiter, async (req, res) => {
 
 /**
  * POST /api/webhook/pix
- * Recebe notificações de pagamento confirmado do Banco do Brasil
- * Body: Dados do webhook do BB (formato pode variar)
+ * Recebe notificações de pagamento confirmado do Itaú
+ * Body: Dados do webhook do Itaú (formato pode variar)
  * Headers: x-signature (opcional, para validação)
  */
 router.post('/webhook/pix', webhookLimiter, async (req, res) => {
   try {
     const webhookBody = req.body;
-    const signature = req.headers['x-signature'] || req.headers['x-bb-signature'];
+    const signature = req.headers['x-signature'] || req.headers['x-itau-signature'];
 
     // Log mínimo (sem dados sensíveis)
-    // IMPORTANTE: O BB valida o certificado do SERVIDOR durante o handshake TLS
-    // O certificado usado é o primeiro da cadeia (certificado do servidor *.vercel.app)
-    // A cadeia completa foi enviada ao BB para validação da confiança
-    console.log('📨 Webhook recebido do Banco do Brasil', {
+    // IMPORTANTE: O Itaú pode validar o certificado do SERVIDOR durante o handshake TLS
+    // Configure conforme a documentação do Itaú para webhooks
+    console.log('📨 Webhook recebido do Itaú', {
       hasSignature: !!signature,
       hasBody: !!webhookBody && Object.keys(webhookBody).length > 0,
       protocol: req.protocol,
-      secure: req.secure,
-      // O certificado do servidor já foi validado pelo BB durante o handshake TLS
+      secure: req.secure
     });
 
     // Processa o webhook
@@ -253,7 +251,7 @@ router.post('/webhook/pix', webhookLimiter, async (req, res) => {
       });
     }
 
-    // Retorna 200 OK para o BB (importante para não receber retentativas)
+           // Retorna 200 OK para o Itaú (importante para não receber retentativas)
     res.status(200).json({
       success: true,
       message: 'Webhook processado com sucesso',
@@ -262,7 +260,7 @@ router.post('/webhook/pix', webhookLimiter, async (req, res) => {
 
   } catch (error) {
     console.error('❌ Erro inesperado no endpoint /api/webhook/pix:', error.message);
-    // Retorna 200 mesmo em caso de erro para evitar retentativas do BB
+           // Retorna 200 mesmo em caso de erro para evitar retentativas do Itaú
     // Mas loga o erro para investigação
     res.status(200).json({
       success: false,

@@ -1,4 +1,4 @@
-// Servidor Express - Backend PIX BB
+// Servidor Express - Backend PIX Itaú
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');

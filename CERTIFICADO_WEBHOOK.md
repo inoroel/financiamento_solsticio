@@ -1,140 +1,69 @@
-# 🔐 Validação de Certificado para Webhook - Banco do Brasil
+# 🔐 Validação de Certificado para Webhook - Itaú
 
-## Qual Certificado é Usado?
+## Qual certificado o Itaú valida?
 
-**Resposta:** O **primeiro certificado da cadeia** (certificado do servidor `*.vercel.app`) é usado pelo BB para validar a conexão TLS durante o handshake.
+O Itaú valida o **certificado apresentado pelo seu servidor (Vercel)** durante o handshake TLS. Esse certificado é emitido para `*.vercel.app` e está dentro da cadeia padrão da Let's Encrypt.  
+Para evitar recusas, extraímos a cadeia completa e salvamos em `certificado-bb-vercel.pem` (nome antigo, mas a cadeia é a mesma do Itaú — renomeie se preferir).
 
-## Como Funciona a Validação
-
-### 1. Durante o Handshake TLS
-
-Quando o Banco do Brasil faz a requisição HTTPS para o webhook:
+## Como funciona o fluxo TLS
 
 ```
-BB → HTTPS Request → Vercel Server
+Itaú → HTTPS Request → Vercel Server
                     ↓
               Vercel apresenta o certificado do servidor (*.vercel.app)
                     ↓
-              BB valida usando a cadeia completa enviada
+              Itaú valida usando a cadeia enviada previamente
                     ↓
               Conexão estabelecida se válido
 ```
 
-### 2. Certificados na Cadeia
+1. Gere/exporte a cadeia executando `openssl s_client -connect <seu-domínio>:443 -showcerts </dev/null`.
+2. Envie o conteúdo (na ordem servidor → intermediário → raiz) para o Portal Developers Itaú.
+3. O Itaú valida cada requisição HTTPS comparando com essa cadeia.
 
-O arquivo `certificado-bb-vercel.pem` contém 3 certificados na ordem:
+## Implementação atual no código
 
-1. **Certificado do Servidor** (`*.vercel.app`) - **ESTE É O USADO**
-   - Apresentado automaticamente pela Vercel
-   - Validado pelo BB durante o handshake TLS
-   - Validade: até 23/01/2026
+- ✅ Validação de assinatura HMAC (`WEBHOOK_SECRET`)  
+- ✅ Logs mínimos sem dados sensíveis  
+- ✅ Validação opcional de certificado de cliente (mTLS) via `ITAU_REQUIRE_CLIENT_CERT`  
+- ✅ Sanitização/validação completa do payload do webhook
 
-2. **Certificado Intermediário** (`R13` - Let's Encrypt)
-   - Usado para validar a confiança do certificado do servidor
-   - Parte da cadeia de confiança
-
-3. **Certificado Raiz** (`ISRG Root X1`)
-   - Autoridade certificadora raiz
-   - Usado para validar toda a cadeia
-
-### 3. Implementação no Código
-
-O código foi atualizado para:
-
-- ✅ Validar certificado do cliente (mTLS) se o BB enviar
-- ✅ Validar assinatura do webhook (HMAC)
-- ✅ Logar informações de segurança (sem dados sensíveis)
-
-**Arquivo:** `services/webhookService.js`
+O coração da validação está em `services/webhookService.js`.
 
 ```javascript
-// O BB valida o certificado do SERVIDOR durante o handshake TLS
-// O certificado usado é o primeiro da cadeia (certificado do servidor *.vercel.app)
-// A cadeia completa foi enviada ao BB para validação da confiança
+// Se ITAU_REQUIRE_CLIENT_CERT=true, rejeita requisições sem certificado válido
+// A verificação acontece durante o handshake TLS e usamos os metadados expostos por req.socket
 ```
 
-## Fluxo Completo
+## Como habilitar mTLS do lado do Itaú
 
-1. **Você envia a cadeia completa ao BB**
-   - Via Portal Developers BB
-   - O BB armazena para validação
+1. Solicite ao Itaú os certificados de cliente para o ambiente desejado.  
+2. Salve-os em uma pasta segura (ex: `certificados-webhook-itau/ambiente/...`).  
+3. Atualize a validação do `webhookService` para comparar o certificado recebido com os arquivos fornecidos.  
+4. Ajuste as variáveis:
+   ```bash
+   ITAU_REQUIRE_CLIENT_CERT=true
+   ```
 
-2. **BB faz requisição HTTPS para o webhook**
-   - URL: `https://financiamentocoletivo.vercel.app/api/webhook/pix`
-   - Vercel apresenta automaticamente o certificado do servidor
+> Ainda não recebemos os certificados oficiais do Itaú. Assim que forem disponibilizados, basta substituir os arquivos atuais (herdados do BB) pelos novos certificados do Itaú.
 
-3. **BB valida o certificado**
-   - Verifica se o certificado apresentado é o mesmo enviado
-   - Valida a cadeia até a raiz usando os certificados intermediário e raiz
-   - Se válido, estabelece a conexão TLS
+## Renovação do certificado da Vercel
 
-4. **Webhook é processado**
-   - Código valida assinatura (se configurado)
-   - Processa a transação
-   - Salva dados no banco
+A Vercel renova o certificado automaticamente (Let's Encrypt). Quando isso ocorrer:
 
-## Validação mTLS - Certificado do Cliente (BB)
+1. Rode novamente `openssl s_client -connect <seu-domínio>:443 -showcerts </dev/null`.
+2. Atualize o arquivo `certificado-bb-vercel.pem` (ou renomeie para `certificado-itau-vercel.pem` se preferir).
+3. Envie a nova cadeia ao Itaú (Portal Developers → sua aplicação → certificados).
 
-### Como Funciona
+## Checklist rápido
 
-O código agora valida que a requisição realmente vem do Banco do Brasil:
+- [ ] Cadeia `certificado-bb-vercel.pem` extraída e enviada ao Itaú  
+- [ ] `WEBHOOK_SECRET` configurado (mesmo valor no portal do Itaú)  
+- [ ] (Opcional) `ITAU_REQUIRE_CLIENT_CERT=true` e certificados do Itaú salvos localmente  
+- [ ] Logs monitorados para tentativas inválidas  
 
-1. **BB envia certificado de cliente** durante o handshake TLS
-2. **Servidor valida** se o certificado pertence ao BB
-3. **Compara** com os certificados confiáveis armazenados
-4. **Rejeita** se não for do BB
+## Referências úteis
 
-### Certificados do BB
-
-Os certificados do BB estão em:
-
-- `certificados-webhook-bb/producao/` - Certificados de produção
-- `certificados-webhook-bb/sandbox/` - Certificados de sandbox
-
-O sistema seleciona automaticamente:
-
-- **Ambiente**: baseado em `NODE_ENV` ou `BB_ENVIRONMENT`
-- **Data**: usa certificados "Apos" ou "Ate" baseado na data atual
-
-### Configuração
-
-Variáveis de ambiente (opcional):
-
-```bash
-# Exige certificado de cliente (mais seguro)
-BB_REQUIRE_CLIENT_CERT=true
-
-# Define ambiente explicitamente
-BB_ENVIRONMENT=production
-```
-
-### Segurança
-
-- ✅ **Validação mTLS**: Garante que apenas o BB pode acessar o webhook
-- ✅ **Certificados confiáveis**: Carregados automaticamente do diretório
-- ✅ **Cache**: Certificados são cacheados por 1 hora para performance
-- ✅ **Logs**: Registra tentativas de acesso não autorizadas
-
-## Importante
-
-- ✅ **Certificado do servidor** é apresentado automaticamente pela Vercel
-- ✅ **Cadeia completa** foi enviada ao BB para validação
-- ✅ **Validação TLS** acontece automaticamente durante o handshake
-- ✅ **Validação mTLS** garante que apenas o BB pode acessar o webhook
-- ✅ **Código** valida assinatura adicional (HMAC) para segurança extra
-
-## Renovação do Certificado
-
-O certificado Let's Encrypt é renovado automaticamente pela Vercel. Quando isso acontecer:
-
-1. A Vercel renova automaticamente
-2. O novo certificado será apresentado nas próximas requisições
-3. Você precisará enviar a nova cadeia ao BB apenas se:
-   - O BB rejeitar conexões (improvável, pois a raiz é a mesma)
-   - Houver mudança na cadeia de certificados
-
-## Referências
-
-- Documentação BB: https://apoio.developers.bb.com.br
-- Certificado válido até: 23/01/2026
-- Arquivo: `certificado-bb-vercel.pem`
+- [Portal Developers Itaú](https://devportal.itau.com.br)  
+- Ferramenta para extrair certificados: `openssl s_client -connect <domínio>:443 -showcerts </dev/null`  
+- Doc oficial (quando disponibilizada pelo Itaú)  

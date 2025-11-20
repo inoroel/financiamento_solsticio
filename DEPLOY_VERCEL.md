@@ -5,7 +5,7 @@ Este guia te ajudará a fazer o deploy do backend na Vercel e configurar tudo co
 ## 📋 Pré-requisitos
 
 1. Conta na [Vercel](https://vercel.com)
-2. Conta no [Portal Developers BB](https://developers.bb.com.br) (já configurada)
+2. Conta no [Portal Developers Itaú](https://devportal.itau.com.br) (já configurada)
 3. Git instalado e repositório configurado
 
 ## 🔧 Passo 1: Preparar o Código
@@ -27,15 +27,21 @@ O código já está preparado para Vercel! Os arquivos necessários estão criad
 
 Na tela de configuração do projeto, adicione as seguintes variáveis de ambiente:
 
-### Banco do Brasil (Homologação)
+### Itaú
 
 ```
-BB_CLIENT_ID=eyJpZCI6IjAzIiwiY29kaWdvUHVibGljYWRvciI6MCwiY29kaWdvU29mdHdhcmUiOjE2MDMzMSwic2VxdWVuY2lhbEluc3RhbGFjYW8iOjF9
-BB_CLIENT_SECRET=eyJpZCI6ImZkNTZlZWQtNDVjMi00N2Y1LTgzY2QiLCJjb2RpZ29QdWJsaWNhZG9yIjowLCJjb2RpZ29Tb2Z0d2FyZSI6MTYwMzMxLCJzZXF1ZW5jaWFsSW5zdGFsYWNhbyI6MSwic2VxdWVuY2lhbENyZWRlbmNpYWwiOjEsImFtYmllbnRlIjoiaG9tb2xvZ2FjYW8iLCJpYXQiOjE3NjI4NzU5NjcxODh9
-BB_DEV_APP_KEY=f20c4119840240ddb677505713b9be80
-BB_CHAVE_PIX=solsticiodosom@gmail.com.br
-BB_AUTH_URL=https://oauth.bb.com.br/oauth/token
-BB_API_BASE_URL=https://api.bb.com.br
+ITAU_CLIENT_ID=seu_client_id_aqui
+ITAU_CLIENT_SECRET=seu_client_secret_aqui
+ITAU_API_KEY=seu_api_key_uuid_aqui
+ITAU_CHAVE_PIX=sua_chave_pix_aqui
+```
+
+**Nota**: Obtenha essas credenciais no [Portal Developers Itaú](https://devportal.itau.com.br)
+
+**URLs padrão** (já configuradas no código, mas podem ser sobrescritas):
+```
+ITAU_AUTH_URL=https://oauthd.itau/identity/connect/token
+ITAU_API_BASE_URL=https://secure.api.itau/pix_recebimentos_conciliacoes_v2_ext/v2
 ```
 
 ### Segurança
@@ -116,9 +122,9 @@ curl -X POST https://seu-projeto.vercel.app/api/gerar-pix \
   }'
 ```
 
-## 🔗 Passo 7: Configurar Webhook no Portal BB
+## 🔗 Passo 7: Configurar Webhook no Portal Itaú
 
-1. Acesse o [Portal Developers BB](https://developers.bb.com.br)
+1. Acesse o [Portal Developers Itaú](https://devportal.itau.com.br)
 2. Vá em **"Minhas Aplicações"** → Sua aplicação
 3. Configure o webhook:
    - **URL**: `https://seu-projeto.vercel.app/api/webhook/pix`
@@ -155,7 +161,7 @@ Na Vercel, você pode ver os logs em tempo real:
 ### Webhook não funciona
 
 - Verifique se a URL está correta: `https://seu-projeto.vercel.app/api/webhook/pix`
-- Verifique se o `WEBHOOK_SECRET` está configurado no Portal BB e na Vercel
+- Verifique se o `WEBHOOK_SECRET` está configurado no Portal Itaú e na Vercel
 - Veja os logs da Vercel para erros
 
 ### CORS bloqueando requisições
@@ -172,7 +178,7 @@ Na Vercel, você pode ver os logs em tempo real:
 - [ ] Deploy realizado com sucesso
 - [ ] Health check funcionando
 - [ ] Teste de criação de cobrança funcionando
-- [ ] Webhook configurado no Portal BB
+- [ ] Webhook configurado no Portal Itaú
 - [ ] Logs sendo monitorados
 
 ## 🔄 Atualizações Futuras
@@ -214,7 +220,7 @@ vercel env ls
 Após o deploy bem-sucedido:
 
 1. ✅ Teste todos os endpoints
-2. ✅ Configure o webhook no Portal BB
+2. ✅ Configure o webhook no Portal Itaú
 3. ✅ Teste o webhook com uma transação real
 4. ✅ Monitore os logs
 5. ✅ Integre com o frontend Svelte

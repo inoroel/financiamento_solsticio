@@ -107,7 +107,7 @@ Para testar o pagamento real e o webhook:
 - Veja os logs do servidor para erros
 
 ### Erro ao criar cobrança
-- Verifique se as credenciais do BB estão corretas no `.env`
+- Verifique se as credenciais do Itaú estão corretas no `.env`
 - Verifique os logs do servidor
 - Teste o endpoint diretamente com curl:
   ```bash

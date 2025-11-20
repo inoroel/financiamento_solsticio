@@ -1,6 +1,6 @@
-# 🚀 Guia de Setup Local - Backend PIX BB
+# 🚀 Guia de Setup Local - Backend PIX Itaú
 
-Este guia te ajudará a configurar e rodar o backend localmente com PostgreSQL local, ainda no ambiente de **homologação** do Banco do Brasil.
+Este guia te ajudará a configurar e rodar o backend localmente com PostgreSQL local, apontando para o ambiente de **homologação** do Itaú.
 
 ## 📋 Pré-requisitos
 
@@ -66,7 +66,7 @@ POSTGRES_URL=postgresql://postgres:sua_senha@localhost:5432/financiamento_solsti
 # Ou se criou um usuário específico:
 # POSTGRES_URL=postgresql://solsticio_user:sua_senha@localhost:5432/financiamento_solsticio
 
-# As credenciais do BB já estão configuradas para homologação
+# Configure as credenciais do Itaú conforme disponível no portal
 # O WEBHOOK_SECRET pode ser qualquer valor em desenvolvimento local
 ```
 
@@ -185,7 +185,7 @@ Após testar localmente:
 1. **Testar com ngrok** (para webhook):
    - Instale ngrok: `brew install ngrok` ou baixe de https://ngrok.com
    - Execute: `ngrok http 3000`
-   - Configure a URL do ngrok no Portal Developers BB como webhook
+   - Configure a URL do ngrok no Portal Developers Itaú como webhook
    - Teste o webhook recebendo notificações reais
 
 2. **Publicar na Vercel**:
@@ -198,12 +198,12 @@ Após testar localmente:
 
 - ✅ O `WEBHOOK_SECRET` pode ser qualquer valor em desenvolvimento
 - ✅ O `ALLOWED_ORIGINS` pode ficar vazio (CORS permissivo)
-- ✅ Credenciais do BB são de **homologação** (não são reais)
+- ✅ Credenciais do Itaú são de **homologação** (não são reais)
 - ⚠️ **NUNCA** commite o arquivo `.env` no git
 
 ## 📚 Recursos Úteis
 
 - [Documentação PostgreSQL](https://www.postgresql.org/docs/)
-- [Documentação API PIX BB](https://publicador.developers.bb.com.br/bucket/Documentacao_API_Pix_v2_cob_4e4cde96c5.pdf)
+- [Documentação API PIX Itaú](https://devportal.itau.com.br/baas/#/catalog)
 - [Documentação ngrok](https://ngrok.com/docs)
 

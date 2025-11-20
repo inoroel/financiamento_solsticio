@@ -16,22 +16,20 @@ Na tela de configuração, adicione estas variáveis (Settings → Environment V
 ### Obrigatórias
 
 ```
-BB_CLIENT_ID=eyJpZCI6IjAzIiwiY29kaWdvUHVibGljYWRvciI6MCwiY29kaWdvU29mdHdhcmUiOjE2MDMzMSwic2VxdWVuY2lhbEluc3RhbGFjYW8iOjF9
+ITAU_CLIENT_ID=seu_client_id_aqui
 
-BB_CLIENT_SECRET=eyJpZCI6ImZkNTZlZWQtNDVjMi00N2Y1LTgzY2QiLCJjb2RpZ29QdWJsaWNhZG9yIjowLCJjb2RpZ29Tb2Z0d2FyZSI6MTYwMzMxLCJzZXF1ZW5jaWFsSW5zdGFsYWNhbyI6MSwic2VxdWVuY2lhbENyZWRlbmNpYWwiOjEsImFtYmllbnRlIjoiaG9tb2xvZ2FjYW8iLCJpYXQiOjE3NjI4NzU5NjcxODh9
+ITAU_CLIENT_SECRET=seu_client_secret_aqui
 
-BB_DEV_APP_KEY=f20c4119840240ddb677505713b9be80
+ITAU_API_KEY=seu_api_key_uuid_aqui
 
-BB_CHAVE_PIX=solsticiodosom@gmail.com.br
-
-BB_AUTH_URL=https://oauth.bb.com.br/oauth/token
-
-BB_API_BASE_URL=https://api.bb.com.br
+ITAU_CHAVE_PIX=sua_chave_pix_aqui
 
 NODE_ENV=production
 
 WEBHOOK_SECRET=seu_secret_forte_aqui
 ```
+
+**Nota**: Obtenha essas credenciais no [Portal Developers Itaú](https://devportal.itau.com.br)
 
 **Importante**: Gere um `WEBHOOK_SECRET` forte:
 
@@ -97,9 +95,9 @@ Deve retornar:
 }
 ```
 
-## 🔗 Passo 6: Configurar Webhook no Portal BB
+## 🔗 Passo 6: Configurar Webhook no Portal Itaú
 
-1. Acesse [Portal Developers BB](https://developers.bb.com.br)
+1. Acesse [Portal Developers Itaú](https://devportal.itau.com.br)
 2. Vá em **"Minhas Aplicações"** → Sua aplicação
 3. Configure webhook:
    - **URL**: `https://seu-projeto.vercel.app/api/webhook/pix`
@@ -112,7 +110,7 @@ Deve retornar:
 - [ ] Deploy realizado com sucesso
 - [ ] Health check funcionando
 - [ ] Frontend local conectado à Vercel
-- [ ] Webhook configurado no Portal BB
+- [ ] Webhook configurado no Portal Itaú
 
 ## 🐛 Problemas Comuns
 

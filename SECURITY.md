@@ -1,4 +1,4 @@
-# Segurança - Backend PIX BB
+# Segurança - Backend PIX Itaú
 
 Este documento descreve as medidas de segurança implementadas no sistema de doações PIX.
 
@@ -67,16 +67,17 @@ Este documento descreve as medidas de segurança implementadas no sistema de doa
 ### Variáveis de Ambiente Obrigatórias (Produção)
 
 ```env
-# Banco do Brasil
-BB_CLIENT_ID=...
-BB_CLIENT_SECRET=...
-BB_DEV_APP_KEY=...
-BB_CHAVE_PIX=...
+# Itaú
+ITAU_CLIENT_ID=...
+ITAU_CLIENT_SECRET=...
+ITAU_API_KEY=...
+ITAU_CHAVE_PIX=...
 
 # Segurança
 WEBHOOK_SECRET=seu_secret_forte_aqui  # OBRIGATÓRIO EM PRODUÇÃO
 ALLOWED_ORIGINS=https://seu-dominio.com,https://www.seu-dominio.com  # OBRIGATÓRIO EM PRODUÇÃO
 NODE_ENV=production
+ITAU_REQUIRE_CLIENT_CERT=true  # se o Itaú exigir mTLS
 
 # PostgreSQL
 POSTGRES_URL=...
@@ -87,7 +88,7 @@ POSTGRES_URL=...
 - [ ] `WEBHOOK_SECRET` configurado com valor forte e aleatório
 - [ ] `ALLOWED_ORIGINS` configurado com domínios permitidos
 - [ ] `NODE_ENV=production` definido
-- [ ] Credenciais do Banco do Brasil configuradas corretamente
+- [ ] Credenciais do Itaú configuradas corretamente
 - [ ] Banco de dados com conexão segura (SSL/TLS)
 - [ ] Logs não expõem dados sensíveis
 - [ ] Rate limiting ativo

@@ -1,18 +1,20 @@
-// Serviço de processamento de webhooks do Banco do Brasil
+// Serviço de processamento de webhooks do Itaú
 const crypto = require('crypto');
 const { processConfirmedTransaction, getCobranca } = require('./dbService');
-const { validateClientCertificateFromRequest } = require('./bbCertificateValidator');
+const { validateClientCertificateFromRequest } = require('./itauCertificateValidator');
 require('dotenv').config();
 
 /**
- * Valida o certificado do cliente (mTLS) do Banco do Brasil
- * IMPORTANTE: Valida que a requisição realmente vem do BB, não de qualquer origem
+ * Valida o certificado do cliente (mTLS) do Itaú
+ * IMPORTANTE: Valida que a requisição realmente vem do Itaú, não de qualquer origem
+ * Conforme documentação: https://devportal.itau.com.br
+ * O Itaú usa mTLS para webhooks, validando o certificado do cliente contra as CAs fornecidas
  * @param {Object} req - Objeto da requisição Express
- * @returns {boolean} true se válido e pertence ao BB
+ * @returns {boolean} true se válido e pertence ao Itaú
  */
 function validateClientCertificate(req) {
-  // Valida se o certificado do cliente pertence ao Banco do Brasil
-  // Isso garante que apenas o BB pode acessar o endpoint do webhook
+  // Valida se o certificado do cliente pertence ao Itaú
+  // Isso garante que apenas o Itaú pode acessar o endpoint do webhook
   return validateClientCertificateFromRequest(req);
 }
 
@@ -40,8 +42,8 @@ function validateWebhookSignature(payload, signature) {
     return false;
   }
   
-  // Implementa validação HMAC se necessário
-  // O BB pode usar diferentes métodos de validação
+  // Implementa validação HMAC conforme documentação do Itaú
+  // O Itaú pode usar diferentes métodos de validação (HMAC-SHA256, etc)
   const expectedSignature = crypto
     .createHmac('sha256', webhookSecret)
     .update(JSON.stringify(payload))
@@ -54,14 +56,14 @@ function validateWebhookSignature(payload, signature) {
 }
 
 /**
- * Extrai dados do webhook do Banco do Brasil
+ * Extrai dados do webhook do Itaú
  * @param {Object} webhookBody - Corpo do webhook recebido
  * @returns {Object|null} Dados extraídos ou null se inválido
  */
 function extractWebhookData(webhookBody) {
   try {
-    // O formato do webhook do BB pode variar
-    // Aqui assumimos um formato comum baseado na documentação PIX
+    // O formato do webhook do Itaú pode variar
+    // Aqui assumimos um formato comum baseado na documentação PIX do Itaú
     const pix = webhookBody.pix?.[0] || webhookBody;
     
     // Valida e sanitiza TXID
@@ -70,23 +72,24 @@ function extractWebhookData(webhookBody) {
       throw new Error('TXID não encontrado ou inválido no webhook');
     }
     
-    // Valida formato do TXID
+    // Valida formato do TXID (aceita também id_cobranca_estatico_pix)
     const { validateTxid } = require('../utils/validation');
-    if (!validateTxid(txid)) {
-      throw new Error('TXID do webhook tem formato inválido');
+    // Se não for um txid válido, pode ser um id_cobranca_estatico_pix (UUID)
+    if (!validateTxid(txid) && !txid.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
+      throw new Error('TXID ou ID de cobrança do webhook tem formato inválido');
     }
     
     // Valida valor monetário
-    const valor = pix.valor ? parseFloat(pix.valor) : null;
+    const valor = pix.valor ? parseFloat(pix.valor) : (webhookBody.valor?.original ? parseFloat(webhookBody.valor.original) : null);
     if (valor !== null && (isNaN(valor) || valor <= 0)) {
       throw new Error('Valor do webhook inválido');
     }
     
     return {
       txid,
-      endToEndId: pix.endToEndId || null,
+      endToEndId: pix.endToEndId || webhookBody.endToEndId || null,
       valor,
-      horario: pix.horario || new Date().toISOString(),
+      horario: pix.horario || webhookBody.horario || new Date().toISOString(),
       status: 'CONFIRMADA', // Webhook só é enviado quando confirmado
       chave: pix.chave || webhookBody.chave || null,
       infoPagador: pix.infoPagador || webhookBody.infoPagador || null,
@@ -94,7 +97,7 @@ function extractWebhookData(webhookBody) {
       rawData: webhookBody
     };
   } catch (error) {
-    console.error('❌ Erro ao extrair dados do webhook:', error.message);
+    console.error('❌ Erro ao extrair dados do webhook Itaú:', error.message);
     return null;
   }
 }
@@ -109,11 +112,10 @@ function extractWebhookData(webhookBody) {
 async function processWebhook(webhookBody, signature = null, doadorData = null, req = null) {
   try {
     // 1. Valida certificado do cliente (mTLS) se fornecido
-    // IMPORTANTE: O BB valida o certificado do SERVIDOR durante o handshake TLS
-    // O certificado do servidor (primeiro da cadeia) é usado para estabelecer a conexão
-    // A cadeia completa foi enviada ao BB para validação
+    // IMPORTANTE: O Itaú pode validar o certificado do SERVIDOR durante o handshake TLS
+    // Configure conforme a documentação do Itaú para webhooks
     if (req && !validateClientCertificate(req)) {
-      throw new Error('Certificado do cliente inválido');
+      throw new Error('Certificado do cliente inválido ou ausente');
     }
     
     // 2. Valida assinatura (se configurado)
@@ -130,7 +132,7 @@ async function processWebhook(webhookBody, signature = null, doadorData = null, 
     // 4. Verifica se a cobrança existe no banco
     const cobranca = await getCobranca(webhookData.txid);
     if (!cobranca) {
-      console.warn(`⚠️  Webhook recebido para cobrança inexistente: ${webhookData.txid}`);
+      console.warn(`⚠️  Webhook Itaú recebido para cobrança inexistente: ${webhookData.txid}`);
       // Pode ser uma cobrança criada externamente, mas vamos processar mesmo assim
     }
     
@@ -156,7 +158,7 @@ async function processWebhook(webhookBody, signature = null, doadorData = null, 
       throw new Error('Falha ao processar transação no banco de dados');
     }
     
-    console.log(`✅ Webhook processado com sucesso para txid: ${webhookData.txid}`);
+    console.log(`✅ Webhook Itaú processado com sucesso para txid: ${webhookData.txid}`);
     
     return {
       success: true,
@@ -166,7 +168,7 @@ async function processWebhook(webhookBody, signature = null, doadorData = null, 
     };
     
   } catch (error) {
-    console.error('❌ Erro ao processar webhook:', error.message);
+    console.error('❌ Erro ao processar webhook Itaú:', error.message);
     return {
       success: false,
       error: error.message

@@ -144,11 +144,11 @@ dist
 test_credentials.txt
 *.pem
 *.key
-*.crt
 *.cert
 credentials.json
 secrets.json
 certificado-bb-vercel.pem
+certificados-webhook-bb/
 
 # Arquivos de configuração local
 .env.*
@@ -183,3 +183,4 @@ logs/
 
 # Arquivos de migração executados (opcional - descomente se não quiser versionar)
 # scripts/migration-*.sql.executed
+*.zip
