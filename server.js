@@ -1,4 +1,4 @@
-// Servidor Express - Backend PIX Itaú
+// Servidor Express - Backend de Pagamentos (e-Rede + Binance Pay)
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -79,7 +79,7 @@ async function startServer() {
     // Em desenvolvimento local, fazemos listen normalmente
     if (process.env.VERCEL !== '1') {
       app.listen(PORT, () => {
-        console.log('\n✅ Servidor de doações PIX rodando!');
+        console.log('\n✅ Servidor de pagamentos rodando!');
         console.log(`📍 Porta: ${PORT}`);
         console.log(`🌐 Ambiente: ${process.env.NODE_ENV || 'development'}`);
         console.log('\n📋 Endpoints disponíveis:');

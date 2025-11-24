@@ -1,9 +1,11 @@
-# 🔐 Validação de Certificado para Webhook - Itaú
+# 🔐 Validação de Certificado para Webhook - e-Rede
 
-## Qual certificado o Itaú valida?
+> **⚠️ OBSOLETO**: Este documento refere-se à integração antiga com Itaú que foi removida.  
+> A validação atual está implementada em `services/redeWebhookService.js` para e-Rede.
 
-O Itaú valida o **certificado apresentado pelo seu servidor (Vercel)** durante o handshake TLS. Esse certificado é emitido para `*.vercel.app` e está dentro da cadeia padrão da Let's Encrypt.  
-Para evitar recusas, extraímos a cadeia completa e salvamos em `certificado-bb-vercel.pem` (nome antigo, mas a cadeia é a mesma do Itaú — renomeie se preferir).
+## Qual certificado a e-Rede valida?
+
+A e-Rede valida o **certificado apresentado pelo seu servidor (Vercel)** durante o handshake TLS. Esse certificado é emitido para `*.vercel.app` e está dentro da cadeia padrão da Let's Encrypt.
 
 ## Como funciona o fluxo TLS
 
@@ -28,24 +30,20 @@ Itaú → HTTPS Request → Vercel Server
 - ✅ Validação opcional de certificado de cliente (mTLS) via `ITAU_REQUIRE_CLIENT_CERT`  
 - ✅ Sanitização/validação completa do payload do webhook
 
-O coração da validação está em `services/webhookService.js`.
+A validação atual está implementada em `services/redeWebhookService.js` (e-Rede).
 
 ```javascript
 // Se ITAU_REQUIRE_CLIENT_CERT=true, rejeita requisições sem certificado válido
 // A verificação acontece durante o handshake TLS e usamos os metadados expostos por req.socket
 ```
 
-## Como habilitar mTLS do lado do Itaú
+## Como habilitar validação de webhook e-Rede
 
-1. Solicite ao Itaú os certificados de cliente para o ambiente desejado.  
-2. Salve-os em uma pasta segura (ex: `certificados-webhook-itau/ambiente/...`).  
-3. Atualize a validação do `webhookService` para comparar o certificado recebido com os arquivos fornecidos.  
-4. Ajuste as variáveis:
-   ```bash
-   ITAU_REQUIRE_CLIENT_CERT=true
-   ```
-
-> Ainda não recebemos os certificados oficiais do Itaú. Assim que forem disponibilizados, basta substituir os arquivos atuais (herdados do BB) pelos novos certificados do Itaú.
+1. Configure o `REDE_WEBHOOK_SECRET` na plataforma e-Rede e no seu `.env`.  
+2. (Opcional) Configure `REDE_WEBHOOK_IP_WHITELIST` com os IPs da e-Rede.  
+3. A validação está implementada em `services/redeWebhookService.js` com:
+   - Validação de assinatura HMAC
+   - Validação de IP whitelist (opcional)
 
 ## Renovação do certificado da Vercel
 
@@ -55,15 +53,13 @@ A Vercel renova o certificado automaticamente (Let's Encrypt). Quando isso ocorr
 2. Atualize o arquivo `certificado-bb-vercel.pem` (ou renomeie para `certificado-itau-vercel.pem` se preferir).
 3. Envie a nova cadeia ao Itaú (Portal Developers → sua aplicação → certificados).
 
-## Checklist rápido
+## Checklist rápido (e-Rede)
 
-- [ ] Cadeia `certificado-bb-vercel.pem` extraída e enviada ao Itaú  
-- [ ] `WEBHOOK_SECRET` configurado (mesmo valor no portal do Itaú)  
-- [ ] (Opcional) `ITAU_REQUIRE_CLIENT_CERT=true` e certificados do Itaú salvos localmente  
+- [ ] `REDE_WEBHOOK_SECRET` configurado (mesmo valor na plataforma e-Rede)  
+- [ ] (Opcional) `REDE_WEBHOOK_IP_WHITELIST` configurado com IPs da e-Rede  
 - [ ] Logs monitorados para tentativas inválidas  
 
 ## Referências úteis
 
-- [Portal Developers Itaú](https://devportal.itau.com.br)  
-- Ferramenta para extrair certificados: `openssl s_client -connect <domínio>:443 -showcerts </dev/null`  
-- Doc oficial (quando disponibilizada pelo Itaú)  
+- [Documentação e-Rede](https://developer.userede.com.br/e-rede)  
+- Validação implementada em `services/redeWebhookService.js`  

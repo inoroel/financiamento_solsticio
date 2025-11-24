@@ -148,6 +148,8 @@ function extractWebhookData(webhookBody) {
     
     return {
       rede_tid,
+      provider_tid: rede_tid, // provider_tid genérico (mesmo valor para e-Rede)
+      provider: 'REDE', // Provider fixo para e-Rede
       txid: transaction.reference || rede_tid, // Usa reference como txid interno
       tipo_pagamento: tipoPagamento,
       valor,

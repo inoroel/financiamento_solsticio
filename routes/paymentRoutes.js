@@ -237,10 +237,12 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
       status: statusInicial,
       campanhaId: cid,
       tipoPagamento: tipoPagamento,
+      provider: 'REDE', // Provider fixo para e-Rede
       chavePix: tipoPagamento === 'PIX' ? (cobranca.chave || null) : null,
       brCode: tipoPagamento === 'PIX' ? cobranca.brCode : null,
       expiracao: tipoPagamento === 'PIX' ? (cobranca.expiracao || 3600) : null,
       redeTid: cobranca.rede_tid || null,
+      providerTid: cobranca.rede_tid || null, // provider_tid genérico
       dadosPagamento: dadosPagamento,
       dadosDoadorTemp
     });

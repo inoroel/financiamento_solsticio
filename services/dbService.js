@@ -9,33 +9,42 @@ const { sql } = require('../config/database');
 async function saveCobranca(cobranca) {
   try {
     const { 
-      txid, valor, status, campanhaId, tipoPagamento, chavePix, brCode, expiracao, 
-      redeTid, dadosPagamento, dadosDoadorTemp 
+      txid, valor, status, campanhaId, tipoPagamento, provider, chavePix, brCode, expiracao, 
+      redeTid, providerTid, dadosPagamento, cryptoCurrency, cryptoAddress, dadosDoadorTemp 
     } = cobranca;
+    
+    // Usa provider_tid se fornecido, senão usa rede_tid (compatibilidade)
+    const finalProviderTid = providerTid || redeTid || null;
+    const finalProvider = provider || 'REDE';
     
     // @vercel/postgres trata JSONB automaticamente quando passamos um objeto
     await sql`
       INSERT INTO cobrancas (
-        txid, valor, status, campanha_id, tipo_pagamento, chave_pix, brcode, expiracao, 
-        rede_tid, dados_pagamento, dados_doador_temp
+        txid, valor, status, campanha_id, tipo_pagamento, provider, chave_pix, brcode, expiracao, 
+        rede_tid, provider_tid, dados_pagamento, crypto_currency, crypto_address, dados_doador_temp
       )
       VALUES (
         ${txid}, ${valor}, ${status}, ${campanhaId || null}, 
-        ${tipoPagamento || 'PIX'}, ${chavePix || null}, ${brCode}, ${expiracao}, 
-        ${redeTid || null}, ${dadosPagamento || null}, ${dadosDoadorTemp}
+        ${tipoPagamento || 'PIX'}, ${finalProvider}, ${chavePix || null}, ${brCode}, ${expiracao}, 
+        ${redeTid || null}, ${finalProviderTid}, ${dadosPagamento || null}, 
+        ${cryptoCurrency || null}, ${cryptoAddress || null}, ${dadosDoadorTemp}
       )
       ON CONFLICT (txid) DO UPDATE SET
         status = EXCLUDED.status,
         brcode = EXCLUDED.brcode,
         tipo_pagamento = EXCLUDED.tipo_pagamento,
-        rede_tid = EXCLUDED.rede_tid,
+        provider = EXCLUDED.provider,
+        rede_tid = COALESCE(EXCLUDED.rede_tid, cobrancas.rede_tid),
+        provider_tid = COALESCE(EXCLUDED.provider_tid, cobrancas.provider_tid),
         dados_pagamento = EXCLUDED.dados_pagamento,
+        crypto_currency = EXCLUDED.crypto_currency,
+        crypto_address = EXCLUDED.crypto_address,
         dados_doador_temp = EXCLUDED.dados_doador_temp,
         atualizado_em = CURRENT_TIMESTAMP
     `;
     
     console.log(`✅ Cobrança ${txid} salva no banco de dados`);
-    return { txid, valor, status, tipoPagamento: tipoPagamento || 'PIX' };
+    return { txid, valor, status, tipoPagamento: tipoPagamento || 'PIX', provider: finalProvider };
   } catch (error) {
     console.error('❌ Erro ao salvar cobrança no banco:', error.message);
     return null;
@@ -138,23 +147,32 @@ async function saveDoador(doadorData) {
 async function processConfirmedTransaction(webhookData, doadorData = null) {
   try {
     const { 
-      txid, rede_tid, tipo_pagamento, valor, status, horario, 
-      bandeira, parcelas, endToEndId 
+      txid, rede_tid, provider_tid, provider, tipo_pagamento, valor, status, horario, 
+      bandeira, parcelas, crypto_currency, crypto_address, endToEndId 
     } = webhookData;
     
     // @vercel/postgres não suporta transações tradicionais com BEGIN/COMMIT
     // Fazemos as operações sequencialmente e garantimos atomicidade através da lógica
     
     // 1. Verifica se a cobrança existe e obtém dados do doador temporários
-    // Busca por txid ou rede_tid
+    // Busca por txid, provider_tid ou rede_tid (compatibilidade)
     let cobranca = null;
+    const finalProviderTid = provider_tid || rede_tid || null;
+    
     if (txid) {
       cobranca = await sql`
         SELECT * FROM cobrancas WHERE txid = ${txid}
       `;
     }
     
-    // Se não encontrou por txid, tenta por rede_tid
+    // Se não encontrou por txid, tenta por provider_tid
+    if ((!cobranca || cobranca.rows.length === 0) && finalProviderTid) {
+      cobranca = await sql`
+        SELECT * FROM cobrancas WHERE provider_tid = ${finalProviderTid}
+      `;
+    }
+    
+    // Se não encontrou por provider_tid, tenta por rede_tid (compatibilidade)
     if ((!cobranca || cobranca.rows.length === 0) && rede_tid) {
       cobranca = await sql`
         SELECT * FROM cobrancas WHERE rede_tid = ${rede_tid}
@@ -162,14 +180,19 @@ async function processConfirmedTransaction(webhookData, doadorData = null) {
     }
     
     if (!cobranca || cobranca.rows.length === 0) {
-      throw new Error(`Cobrança ${txid || rede_tid} não encontrada`);
+      throw new Error(`Cobrança ${txid || finalProviderTid || rede_tid} não encontrada`);
     }
     
-    // Verifica se já foi processada (idempotência) - por txid ou rede_tid
+    // Verifica se já foi processada (idempotência) - por txid, provider_tid ou rede_tid
     let existingTransacao = null;
     if (txid) {
       existingTransacao = await sql`
         SELECT * FROM transacoes WHERE cobranca_txid = ${txid} AND status = 'CONFIRMADA'
+      `;
+    }
+    if ((!existingTransacao || existingTransacao.rows.length === 0) && finalProviderTid) {
+      existingTransacao = await sql`
+        SELECT * FROM transacoes WHERE provider_tid = ${finalProviderTid} AND status = 'CONFIRMADA'
       `;
     }
     if ((!existingTransacao || existingTransacao.rows.length === 0) && rede_tid) {
@@ -179,7 +202,7 @@ async function processConfirmedTransaction(webhookData, doadorData = null) {
     }
     
     if (existingTransacao && existingTransacao.rows.length > 0) {
-      console.log(`ℹ️  Transação ${txid || rede_tid} já foi processada anteriormente`);
+      console.log(`ℹ️  Transação ${txid || finalProviderTid || rede_tid} já foi processada anteriormente`);
       return {
         transacao: existingTransacao.rows[0],
         doador: existingTransacao.rows[0].doador_id ? { id: existingTransacao.rows[0].doador_id } : null
@@ -246,6 +269,9 @@ async function processConfirmedTransaction(webhookData, doadorData = null) {
     
     // 4. Cria o registro de transação confirmada
     const txidFinal = txid || cobranca.rows[0].txid;
+    const finalProvider = provider || cobranca.rows[0].provider || 'REDE';
+    const finalProviderTidForTransaction = provider_tid || rede_tid || null;
+    
     const transacaoResult = await sql`
       INSERT INTO transacoes (
         cobranca_txid, 
@@ -253,9 +279,13 @@ async function processConfirmedTransaction(webhookData, doadorData = null) {
         valor, 
         status,
         tipo_pagamento,
+        provider,
         rede_tid,
+        provider_tid,
         bandeira_cartao,
         parcelas,
+        crypto_currency,
+        crypto_address,
         confirmado_em, 
         dados_webhook
       )
@@ -265,21 +295,29 @@ async function processConfirmedTransaction(webhookData, doadorData = null) {
         ${valor}, 
         ${status},
         ${tipo_pagamento || 'PIX'},
+        ${finalProvider},
         ${rede_tid || null},
+        ${finalProviderTidForTransaction},
         ${bandeira || null},
         ${parcelas || null},
+        ${crypto_currency || null},
+        ${crypto_address || null},
         ${horario ? new Date(horario) : new Date()}, 
         ${JSON.stringify(webhookData)}
       )
-      RETURNING id, cobranca_txid, doador_id, valor, status, tipo_pagamento, rede_tid, confirmado_em
+      RETURNING id, cobranca_txid, doador_id, valor, status, tipo_pagamento, provider, provider_tid, confirmado_em
     `;
     
     // 5. Atualiza o status da cobrança e remove dados temporários (última operação)
     await sql`
       UPDATE cobrancas 
       SET status = ${status}, 
+          provider = COALESCE(${finalProvider}, provider),
           rede_tid = COALESCE(${rede_tid || null}, rede_tid),
+          provider_tid = COALESCE(${finalProviderTidForTransaction}, provider_tid),
           tipo_pagamento = COALESCE(${tipo_pagamento || null}, tipo_pagamento),
+          crypto_currency = COALESCE(${crypto_currency || null}, crypto_currency),
+          crypto_address = COALESCE(${crypto_address || null}, crypto_address),
           atualizado_em = CURRENT_TIMESTAMP,
           dados_doador_temp = NULL
       WHERE txid = ${txidFinal}

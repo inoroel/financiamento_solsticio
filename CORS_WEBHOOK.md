@@ -2,7 +2,7 @@
 
 ## ❌ ALLOWED_ORIGINS NÃO Afeta Webhooks
 
-**Resposta direta:** `ALLOWED_ORIGINS` **NÃO afeta** a resposta do webhook. Você **NÃO precisa** colocar os endereços do Itaú.
+**Resposta direta:** `ALLOWED_ORIGINS` **NÃO afeta** a resposta do webhook. Você **NÃO precisa** colocar os endereços dos provedores de pagamento (e-Rede, Binance Pay, etc).
 
 ## 🔍 Por Quê?
 
@@ -24,7 +24,7 @@ Se não: navegador bloqueia
 Webhooks são requisições **servidor-para-servidor**, não passam pelo navegador:
 
 ```
-Itaú (Servidor) → Vercel (Servidor)
+e-Rede/Binance Pay (Servidor) → Vercel (Servidor)
      ↓
 NÃO passa pelo navegador
      ↓
@@ -33,14 +33,14 @@ CORS NÃO se aplica
 
 ## ✅ O que Protege o Webhook?
 
-### 1. Validação mTLS (Certificado do Cliente)
-- ✅ Valida que o certificado pertence ao Itaú (se configurado)
-- ✅ Implementado em `services/webhookService.js` (validação mTLS configurável)
-- ✅ Garante que apenas o Itaú pode acessar (quando habilitado)
+### 1. Validação de IP Whitelist (Opcional)
+- ✅ Valida que o IP pertence à whitelist configurada
+- ✅ Implementado em `services/redeWebhookService.js`
+- ✅ Garante que apenas IPs autorizados podem acessar
 
 ### 2. Validação de Assinatura (HMAC)
-- ✅ Valida assinatura do webhook com `WEBHOOK_SECRET`
-- ✅ Implementado em `services/webhookService.js`
+- ✅ Valida assinatura do webhook com `REDE_WEBHOOK_SECRET` (e-Rede)
+- ✅ Implementado em `services/redeWebhookService.js`
 - ✅ Garante integridade dos dados
 
 ### 3. Rate Limiting
@@ -60,7 +60,7 @@ CORS NÃO se aplica
 Quando o frontend faz uma requisição:
 ```javascript
 // No navegador
-fetch('https://api.vercel.app/api/gerar-pix', {
+fetch('https://api.vercel.app/api/gerar-pagamento', {
   method: 'POST',
   // ...
 })
@@ -81,18 +81,21 @@ ALLOWED_ORIGINS=https://meu-site.com,https://www.meu-site.com
 ```
 
 **NÃO inclua:**
-- ❌ `secure.api.itau` (não é necessário)
-- ❌ `oauthd.itau` (não é necessário)
-- ❌ Qualquer endereço do Itaú (não é necessário)
+- ❌ `api.userede.com.br` (não é necessário)
+- ❌ `bpay.binanceapi.com` (não é necessário)
+- ❌ Qualquer endereço dos provedores de pagamento (não é necessário)
 
 ### Proteção do Webhook (Separada)
 
 ```bash
-# Validação mTLS (certificado do Itaú - se necessário)
-ITAU_REQUIRE_CLIENT_CERT=true
+# Validação de IP (opcional - e-Rede)
+REDE_WEBHOOK_IP_WHITELIST=192.168.1.1,10.0.0.0/8
 
-# Validação de assinatura
-WEBHOOK_SECRET=seu_secret_forte_aqui
+# Validação de assinatura (e-Rede)
+REDE_WEBHOOK_SECRET=seu_secret_forte_aqui
+
+# Validação de assinatura (Binance Pay - quando implementado)
+BINANCE_PAY_WEBHOOK_SECRET=seu_secret_forte_aqui
 ```
 
 ## 📊 Resumo
@@ -100,13 +103,14 @@ WEBHOOK_SECRET=seu_secret_forte_aqui
 | Tipo de Requisição | CORS Aplica? | Proteção Usada |
 |-------------------|--------------|----------------|
 | Frontend → Backend | ✅ Sim | `ALLOWED_ORIGINS` |
-| Itaú → Webhook | ❌ Não | mTLS + Assinatura HMAC |
+| e-Rede → Webhook | ❌ Não | IP Whitelist + Assinatura HMAC |
+| Binance Pay → Webhook | ❌ Não | Assinatura HMAC |
 
 ## ✅ Conclusão
 
 1. **ALLOWED_ORIGINS** = Apenas domínios do seu frontend
-2. **Webhook** = Protegido por mTLS (se configurado) + Assinatura HMAC (não precisa de CORS)
-3. **Itaú não precisa** estar em `ALLOWED_ORIGINS`
+2. **Webhook** = Protegido por IP Whitelist (opcional) + Assinatura HMAC (não precisa de CORS)
+3. **Provedores de pagamento não precisam** estar em `ALLOWED_ORIGINS`
 
 ## 🔧 Configuração Recomendada
 
@@ -115,7 +119,7 @@ WEBHOOK_SECRET=seu_secret_forte_aqui
 ALLOWED_ORIGINS=https://financiamentocoletivo.vercel.app
 
 # Para webhook (separado)
-ITAU_REQUIRE_CLIENT_CERT=true  # Opcional, configure conforme documentação do Itaú
-WEBHOOK_SECRET=seu_secret_forte_aqui
+REDE_WEBHOOK_SECRET=seu_secret_forte_aqui  # e-Rede
+REDE_WEBHOOK_IP_WHITELIST=192.168.1.1  # Opcional - IPs da e-Rede
 ```
 

@@ -1,5 +1,8 @@
 # 📋 Variáveis de Ambiente Faltantes na Vercel
 
+> **⚠️ ATUALIZADO**: Este documento foi atualizado para refletir a migração para e-Rede.  
+> Variáveis do Itaú foram removidas.
+
 ## ✅ Já Configuradas (se aplicável)
 
 - `POSTGRES_URL` ✅
@@ -9,45 +12,23 @@
 
 ## ❌ Faltando (Obrigatórias)
 
-### 1. ITAU_CLIENT_ID
-**Tipo:** Credencial OAuth2  
-**Onde encontrar:** [Portal Developers Itaú](https://devportal.itau.com.br) → Sua aplicação → Credenciais  
+### 1. REDE_PV
+**Tipo:** Ponto de Venda (PV)  
+**Onde encontrar:** [Plataforma e-Rede](https://developer.userede.com.br/e-rede) → Sua conta → Credenciais  
 **Exemplo de formato:**
 ```
-ITAU_CLIENT_ID=seu_client_id_aqui
+REDE_PV=seu_pv_aqui
 ```
 
-### 2. ITAU_CLIENT_SECRET
-**Tipo:** Credencial OAuth2  
-**Onde encontrar:** [Portal Developers Itaú](https://devportal.itau.com.br) → Sua aplicação → Credenciais  
+### 2. REDE_TOKEN
+**Tipo:** Token de autenticação  
+**Onde encontrar:** [Plataforma e-Rede](https://developer.userede.com.br/e-rede) → Sua conta → Credenciais  
 **Exemplo de formato:**
 ```
-ITAU_CLIENT_SECRET=seu_client_secret_aqui
+REDE_TOKEN=seu_token_aqui
 ```
 
-### 3. ITAU_API_KEY
-**Tipo:** UUID (chave da API)  
-**Onde encontrar:** [Portal Developers Itaú](https://devportal.itau.com.br) → Sua aplicação → API Key  
-**Exemplo de formato:**
-```
-ITAU_API_KEY=96decebf-5c47-4410-95bf-0c4b803e4bb2
-```
-**Nota:** Deve ser um UUID válido (formato: `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`)
-
-### 4. ITAU_CHAVE_PIX
-**Tipo:** String  
-**Onde encontrar:** [Portal Developers Itaú](https://devportal.itau.com.br) → Sua aplicação → Chave PIX  
-**Descrição:** Pode ser CPF, CNPJ, Email, Telefone ou Chave Aleatória  
-**Exemplo de formato:**
-```
-ITAU_CHAVE_PIX=60701190000104
-```
-ou
-```
-ITAU_CHAVE_PIX=seu-email@exemplo.com
-```
-
-### 5. WEBHOOK_SECRET
+### 3. REDE_WEBHOOK_SECRET
 **Tipo:** Secret (gere um novo)  
 **Como gerar:**
 ```bash
@@ -55,68 +36,44 @@ openssl rand -hex 32
 ```
 **Exemplo de formato:**
 ```
-WEBHOOK_SECRET=a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6
+REDE_WEBHOOK_SECRET=a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6
 ```
-**Importante:** Use o mesmo valor configurado no Portal Developers Itaú para o webhook.
+**Importante:** Use o mesmo valor configurado na plataforma e-Rede para o webhook.
 
 ## ⚙️ Opcionais (Recomendadas)
 
-### 6. ITAU_AUTH_URL
-**Tipo:** URL  
-**Descrição:** URL de autenticação OAuth2 do Itaú  
-**Valor padrão (já configurado no código):**
-- **Produção:** `https://sts.itau.com.br/api/oauth/token`
-- **Sandbox:** `https://oauthd.itau/identity/connect/token`
-**Nota:** O código detecta automaticamente o ambiente. Só configure se precisar usar uma URL diferente
-
-### 7. ITAU_API_BASE_URL
-**Tipo:** URL  
-**Descrição:** URL base da API PIX do Itaú  
-**Valor padrão (já configurado no código):**
-```
-ITAU_API_BASE_URL=https://secure.api.itau/pix_recebimentos_conciliacoes_v2_ext/v2
-```
-**Nota:** Só configure se precisar usar uma URL diferente (ex: ambiente de homologação)
-
-### 8. ITAU_CERT_PATH
-**Tipo:** Caminho de arquivo  
-**Descrição:** Caminho para o certificado .crt gerado e assinado pelo Itaú (mTLS)  
-**Obrigatório em produção:** Sim  
+### 4. REDE_ENVIRONMENT
+**Tipo:** String  
+**Descrição:** Ambiente da API e-Rede  
+**Valores possíveis:**
+- `sandbox` (padrão) - Ambiente de testes
+- `production` - Ambiente de produção
 **Exemplo:**
 ```
-ITAU_CERT_PATH=./certificados-itau/meu_certificado.crt
+REDE_ENVIRONMENT=sandbox
 ```
-**Nota:** O certificado deve ser gerado conforme documentação do Itaú e enviado para validação
 
-### 9. ITAU_KEY_PATH
-**Tipo:** Caminho de arquivo  
-**Descrição:** Caminho para a chave privada .key usada no certificado mTLS  
-**Obrigatório em produção:** Sim  
+### 5. REDE_API_BASE_URL
+**Tipo:** URL  
+**Descrição:** URL base da API e-Rede (opcional, detecta automaticamente)  
+**Valor padrão (já configurado no código):**
+- **Produção:** `https://api.userede.com.br/erede`
+- **Sandbox:** `https://api.userede.com.br/desenvolvedores`
+**Nota:** Só configure se precisar usar uma URL diferente
+
+### 6. REDE_WEBHOOK_IP_WHITELIST
+**Tipo:** String (separado por vírgula)  
+**Descrição:** IPs permitidos para webhooks da e-Rede (opcional)  
 **Exemplo:**
 ```
-ITAU_KEY_PATH=./certificados-itau/minha_chave_privada.key
+REDE_WEBHOOK_IP_WHITELIST=192.168.1.1,10.0.0.0/8
 ```
-**Nota:** A chave privada deve ser mantida em segurança e nunca compartilhada
+**Nota:** Se não configurado, valida apenas assinatura HMAC
 
-### 10. ITAU_REQUIRE_CLIENT_CERT
-**Tipo:** Boolean  
-**Descrição:** Exige certificado de cliente (mTLS) do Itaú  
-**Valor recomendado em produção:**
-```
-ITAU_REQUIRE_CLIENT_CERT=true
-```
-**Valor para desenvolvimento:**
-```
-ITAU_REQUIRE_CLIENT_CERT=false
-```
-ou não defina (padrão: false)
-
-**Nota:** Configure conforme a documentação do Itaú para webhooks.
-
-### 11. ALLOWED_ORIGINS
+### 7. ALLOWED_ORIGINS
 **Tipo:** String (separado por vírgula)  
 **Descrição:** Domínios permitidos para CORS (apenas do seu frontend)  
-**⚠️ IMPORTANTE:** CORS NÃO afeta webhooks! Você NÃO precisa colocar endereços do Itaú aqui.  
+**⚠️ IMPORTANTE:** CORS NÃO afeta webhooks! Você NÃO precisa colocar endereços da e-Rede aqui.  
 **Exemplo com um domínio:**
 ```
 ALLOWED_ORIGINS=https://financiamentocoletivo.vercel.app
@@ -131,10 +88,10 @@ ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173
 ```
 **Nota:** 
 - Em produção, defina os domínios do seu frontend
-- Webhooks são protegidos por mTLS (se configurado) + Assinatura HMAC (não precisam de CORS)
-- NÃO inclua endereços do Itaú (ex: `secure.api.itau`)
+- Webhooks são protegidos por IP Whitelist (opcional) + Assinatura HMAC (não precisam de CORS)
+- NÃO inclua endereços da e-Rede (ex: `api.userede.com.br`)
 
-### 12. PORT
+### 8. PORT
 **Tipo:** Number  
 **Descrição:** Porta do servidor (geralmente não necessário na Vercel)  
 **Exemplo:**
@@ -146,49 +103,48 @@ PORT=3000
 ## 📝 Checklist de Configuração
 
 ### Obrigatórias
-- [ ] `ITAU_CLIENT_ID` - Obter do Portal Developers Itaú
-- [ ] `ITAU_CLIENT_SECRET` - Obter do Portal Developers Itaú
-- [ ] `ITAU_API_KEY` - Obter do Portal Developers Itaú (UUID)
-- [ ] `ITAU_CHAVE_PIX` - Obter do Portal Developers Itaú
-- [ ] `WEBHOOK_SECRET` - Gerar com `openssl rand -hex 32`
-- [ ] `ITAU_CERT_PATH` - Caminho para certificado mTLS (obrigatório em produção)
-- [ ] `ITAU_KEY_PATH` - Caminho para chave privada mTLS (obrigatório em produção)
+- [ ] `REDE_PV` - Obter da plataforma e-Rede
+- [ ] `REDE_TOKEN` - Obter da plataforma e-Rede
+- [ ] `REDE_WEBHOOK_SECRET` - Gerar com `openssl rand -hex 32`
 
 ### Opcionais (Recomendadas)
-- [ ] `ITAU_REQUIRE_CLIENT_CERT=true` - Para produção (se necessário conforme documentação)
+- [ ] `REDE_ENVIRONMENT=sandbox` - Para desenvolvimento (ou `production` para produção)
+- [ ] `REDE_WEBHOOK_IP_WHITELIST` - IPs da e-Rede (opcional, mas recomendado em produção)
 - [ ] `ALLOWED_ORIGINS` - Domínios do frontend
 - [ ] `PORT=3000` - Opcional (Vercel gerencia)
 
 ## 🔐 Segurança
 
 **IMPORTANTE:**
-- ✅ `ITAU_CLIENT_ID` e `ITAU_CLIENT_SECRET` são sensíveis - não compartilhe
-- ✅ `ITAU_API_KEY` é sensível - não compartilhe
-- ✅ `ITAU_CERT_PATH` e `ITAU_KEY_PATH` são CRÍTICOS - nunca compartilhe, especialmente a chave privada
-- ✅ `WEBHOOK_SECRET` deve ser único e forte
+- ✅ `REDE_PV` e `REDE_TOKEN` são sensíveis - não compartilhe
+- ✅ `REDE_WEBHOOK_SECRET` deve ser único e forte
 - ✅ Configure `ALLOWED_ORIGINS` em produção para segurança CORS
-- ✅ Use `ITAU_REQUIRE_CLIENT_CERT=true` em produção para validar certificados do webhook
-- ✅ O token do Itaú expira em 5 minutos (300 segundos) - o código renova automaticamente
+- ✅ Configure `REDE_WEBHOOK_IP_WHITELIST` em produção para validar origem dos webhooks
+- ✅ Use `REDE_ENVIRONMENT=production` apenas em produção
 
 ## 📚 Onde Encontrar as Credenciais
 
-1. **ITAU_CLIENT_ID e ITAU_CLIENT_SECRET:**
-   - [Portal Developers Itaú](https://devportal.itau.com.br) → Sua aplicação → Credenciais OAuth2
-   - Ou no arquivo de credenciais fornecido pelo Itaú
+1. **REDE_PV e REDE_TOKEN:**
+   - [Plataforma e-Rede](https://developer.userede.com.br/e-rede) → Sua conta → Credenciais
+   - Ou no painel administrativo da e-Rede
 
-2. **ITAU_API_KEY:**
-   - [Portal Developers Itaú](https://devportal.itau.com.br) → Sua aplicação → API Key
-   - Deve ser um UUID no formato: `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`
-
-3. **ITAU_CHAVE_PIX:**
-   - [Portal Developers Itaú](https://devportal.itau.com.br) → Sua aplicação → Chave PIX
-   - Pode ser CPF, CNPJ, Email, Telefone ou Chave Aleatória
-
-4. **WEBHOOK_SECRET:**
+2. **REDE_WEBHOOK_SECRET:**
    - Gere você mesmo: `openssl rand -hex 32`
-   - Configure o mesmo valor no Portal Developers Itaú → Webhook
+   - Configure o mesmo valor na plataforma e-Rede → Configurações de Webhook
+
+3. **REDE_WEBHOOK_IP_WHITELIST:**
+   - Consulte a documentação da e-Rede para obter os IPs de origem dos webhooks
+   - Ou entre em contato com o suporte da e-Rede
 
 ## 🔗 Links Úteis
 
-- [Portal Developers Itaú](https://devportal.itau.com.br)
-- [Documentação API PIX Itaú](https://devportal.itau.com.br/baas/#/catalog)
+- [Documentação e-Rede](https://developer.userede.com.br/e-rede)
+- [Manual de Integração e-Rede](https://developer.userede.com.br/files/erede/integration_manual.pdf)
+
+## 🚀 Próximos Passos (Binance Pay)
+
+Quando implementar Binance Pay, adicione também:
+- `BINANCE_PAY_API_KEY`
+- `BINANCE_PAY_SECRET_KEY`
+- `BINANCE_PAY_ENVIRONMENT`
+- `BINANCE_PAY_WEBHOOK_SECRET`
