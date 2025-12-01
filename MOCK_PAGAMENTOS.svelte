@@ -16,6 +16,9 @@
   // Estado comum
   let cid = 'campanha-01';
   let valor = 10.5;
+  let doacaoAnonima = true;
+  let nomeDoador = '';
+  let whatsappDoador = '';
 
   // PIX
   let pixResposta: any = null;
@@ -52,13 +55,25 @@
       const body: any = {
         tipo_pagamento: tipo,
         valor,
-        cid,
-        doador: {
-          anonimo: false,
-          nome: 'Doador Teste',
-          whatsapp: '5511999999999'
-        }
+        cid
       };
+
+      // Adiciona dados do doador apenas se não for anônimo
+      if (!doacaoAnonima) {
+        if (!nomeDoador || !whatsappDoador) {
+          alert('Para doação identificada, preencha nome e WhatsApp.');
+          return;
+        }
+        body.doador = {
+          anonimo: false,
+          nome: nomeDoador,
+          whatsapp: whatsappDoador
+        };
+      } else {
+        body.doador = {
+          anonimo: true
+        };
+      }
 
       if (tipo === 'CREDITO' || tipo === 'DEBITO') {
         if (!cartaoToken) {
@@ -88,7 +103,7 @@
       const data = await res.json();
 
       if (!res.ok || !data.success) {
-        console.error(data);
+        console.error('Erro ao gerar pagamento:', data);
         alert(data.error || 'Erro ao gerar pagamento');
         return;
       }
@@ -114,7 +129,7 @@
         cartaoResposta = data;
       }
     } catch (e) {
-      console.error(e);
+      console.error('Erro de rede ao chamar backend:', e);
       alert('Erro de rede ao chamar backend');
     } finally {
       carregandoPix = false;
@@ -138,7 +153,7 @@
       }
       pixStatusConsulta = data;
     } catch (e) {
-      console.error(e);
+      console.error('Erro de rede ao consultar cobrança:', e);
       alert('Erro de rede ao consultar cobrança');
     } finally {
       carregandoPix = false;
@@ -167,7 +182,7 @@
         alert('Pagamento cripto confirmado com sucesso.');
       }
     } catch (e) {
-      console.error(e);
+      console.error('Erro de rede ao confirmar cripto:', e);
       alert('Erro de rede ao confirmar cripto');
     } finally {
       carregandoConfirmacaoCripto = false;
@@ -198,7 +213,7 @@
         alert('Pagamento cripto confirmado via memo.');
       }
     } catch (e) {
-      console.error(e);
+      console.error('Erro de rede ao verificar por memo:', e);
       alert('Erro de rede ao verificar por memo');
     } finally {
       carregandoConfirmacaoCripto = false;
@@ -207,25 +222,68 @@
 </script>
 
 <main class="page">
-  <h1>Mock de Pagamentos - Financiamento Solstício</h1>
-  <p>Backend: <code>{API_URL}</code></p>
+  <header class="header">
+    <h1>💰 Mock de Pagamentos</h1>
+    <p class="subtitle">Financiamento Solstício - Teste de Integração</p>
+  </header>
 
   <section class="tabs">
-    <button class:selected={aba === 'pix'} on:click={() => (aba = 'pix')}>PIX</button>
-    <button class:selected={aba === 'cartao'} on:click={() => (aba = 'cartao')}>Cartão</button>
-    <button class:selected={aba === 'cripto'} on:click={() => (aba = 'cripto')}>Cripto (Stellar)</button>
+    <button class:selected={aba === 'pix'} on:click={() => (aba = 'pix')}>
+      <span class="tab-icon">💳</span> PIX
+    </button>
+    <button class:selected={aba === 'cartao'} on:click={() => (aba = 'cartao')}>
+      <span class="tab-icon">💳</span> Cartão
+    </button>
+    <button class:selected={aba === 'cripto'} on:click={() => (aba = 'cripto')}>
+      <span class="tab-icon">₿</span> Cripto
+    </button>
   </section>
 
   <section class="common">
-    <h2>Parâmetros comuns</h2>
-    <label>
-      ID Campanha (cid)
-      <input bind:value={cid} />
-    </label>
-    <label>
-      Valor
-      <input type="number" step="0.01" bind:value={valor} />
-    </label>
+    <h2>Parâmetros Comuns</h2>
+    <div class="form-grid">
+      <label>
+        <span class="label-text">ID da Campanha</span>
+        <input type="text" bind:value={cid} placeholder="campanha-01" />
+      </label>
+      <label>
+        <span class="label-text">Valor (R$)</span>
+        <input type="number" step="0.01" min="0.01" bind:value={valor} placeholder="10.50" />
+      </label>
+    </div>
+
+    <div class="doador-section">
+      <h3>Tipo de Doação</h3>
+      <div class="radio-group">
+        <label class="radio-option">
+          <input type="radio" bind:group={doacaoAnonima} value={true} />
+          <span class="radio-label">
+            <strong>Anônima</strong>
+            <small>Doação sem identificação</small>
+          </span>
+        </label>
+        <label class="radio-option">
+          <input type="radio" bind:group={doacaoAnonima} value={false} />
+          <span class="radio-label">
+            <strong>Identificada</strong>
+            <small>Com nome e WhatsApp</small>
+          </span>
+        </label>
+      </div>
+
+      {#if !doacaoAnonima}
+        <div class="doador-fields">
+          <label>
+            <span class="label-text">Nome do Doador *</span>
+            <input type="text" bind:value={nomeDoador} placeholder="Seu nome completo" required={!doacaoAnonima} />
+          </label>
+          <label>
+            <span class="label-text">WhatsApp *</span>
+            <input type="text" bind:value={whatsappDoador} placeholder="5511999999999" pattern="[0-9]{10,15}" required={!doacaoAnonima} />
+          </label>
+        </div>
+      {/if}
+    </div>
   </section>
 
   {#if aba === 'pix'}
@@ -349,84 +407,305 @@
 </main>
 
 <style>
-  .page {
-    max-width: 960px;
-    margin: 2rem auto;
-    padding: 1rem;
-    font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  :global(body) {
+    margin: 0;
+    padding: 0;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    min-height: 100vh;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   }
 
-  h1 {
-    margin-bottom: 0.5rem;
+  .page {
+    max-width: 1000px;
+    margin: 0 auto;
+    padding: 2rem 1rem;
+  }
+
+  .header {
+    text-align: center;
+    color: white;
+    margin-bottom: 2rem;
+  }
+
+  .header h1 {
+    margin: 0 0 0.5rem 0;
+    font-size: 2.5rem;
+    font-weight: 700;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  }
+
+  .subtitle {
+    margin: 0;
+    opacity: 0.9;
+    font-size: 1.1rem;
   }
 
   section {
     margin-top: 1.5rem;
-    padding: 1rem;
-    border-radius: 8px;
-    border: 1px solid #eee;
-    background: #fafafa;
+    padding: 1.5rem;
+    border-radius: 12px;
+    background: white;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  }
+
+  section h2 {
+    margin: 0 0 1rem 0;
+    color: #1f2937;
+    font-size: 1.5rem;
+    font-weight: 600;
+  }
+
+  section h3 {
+    margin: 1.5rem 0 0.75rem 0;
+    color: #374151;
+    font-size: 1.25rem;
+    font-weight: 600;
+  }
+
+  section h4 {
+    margin: 1rem 0 0.5rem 0;
+    color: #4b5563;
+    font-size: 1rem;
+    font-weight: 600;
   }
 
   .tabs {
     display: flex;
-    gap: 0.5rem;
-    margin-top: 1rem;
+    gap: 0.75rem;
+    margin-bottom: 1.5rem;
+    background: white;
+    padding: 0.5rem;
+    border-radius: 12px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
   }
 
   .tabs button {
-    padding: 0.5rem 1rem;
-    border-radius: 999px;
-    border: 1px solid #ccc;
-    background: #fff;
+    flex: 1;
+    padding: 0.75rem 1.5rem;
+    border-radius: 8px;
+    border: 2px solid transparent;
+    background: #f3f4f6;
+    color: #6b7280;
     cursor: pointer;
+    font-weight: 500;
+    font-size: 0.95rem;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+  }
+
+  .tabs button:hover {
+    background: #e5e7eb;
+    color: #374151;
   }
 
   .tabs button.selected {
-    background: #111827;
-    color: #fff;
-    border-color: #111827;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border-color: transparent;
+    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+  }
+
+  .tab-icon {
+    font-size: 1.2rem;
+  }
+
+  .form-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1.5rem;
   }
 
   label {
     display: block;
-    margin-bottom: 0.5rem;
+    margin-bottom: 0.75rem;
   }
 
-  input,
+  .label-text {
+    display: block;
+    margin-bottom: 0.5rem;
+    color: #374151;
+    font-weight: 500;
+    font-size: 0.9rem;
+  }
+
+  input[type="text"],
+  input[type="number"],
   select,
   textarea {
     width: 100%;
-    padding: 0.4rem 0.6rem;
+    padding: 0.75rem;
     margin-top: 0.25rem;
-    border-radius: 4px;
-    border: 1px solid #d1d5db;
-    font-size: 0.95rem;
+    border-radius: 8px;
+    border: 2px solid #e5e7eb;
+    font-size: 1rem;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    background: white;
+    color: #1f2937;
+  }
+
+  input:focus,
+  select:focus,
+  textarea:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+  }
+
+  .doador-section {
+    margin-top: 1.5rem;
+    padding-top: 1.5rem;
+    border-top: 2px solid #e5e7eb;
+  }
+
+  .doador-section h3 {
+    margin: 0 0 1rem 0;
+    color: #1f2937;
+    font-size: 1.1rem;
+  }
+
+  .radio-group {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 1rem;
+  }
+
+  .radio-option {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 1rem;
+    border: 2px solid #e5e7eb;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+    background: white;
+  }
+
+  .radio-option:hover {
+    border-color: #667eea;
+    background: #f9fafb;
+  }
+
+  .radio-option input[type="radio"] {
+    width: auto;
+    margin: 0;
+    cursor: pointer;
+  }
+
+  .radio-option input[type="radio"]:checked + .radio-label {
+    color: #667eea;
+  }
+
+  .radio-label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+
+  .radio-label strong {
+    color: #1f2937;
+    font-size: 1rem;
+  }
+
+  .radio-label small {
+    color: #6b7280;
+    font-size: 0.85rem;
+  }
+
+  .doador-fields {
+    margin-top: 1rem;
+    padding: 1rem;
+    background: #f9fafb;
+    border-radius: 8px;
+    border: 2px dashed #e5e7eb;
   }
 
   button {
-    margin-top: 0.5rem;
-    padding: 0.5rem 1rem;
-    border-radius: 999px;
+    margin-top: 1rem;
+    padding: 0.875rem 1.75rem;
+    border-radius: 8px;
     border: none;
-    background: #2563eb;
-    color: #fff;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
     cursor: pointer;
-    font-weight: 500;
+    font-weight: 600;
+    font-size: 1rem;
+    transition: all 0.2s;
+    box-shadow: 0 2px 4px rgba(102, 126, 234, 0.3);
+  }
+
+  button:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+  }
+
+  button:active:not(:disabled) {
+    transform: translateY(0);
   }
 
   button:disabled {
-    opacity: 0.5;
-    cursor: default;
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
   }
 
   pre {
-    background: #111827;
+    background: #1f2937;
     color: #e5e7eb;
-    padding: 0.75rem;
-    border-radius: 6px;
-    font-size: 0.8rem;
+    padding: 1rem;
+    border-radius: 8px;
+    font-size: 0.85rem;
     overflow-x: auto;
+    line-height: 1.5;
+    margin-top: 0.75rem;
+  }
+
+  code {
+    background: #f3f4f6;
+    color: #dc2626;
+    padding: 0.2rem 0.4rem;
+    border-radius: 4px;
+    font-size: 0.9em;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  }
+
+  pre code {
+    background: transparent;
+    color: inherit;
+    padding: 0;
+  }
+
+  p {
+    color: #4b5563;
+    line-height: 1.6;
+    margin: 0.75rem 0;
+  }
+
+  @media (max-width: 640px) {
+    .page {
+      padding: 1rem 0.5rem;
+    }
+
+    .header h1 {
+      font-size: 2rem;
+    }
+
+    .form-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .radio-group {
+      flex-direction: column;
+    }
+
+    .tabs {
+      flex-direction: column;
+    }
   }
 </style>
 

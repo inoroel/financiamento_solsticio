@@ -16,7 +16,7 @@ O erro `"database":"disconnected"` significa que:
 ### 1. Verificar se o Banco Existe na Vercel
 
 1. Acesse: https://vercel.com/dashboard
-2. Selecione o projeto `financiamentocoletivo`
+2. Selecione o projeto `financiamentosolsticio`
 3. Vá em **Storage** (ou **Databases**)
 4. Verifique se existe um banco Postgres criado
 
@@ -83,7 +83,7 @@ vercel env pull .env.local
 Após inicializar o banco, teste novamente:
 
 ```bash
-curl https://financiamentocoletivo.vercel.app/health
+curl https://financiamentosolsticio.vercel.app/health
 ```
 
 **Deve retornar:**
@@ -148,7 +148,7 @@ app.get('/test-db', async (req, res) => {
 
 Depois teste:
 ```bash
-curl https://financiamentocoletivo.vercel.app/test-db
+curl https://financiamentosolsticio.vercel.app/test-db
 ```
 
 ## ✅ Checklist Final

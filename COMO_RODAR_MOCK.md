@@ -29,10 +29,10 @@ Crie um arquivo `.env.local` na raiz do projeto SvelteKit:
 
 ```bash
 cd mock-pagamentos-solsticio
-echo "VITE_API_URL=https://seu-backend.vercel.app" > .env.local
+echo "VITE_API_URL=https://financiamentosolsticio.vercel.app" > .env.local
 ```
 
-**Substitua `https://seu-backend.vercel.app` pela URL real do seu backend na Vercel.**
+**Substitua pela URL real do seu backend na Vercel se for diferente.**
 
 ### 4. Instalar dependências e rodar
 
@@ -68,7 +68,7 @@ cp ../financiamento_solsticio/MOCK_PAGAMENTOS.svelte src/App.svelte
 Crie `.env.local`:
 
 ```bash
-echo "VITE_API_URL=https://seu-backend.vercel.app" > .env.local
+echo "VITE_API_URL=https://financiamentosolsticio.vercel.app" > .env.local
 ```
 
 ### 4. Rodar
@@ -93,7 +93,7 @@ Se você quiser testar rapidamente sem criar um projeto Svelte, pode converter o
 
 ```env
 # .env.local
-VITE_API_URL=https://seu-backend.vercel.app
+VITE_API_URL=https://financiamentosolsticio.vercel.app
 ```
 
 Se não configurar, o mock tentará usar `http://localhost:3000` (backend local).

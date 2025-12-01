@@ -35,7 +35,7 @@ export const API_URL =
 No `.env` do frontend:
 
 ```bash
-VITE_API_URL=https://seu-backend.vercel.app
+VITE_API_URL=https://financiamentosolsticio.vercel.app
 VITE_STELLAR_HORIZON_URL=https://horizon-testnet.stellar.org
 VITE_STELLAR_RECIPIENT_ADDRESS=GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 ```

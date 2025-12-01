@@ -58,7 +58,7 @@ Ou simplesmente faça um novo commit e push para forçar um novo deploy.
 Após configurar e fazer redeploy, teste o endpoint:
 
 ```bash
-curl https://financiamentocoletivo.vercel.app/api/gerar-pagamento \
+curl https://financiamentosolsticio.vercel.app/api/gerar-pagamento \
   -X POST \
   -H "Content-Type: application/json" \
   -d '{

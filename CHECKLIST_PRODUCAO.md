@@ -100,7 +100,7 @@ npm run verificar-vercel
 ### e-Rede
 
 1. Acesse a plataforma e-Rede → Configurações de Webhook / Criar Notificação Automática
-2. Configure a URL do webhook: `https://seu-projeto.vercel.app/api/webhook/pagamento`
+2. Configure a URL do webhook: `https://financiamentosolsticio.vercel.app/api/webhook/pagamento`
 3. ⚠️ NOTA: A e-Rede NÃO permite configurar secret no portal
 4. ⚠️ Configure o tipo de evento (ex: "Estorno", "Pagamento confirmado", etc.)
 5. ⚠️ Configure `REDE_WEBHOOK_IP_WHITELIST` com os IPs da e-Rede (principal método de segurança)
@@ -129,7 +129,7 @@ Na tela de configuração do projeto, adicione todas as variáveis listadas acim
 
 1. Clique em **"Deploy"**
 2. Aguarde 2-3 minutos
-3. ✅ Pronto! Você terá uma URL: `https://seu-projeto.vercel.app`
+3. ✅ Pronto! Você terá uma URL: `https://financiamentosolsticio.vercel.app`
 
 ## ✅ Verificações Pós-Deploy
 
@@ -138,7 +138,7 @@ Na tela de configuração do projeto, adicione todas as variáveis listadas acim
 Teste o endpoint de health check:
 
 ```bash
-curl https://seu-projeto.vercel.app/health
+curl https://financiamentosolsticio.vercel.app/health
 ```
 
 Deve retornar:
@@ -153,7 +153,7 @@ Deve retornar:
 ### 2. Testar Criação de Cobrança PIX
 
 ```bash
-curl -X POST https://seu-projeto.vercel.app/api/gerar-pagamento \
+curl -X POST https://financiamentosolsticio.vercel.app/api/gerar-pagamento \
   -H "Content-Type: application/json" \
   -d '{
     "valor": 10.00,
