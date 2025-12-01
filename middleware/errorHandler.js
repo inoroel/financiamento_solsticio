@@ -37,9 +37,22 @@ function errorHandler(err, req, res, next) {
     message: err.message,
     stack: process.env.NODE_ENV === 'development' ? err.stack : undefined,
     path: req.path,
-    method: req.method
+    method: req.method,
+    origin: req.headers.origin
     // body removido por segurança
   });
+
+  // IMPORTANTE: Adiciona headers CORS mesmo em caso de erro
+  // Isso garante que o frontend receba a resposta mesmo quando há erro
+  const origin = req.headers.origin;
+  const isOriginAllowed = !process.env.ALLOWED_ORIGINS 
+    ? (origin?.includes('localhost') || origin?.includes('127.0.0.1') || !origin)
+    : process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim()).includes(origin || '');
+  
+  if (isOriginAllowed || !origin) {
+    res.setHeader('Access-Control-Allow-Origin', origin || '*');
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+  }
 
   // Erros de validação
   if (err.name === 'ValidationError') {
@@ -81,7 +94,8 @@ function errorHandler(err, req, res, next) {
   res.status(err.status || 500).json({
     success: false,
     error: 'Erro interno do servidor',
-    message: process.env.NODE_ENV === 'development' ? err.message : undefined
+    message: process.env.NODE_ENV === 'development' ? err.message : undefined,
+    stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
   });
 }
 
@@ -89,6 +103,17 @@ function errorHandler(err, req, res, next) {
  * Middleware para rotas não encontradas
  */
 function notFoundHandler(req, res) {
+  // Adiciona headers CORS mesmo para 404
+  const origin = req.headers.origin;
+  const isOriginAllowed = !process.env.ALLOWED_ORIGINS 
+    ? (origin?.includes('localhost') || origin?.includes('127.0.0.1') || !origin)
+    : process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim()).includes(origin || '');
+  
+  if (isOriginAllowed || !origin) {
+    res.setHeader('Access-Control-Allow-Origin', origin || '*');
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+  }
+
   res.status(404).json({
     success: false,
     error: 'Rota não encontrada',

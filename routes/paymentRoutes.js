@@ -524,9 +524,25 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
 
   } catch (error) {
     console.error('❌ Erro inesperado no endpoint /api/gerar-pagamento:', error.message);
+    if (process.env.NODE_ENV === 'development') {
+      console.error('Stack:', error.stack);
+    }
+
+    // IMPORTANTE: Adiciona headers CORS mesmo em caso de erro
+    const origin = req.headers.origin;
+    const isOriginAllowed = !process.env.ALLOWED_ORIGINS 
+      ? (origin?.includes('localhost') || origin?.includes('127.0.0.1') || !origin)
+      : process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim()).includes(origin || '');
+    
+    if (isOriginAllowed || !origin) {
+      res.setHeader('Access-Control-Allow-Origin', origin || '*');
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+    }
+
     res.status(500).json({
       error: 'Erro interno do servidor.',
-      message: process.env.NODE_ENV === 'development' ? error.message : undefined
+      message: process.env.NODE_ENV === 'development' ? error.message : undefined,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
 });
