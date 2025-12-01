@@ -102,10 +102,31 @@ app.use(requestLogger); // Logging de requisições
 // =================================================================
 // SERVE ARQUIVOS ESTÁTICOS (Frontend de teste)
 // =================================================================
+// Na Vercel, arquivos estáticos são servidos diretamente pelo vercel.json
+// Localmente, servimos via Express
 if (process.env.NODE_ENV !== 'production' || process.env.SERVE_FRONTEND === 'true') {
   app.use(express.static('public'));
   console.log('📁 Servindo arquivos estáticos da pasta public/');
 }
+
+// Rota para servir index.html na raiz (quando não servido estaticamente)
+app.get('/', (req, res) => {
+  res.sendFile('index.html', { root: 'public' }, (err) => {
+    if (err) {
+      // Se não encontrar index.html, retorna status de saúde da API
+      res.status(200).json({
+        message: 'API Financiamento Solstício',
+        status: 'online',
+        endpoints: {
+          health: '/health',
+          testDb: '/test-db',
+          api: '/api'
+        },
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+});
 
 // =================================================================
 // ROTAS

@@ -564,11 +564,6 @@
             const cid = document.getElementById('cid').value;
             const anonimo = document.getElementById('anonimo').checked;
 
-            const body = {
-                valor: valor,
-                cid: cid
-            };
-
             if (!anonimo) {
                 const nome = document.getElementById('nome').value;
                 const whatsapp = document.getElementById('whatsapp').value;
@@ -579,21 +574,30 @@
                     createBtnText.textContent = 'Criar Cobrança PIX';
                     return;
                 }
-
-                body.doador = {
-                    nome: nome,
-                    whatsapp: whatsapp,
-                    anonimo: false
-                };
             }
 
             try {
-                const response = await fetch(`${API_URL}/api/gerar-pix`, {
+                // Formato correto do endpoint /api/gerar-pagamento
+                const requestBody = {
+                    tipo_pagamento: 'PIX',
+                    valor: valor,
+                    cid: cid
+                };
+
+                if (!anonimo) {
+                    requestBody.doador = {
+                        nome: document.getElementById('nome').value,
+                        whatsapp: document.getElementById('whatsapp').value,
+                        anonimo: false
+                    };
+                }
+
+                const response = await fetch(`${API_URL}/api/gerar-pagamento`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify(body)
+                    body: JSON.stringify(requestBody)
                 });
 
                 const data = await response.json();
@@ -602,8 +606,8 @@
                     showResult(createResult, 'success', 
                         `✅ Cobrança criada com sucesso!<br>` +
                         `TXID: <strong>${data.txid}</strong><br>` +
-                        `Valor: R$ ${data.valor.toFixed(2)}<br>` +
-                        `Status: ${data.status}`
+                        `Valor: R$ ${data.valor ? data.valor.toFixed(2) : valor.toFixed(2)}<br>` +
+                        `Status: ${data.status || 'ATIVA'}`
                     );
                     
                     // Mostra QR Code
@@ -641,7 +645,7 @@
             const txid = document.getElementById('txid').value;
 
             try {
-                const response = await fetch(`${API_URL}/api/cobranca/${encodeURIComponent(txid)}`);
+                const response = await fetch(`${API_URL}/api/cobranca/txid/${encodeURIComponent(txid)}`);
                 const data = await response.json();
 
                 if (response.ok && data.success) {
