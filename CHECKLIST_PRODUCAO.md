@@ -40,6 +40,15 @@ Este documento lista todas as configurações necessárias para colocar o sistem
 ### Stellar (Obrigatórias para Pagamentos Cripto)
 
 - [ ] **STELLAR_SECRET_KEY** - Chave secreta da conta Stellar que receberá pagamentos
+  - ⚠️ **IMPORTANTE**: As chaves geradas em https://lab.stellar.org/ são **TEMPORÁRIAS**
+  - Para produção (mainnet), você **DEVE** criar uma conta permanente usando:
+    - **Freighter** (Recomendado) - Extensão de navegador: https://freighter.app
+    - Outras wallets Stellar (StellarX, Lobstr, Stellar Desktop Client)
+    - Ou gerar um par de chaves usando o Stellar SDK
+  - Para testnet, você pode usar o Stellar Lab temporariamente: https://laboratory.stellar.org/#account-creator?network=test
+  - ⚠️ **NUNCA** use chaves temporárias do Stellar Lab em produção!
+  - 📖 Veja guia completo: `STELLAR_CONTA_PERMANENTE.md`
+  
 - [ ] **STELLAR_NETWORK** - `public` para produção (ou `testnet` para testes)
 - [ ] **STELLAR_WEBHOOK_SECRET** - Secret para webhooks (gerar com `openssl rand -hex 32`)
 

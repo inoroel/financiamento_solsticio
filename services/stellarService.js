@@ -4,6 +4,7 @@ const StellarSdk = require('@stellar/stellar-sdk');
 const Server = StellarSdk.Horizon.Server;
 const { Asset, Keypair, TransactionBuilder, Operation, Networks } = StellarSdk;
 const axios = require('axios');
+const QRCode = require('qrcode');
 require('dotenv').config();
 
 const STELLAR_NETWORK = process.env.STELLAR_NETWORK || 'testnet'; // 'testnet' ou 'public'
@@ -17,6 +18,55 @@ const STELLAR_HORIZON_URL = process.env.STELLAR_HORIZON_URL || (
 // USDC na Stellar (issuer: Circle)
 const USDC_ISSUER = 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN';
 const USDC_ASSET_CODE = 'USDC';
+
+/**
+ * Gera URI Stellar (SEP-7) para pagamento direto na carteira
+ * @param {string} destination - Endereço de destino
+ * @param {number} amount - Valor do pagamento
+ * @param {string} currency - Moeda ('USDC' ou 'XLM')
+ * @param {string} memo - Memo da transação
+ * @returns {string} URI Stellar no formato SEP-7
+ */
+function generateStellarURI(destination, amount, currency, memo) {
+  const currencyUpper = currency.toUpperCase();
+  let uri = `web+stellar:pay?destination=${encodeURIComponent(destination)}`;
+  
+  if (currencyUpper === 'USDC') {
+    uri += `&amount=${amount}`;
+    uri += `&asset_code=${USDC_ASSET_CODE}`;
+    uri += `&asset_issuer=${USDC_ISSUER}`;
+  } else {
+    // XLM (native)
+    uri += `&amount=${amount}`;
+  }
+  
+  if (memo) {
+    uri += `&memo=${encodeURIComponent(memo)}`;
+    uri += `&memo_type=text`;
+  }
+  
+  return uri;
+}
+
+/**
+ * Gera QR code em base64 para URI Stellar
+ * @param {string} stellarURI - URI Stellar (SEP-7)
+ * @returns {Promise<string>} QR code em base64 (data URI)
+ */
+async function generateStellarQRCode(stellarURI) {
+  try {
+    const qrCodeDataURL = await QRCode.toDataURL(stellarURI, {
+      errorCorrectionLevel: 'M',
+      type: 'image/png',
+      width: 500,
+      margin: 2
+    });
+    return qrCodeDataURL;
+  } catch (error) {
+    console.error('Erro ao gerar QR code:', error);
+    return null;
+  }
+}
 
 /**
  * Obtém o servidor Horizon configurado
@@ -105,6 +155,18 @@ async function createStellarPayment(txid, valor, currency = 'USDC', memo = null)
     // USDC: 1 USDC = 10^7 stroops (mesma precisão)
     const amountInStroops = Math.round(valorValidado * 10000000);
 
+    // Gera URI Stellar (SEP-7) para pagamento direto na carteira
+    const stellarURI = generateStellarURI(publicKey, valorValidado, currencyUpper, paymentMemo);
+    console.log('🔗 URI Stellar gerado:', stellarURI);
+    
+    // Gera QR code para o URI
+    const qrCodeBase64 = await generateStellarQRCode(stellarURI);
+    if (qrCodeBase64) {
+      console.log('✅ QR Code gerado com sucesso (tamanho:', qrCodeBase64.length, 'caracteres)');
+    } else {
+      console.warn('⚠️  QR Code não foi gerado (retornou null)');
+    }
+
     // Retorna dados do pagamento
     // O usuário enviará o pagamento para a conta pública com o memo
     return {
@@ -119,6 +181,8 @@ async function createStellarPayment(txid, valor, currency = 'USDC', memo = null)
       amount_stroops: amountInStroops,
       network: STELLAR_NETWORK,
       horizon_url: STELLAR_HORIZON_URL,
+      stellar_uri: stellarURI, // URI Stellar (SEP-7) para pagamento direto
+      qr_code: qrCodeBase64, // QR code em base64 para escanear
       created_at: new Date().toISOString()
     };
 

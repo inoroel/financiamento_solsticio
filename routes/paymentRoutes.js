@@ -490,6 +490,8 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
       response.currency = cobranca.currency;
       response.network = cobranca.network;
       response.horizon_url = cobranca.horizon_url;
+      response.stellar_uri = cobranca.stellar_uri; // URI Stellar (SEP-7) para pagamento direto
+      response.qr_code = cobranca.qr_code; // QR code em base64 para escanear
     } else {
       response.autorizacao = {
         codigo: cobranca.authorizationCode,
