@@ -20,10 +20,15 @@ app.use(express.urlencoded({ extended: true, limit: '10kb' })); // Limita tamanh
 // CORS configurado de forma segura
 const corsOptions = {
   origin: function (origin, callback) {
+    // Permite requisições sem origin (ex: Postman, curl, mobile apps)
+    if (!origin) {
+      return callback(null, true);
+    }
+
     // Se ALLOWED_ORIGINS está configurado, usa ele
     if (process.env.ALLOWED_ORIGINS) {
       const allowedOrigins = process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim());
-      if (!origin || allowedOrigins.includes(origin)) {
+      if (allowedOrigins.includes(origin)) {
         callback(null, true);
       } else {
         if (process.env.NODE_ENV === 'development') {
@@ -33,8 +38,7 @@ const corsOptions = {
       }
     } else {
       // Se não está configurado, permite localhost para desenvolvimento/testes
-      // e também permite requisições sem origin (ex: Postman, curl)
-      if (!origin || origin.includes('localhost') || origin.includes('127.0.0.1')) {
+      if (origin.includes('localhost') || origin.includes('127.0.0.1')) {
         callback(null, true);
       } else if (process.env.NODE_ENV === 'production') {
         // Em produção sem ALLOWED_ORIGINS configurado, bloqueia outras origens
@@ -48,8 +52,9 @@ const corsOptions = {
   },
   credentials: true,
   optionsSuccessStatus: 200,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-Id']
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-Id', 'Accept'],
+  exposedHeaders: ['Content-Type', 'X-Request-Id']
 };
 app.use(cors(corsOptions));
 
