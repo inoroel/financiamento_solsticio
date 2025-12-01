@@ -58,9 +58,12 @@ const corsOptions = {
 
 // Handler explícito para OPTIONS (preflight) - DEVE VIR ANTES DE TUDO
 // Este handler precisa retornar imediatamente, sem passar por outros middlewares
+// IMPORTANTE: Na Vercel, este handler precisa estar antes de qualquer outro middleware
 app.use((req, res, next) => {
+  // Intercepta OPTIONS antes de qualquer coisa
   if (req.method === 'OPTIONS') {
     const origin = req.headers.origin;
+    
     if (isOriginAllowed(origin)) {
       res.setHeader('Access-Control-Allow-Origin', origin || '*');
       res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
