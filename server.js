@@ -14,9 +14,19 @@ const PORT = process.env.PORT || 3000;
 // TRUST PROXY - OBRIGATÓRIO PARA VERCEL E RATE LIMITING
 // =================================================================
 // Configura Express para confiar em proxies (Vercel, Cloudflare, etc)
+// IMPORTANTE: Na Vercel, confiamos apenas no primeiro proxy (da própria Vercel)
 // Isso é necessário para que express-rate-limit funcione corretamente
 // e identifique corretamente o IP do cliente através do header X-Forwarded-For
-app.set('trust proxy', true);
+// 
+// trust proxy: 1 = confia apenas no primeiro proxy (Vercel)
+// Isso previne que clientes maliciosos falsifiquem o header X-Forwarded-For
+if (process.env.VERCEL || process.env.VERCEL_ENV) {
+  // Na Vercel, confia apenas no primeiro proxy (da própria Vercel)
+  app.set('trust proxy', 1);
+} else {
+  // Localmente ou em outros ambientes, pode confiar em todos os proxies
+  app.set('trust proxy', true);
+}
 
 // =================================================================
 // CORS - DEVE SER O PRIMEIRO MIDDLEWARE (antes de tudo)

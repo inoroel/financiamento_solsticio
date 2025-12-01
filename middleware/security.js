@@ -5,6 +5,10 @@ const helmet = require('helmet');
 /**
  * Rate limiting para endpoints de criação de cobrança
  * Previne abuso e ataques de força bruta
+ * 
+ * IMPORTANTE: Com trust proxy: 1, o Express já extrai o IP correto do cliente
+ * do header X-Forwarded-For, mas apenas do primeiro proxy (Vercel).
+ * Isso previne que clientes falsifiquem o IP.
  */
 const createChargeLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutos
@@ -14,6 +18,13 @@ const createChargeLimiter = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
+  // Função customizada para obter o IP do cliente
+  // Com trust proxy: 1, req.ip já contém o IP correto do cliente
+  keyGenerator: (req) => {
+    // req.ip já está correto quando trust proxy: 1 está configurado
+    // e o primeiro proxy (Vercel) é confiável
+    return req.ip || req.socket.remoteAddress || 'unknown';
+  },
   skip: (req) => {
     // Pula rate limiting para requisições OPTIONS (preflight)
     return req.method === 'OPTIONS';
@@ -37,6 +48,9 @@ const consultChargeLimiter = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
+  keyGenerator: (req) => {
+    return req.ip || req.socket.remoteAddress || 'unknown';
+  }
 });
 
 /**
@@ -50,6 +64,9 @@ const webhookLimiter = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
+  keyGenerator: (req) => {
+    return req.ip || req.socket.remoteAddress || 'unknown';
+  }
 });
 
 /**
