@@ -141,6 +141,11 @@ async function tokenizeCard(cardData, brandName = 'visa') {
  */
 async function createPixCharge(txid, valor, solicitacaoPagador = "Doação para o Festival Solsticio", expiracao = 3600) {
   try {
+    // Valida credenciais antes de prosseguir
+    if (!PV || !TOKEN) {
+      throw new Error('Credenciais e-Rede não configuradas. Configure REDE_PV e REDE_TOKEN nas variáveis de ambiente.');
+    }
+
     // Validações de segurança
     const { validateTxid, validateValor, sanitizeString } = require('../utils/validation');
 
@@ -235,11 +240,26 @@ async function createPixCharge(txid, valor, solicitacaoPagador = "Doação para 
       errorDetails.data = error.response.data;
       console.error('Status:', error.response.status);
       console.error('Data:', JSON.stringify(error.response.data, null, 2));
+      
+      // Mensagens específicas para erros comuns
+      if (error.response.status === 401) {
+        if (error.response.data?.returnMessage?.includes('Affiliation')) {
+          errorDetails.message = 'Credenciais e-Rede inválidas ou não configuradas. Verifique REDE_PV e REDE_TOKEN nas variáveis de ambiente da Vercel.';
+        } else {
+          errorDetails.message = 'Não autorizado. Verifique se REDE_PV e REDE_TOKEN estão corretos.';
+        }
+      } else if (error.response.status === 400) {
+        errorDetails.message = error.response.data?.returnMessage || 'Dados inválidos na requisição.';
+      }
     } else if (error.request) {
-      errorDetails.message = 'Erro de conexão com a API e-Rede. Verifique suas credenciais e conexão.';
+      errorDetails.message = 'Erro de conexão com a API e-Rede. Verifique sua conexão com a internet.';
       console.error('Erro de requisição:', error.request);
     } else {
+      // Erro de validação ou configuração
       console.error('Erro:', error.message);
+      if (error.message.includes('Credenciais')) {
+        errorDetails.message = error.message;
+      }
     }
     
     // Retorna objeto com erro ao invés de null para melhor diagnóstico

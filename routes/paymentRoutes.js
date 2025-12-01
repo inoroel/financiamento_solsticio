@@ -282,7 +282,9 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
 
       if (!cobranca || cobranca.error) {
         // Se retornou erro, inclui detalhes para diagnóstico
-        const errorMessage = cobranca?.errorDetails?.data?.returnMessage 
+        // Prioriza mensagem customizada do serviço, depois mensagem da API, depois genérica
+        const errorMessage = cobranca?.errorDetails?.message 
+          || cobranca?.errorDetails?.data?.returnMessage 
           || cobranca?.message 
           || 'Não foi possível gerar a cobrança PIX na e-Rede.';
         
