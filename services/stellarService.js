@@ -29,21 +29,38 @@ const USDC_ASSET_CODE = 'USDC';
  */
 function generateStellarURI(destination, amount, currency, memo) {
   const currencyUpper = currency.toUpperCase();
-  let uri = `web+stellar:pay?destination=${encodeURIComponent(destination)}`;
   
+  // Constrói o URI baseado na especificação SEP-7
+  // Formato: web+stellar:pay?destination=...&amount=...&memo=...&memo_type=...
+  const params = new URLSearchParams();
+  
+  // Destination (obrigatório)
+  params.append('destination', destination);
+  
+  // Amount (obrigatório) - garantir formato numérico correto
+  params.append('amount', amount.toString());
+  
+  // Asset (se não for XLM nativo)
   if (currencyUpper === 'USDC') {
-    uri += `&amount=${amount}`;
-    uri += `&asset_code=${USDC_ASSET_CODE}`;
-    uri += `&asset_issuer=${USDC_ISSUER}`;
-  } else {
-    // XLM (native)
-    uri += `&amount=${amount}`;
+    params.append('asset_code', USDC_ASSET_CODE);
+    params.append('asset_issuer', USDC_ISSUER);
   }
   
-  if (memo) {
-    uri += `&memo=${encodeURIComponent(memo)}`;
-    uri += `&memo_type=text`;
+  // Memo (se fornecido)
+  // IMPORTANTE: Algumas carteiras (como Freighter) podem ter problemas com memo_type=text
+  // Vamos usar apenas o memo sem memo_type para melhor compatibilidade
+  // O Freighter geralmente detecta automaticamente que é texto
+  if (memo && memo.trim()) {
+    const memoTrimmed = memo.trim();
+    // Adicionar memo sem memo_type primeiro (mais compatível com Freighter)
+    params.append('memo', memoTrimmed);
+    // Adicionar memo_type=text como fallback para outras carteiras
+    params.append('memo_type', 'text');
   }
+  
+  // Constrói o URI final
+  // Usar toString() que já faz o encoding correto
+  const uri = `web+stellar:pay?${params.toString()}`;
   
   return uri;
 }
@@ -159,12 +176,38 @@ async function createStellarPayment(txid, valor, currency = 'USDC', memo = null)
     const stellarURI = generateStellarURI(publicKey, valorValidado, currencyUpper, paymentMemo);
     console.log('🔗 URI Stellar gerado:', stellarURI);
     
-    // Gera QR code para o URI
+    // Gera também uma versão alternativa sem memo_type (para compatibilidade com Freighter)
+    // IMPORTANTE: O memo SEMPRE deve ser incluído para identificar a transação!
+    // Apenas removemos o memo_type, mas o memo continua presente
+    let stellarURIAlt = null;
+    if (paymentMemo) {
+      const paramsAlt = new URLSearchParams();
+      paramsAlt.append('destination', publicKey);
+      paramsAlt.append('amount', valorValidado.toString());
+      if (currencyUpper === 'USDC') {
+        paramsAlt.append('asset_code', USDC_ASSET_CODE);
+        paramsAlt.append('asset_issuer', USDC_ISSUER);
+      }
+      // Versão alternativa: memo SEM memo_type (algumas carteiras preferem assim)
+      // O MEMO ESTÁ INCLUÍDO - é essencial para identificar a transação!
+      paramsAlt.append('memo', paymentMemo.trim());
+      stellarURIAlt = `web+stellar:pay?${paramsAlt.toString()}`;
+      console.log('🔗 URI Stellar alternativo (memo incluído, sem memo_type):', stellarURIAlt);
+      console.log('⚠️  IMPORTANTE: O memo está presente no URI alternativo para identificação da transação');
+    }
+    
+    // Gera QR code para o URI principal
     const qrCodeBase64 = await generateStellarQRCode(stellarURI);
     if (qrCodeBase64) {
       console.log('✅ QR Code gerado com sucesso (tamanho:', qrCodeBase64.length, 'caracteres)');
     } else {
       console.warn('⚠️  QR Code não foi gerado (retornou null)');
+    }
+    
+    // Gera QR code alternativo se disponível
+    let qrCodeAltBase64 = null;
+    if (stellarURIAlt) {
+      qrCodeAltBase64 = await generateStellarQRCode(stellarURIAlt);
     }
 
     // Retorna dados do pagamento
@@ -182,7 +225,9 @@ async function createStellarPayment(txid, valor, currency = 'USDC', memo = null)
       network: STELLAR_NETWORK,
       horizon_url: STELLAR_HORIZON_URL,
       stellar_uri: stellarURI, // URI Stellar (SEP-7) para pagamento direto
+      stellar_uri_alt: stellarURIAlt, // URI alternativo sem memo_type (para Freighter)
       qr_code: qrCodeBase64, // QR code em base64 para escanear
+      qr_code_alt: qrCodeAltBase64, // QR code alternativo sem memo_type
       created_at: new Date().toISOString()
     };
 
