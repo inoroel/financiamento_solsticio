@@ -440,7 +440,7 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
       campanhaId: cid,
       tipoPagamento: tipoPagamento,
       provider: provider,
-      chavePix: tipoPagamento === 'PIX' ? (cobranca.chave || null) : null,
+      chavePix: null, // A chave PIX é configurada no portal e-Rede e usada automaticamente pela API
       brCode: tipoPagamento === 'PIX' ? cobranca.brCode : null,
       expiracao: tipoPagamento === 'PIX' ? (cobranca.expiracao || 3600) : null,
       redeTid: cobranca.rede_tid || null,

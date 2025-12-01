@@ -122,6 +122,17 @@ async function tokenizeCard(cardData, brandName = 'visa') {
 
 /**
  * Cria uma cobrança PIX (QR Code) na e-Rede
+ * 
+ * NOTA IMPORTANTE: A chave PIX não precisa ser enviada na requisição.
+ * A e-Rede usa automaticamente a chave PIX cadastrada no portal (userede.com.br)
+ * associada às credenciais REDE_PV e REDE_TOKEN.
+ * 
+ * Para cadastrar a chave PIX:
+ * 1. Acesse userede.com.br
+ * 2. Login na sua conta
+ * 3. Vá em "Para vender" > PIX > "Quero utilizar Pix"
+ * 4. Aceite os termos e selecione sua agência e conta corrente
+ * 
  * @param {string} txid - Identificador único da transação (26-35 caracteres)
  * @param {number} valor - Valor da cobrança
  * @param {string} solicitacaoPagador - Mensagem para o pagador (opcional)
