@@ -59,56 +59,74 @@ function validateWebhookIP(clientIp) {
 }
 
 /**
- * Valida a assinatura do webhook (HMAC)
+ * Valida a assinatura do webhook (HMAC) - OPCIONAL
+ * NOTA: A e-Rede não permite configurar secret no portal de webhooks.
+ * Esta validação só funciona se a e-Rede enviar assinatura no header (o que pode não acontecer).
+ * A segurança principal deve ser via IP Whitelist (REDE_WEBHOOK_IP_WHITELIST).
+ * 
  * @param {Object} payload - Payload do webhook
- * @param {string} signature - Assinatura recebida
- * @returns {boolean} true se válido
+ * @param {string} signature - Assinatura recebida (opcional)
+ * @returns {boolean} true se válido ou se não houver assinatura/secret
  */
 function validateWebhookSignature(payload, signature) {
   const webhookSecret = process.env.REDE_WEBHOOK_SECRET;
 
-  // Em produção, SEMPRE deve ter secret configurado
+  // Se não houver secret configurado, não valida assinatura (comportamento padrão)
   if (!webhookSecret) {
-    if (process.env.NODE_ENV === 'production') {
-      console.error('❌ CRÍTICO: REDE_WEBHOOK_SECRET não configurado em produção!');
-      return false;
-    }
-    // Em desenvolvimento, ainda exige assinatura se fornecida
+    // Se recebeu assinatura mas não tem secret, apenas loga aviso
     if (signature) {
-      console.warn('⚠️  REDE_WEBHOOK_SECRET não configurado - não é possível validar assinatura');
-      return false;
+      console.warn('⚠️  Webhook recebido com assinatura, mas REDE_WEBHOOK_SECRET não configurado - assinatura ignorada');
     }
-    console.warn('⚠️  REDE_WEBHOOK_SECRET não configurado - validação de assinatura desabilitada (apenas em desenvolvimento)');
-    return true;
+    return true; // Permite webhook sem validação de assinatura
   }
 
-  // Em produção, assinatura é obrigatória
+  // Se houver secret mas não recebeu assinatura, permite (e-Rede pode não enviar)
   if (!signature) {
-    if (process.env.NODE_ENV === 'production') {
-      console.error('❌ Webhook recebido sem assinatura em produção');
-      return false;
-    }
-    console.warn('⚠️  Webhook recebido sem assinatura (desenvolvimento)');
-    return false; // Por padrão, exige assinatura se secret estiver configurado
+    console.warn('⚠️  Webhook recebido sem assinatura (e-Rede pode não enviar assinatura)');
+    return true; // Permite, pois e-Rede pode não enviar assinatura
   }
 
-  // Implementa validação HMAC conforme documentação da e-Rede
-  // A e-Rede pode usar diferentes métodos de validação (HMAC-SHA256, etc)
-  const payloadString = typeof payload === 'string' ? payload : JSON.stringify(payload);
-  const expectedSignature = crypto
-    .createHmac('sha256', webhookSecret)
-    .update(payloadString)
-    .digest('hex');
+  // Se houver secret E assinatura, valida HMAC
+  try {
+    const payloadString = typeof payload === 'string' ? payload : JSON.stringify(payload);
+    const expectedSignature = crypto
+      .createHmac('sha256', webhookSecret)
+      .update(payloadString)
+      .digest('hex');
 
-  // Comparação segura contra timing attacks
-  return crypto.timingSafeEqual(
-    Buffer.from(signature),
-    Buffer.from(expectedSignature)
-  );
+    // Comparação segura contra timing attacks
+    const isValid = crypto.timingSafeEqual(
+      Buffer.from(signature),
+      Buffer.from(expectedSignature)
+    );
+
+    if (!isValid) {
+      console.error('❌ Assinatura do webhook inválida');
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    console.error('❌ Erro ao validar assinatura do webhook:', error.message);
+    return false;
+  }
 }
 
 /**
  * Extrai dados do webhook da e-Rede
+ * 
+ * IMPORTANTE: Diferenças entre PIX e Cartões:
+ * 
+ * - PIX: 
+ *   - Status inicial: AGUARDANDO (cobrança criada, QR Code gerado)
+ *   - Webhook: Avisa quando o PIX foi PAGO pelo usuário
+ *   - Ação: Muda status de AGUARDANDO → CONFIRMADA
+ * 
+ * - Cartões (Crédito/Débito):
+ *   - Status inicial: AUTORIZADA/CAPTURADA (se aprovado) ou NEGADA (se negado)
+ *   - Webhook: Confirma a autorização/captura que JÁ ACONTECEU na criação
+ *   - Ação: Confirma status já existente (idempotência)
+ * 
  * @param {Object} webhookBody - Corpo do webhook recebido
  * @returns {Object|null} Dados extraídos ou null se inválido
  */
@@ -162,6 +180,8 @@ function extractWebhookData(webhookBody) {
     }
 
     // Determina status
+    // NOTA: Para PIX, status será CONFIRMADA (pagamento realizado)
+    // Para cartões, status será AUTORIZADA/CAPTURADA (confirmação da autorização)
     let status = 'CONFIRMADA';
     if (transaction.returnCode !== '00') {
       status = 'NEGADA';
@@ -194,30 +214,45 @@ function extractWebhookData(webhookBody) {
 
 /**
  * Processa um webhook de pagamento confirmado da e-Rede
+ * 
+ * IMPORTANTE: Diferenças entre PIX e Cartões:
+ * 
+ * - PIX: 
+ *   - Cobrança criada com status AGUARDANDO
+ *   - Webhook avisa quando usuário PAGOU o PIX
+ *   - Ação: Muda status de AGUARDANDO → CONFIRMADA e cria transação
+ * 
+ * - Cartões (Crédito/Débito):
+ *   - Transação criada com status AUTORIZADA/CAPTURADA (se aprovado)
+ *   - Webhook CONFIRMA a autorização que já aconteceu
+ *   - Ação: Valida idempotência e confirma transação existente
+ * 
  * @param {Object} webhookBody - Corpo do webhook recebido
- * @param {string} signature - Assinatura do webhook (opcional)
- * @param {string} clientIp - IP do cliente
+ * @param {string} signature - Assinatura do webhook (opcional - e-Rede pode não enviar)
+ * @param {string} clientIp - IP do cliente (validação via REDE_WEBHOOK_IP_WHITELIST)
  * @param {Object} doadorData - Dados opcionais do doador (se fornecidos na criação da cobrança)
  * @returns {Object|null} Resultado do processamento ou null
  */
 async function processWebhook(webhookBody, signature = null, clientIp = null, doadorData = null) {
   try {
-    // 1. Valida IP de origem (se configurado)
+    // 1. Valida IP de origem (se configurado) - PRINCIPAL MÉTODO DE SEGURANÇA
+    // NOTA: A e-Rede não permite configurar secret no portal, então a segurança
+    // principal é via IP Whitelist (REDE_WEBHOOK_IP_WHITELIST)
     if (clientIp && !validateWebhookIP(clientIp)) {
       throw new Error('IP de origem não autorizado');
     }
 
-    // 2. Valida assinatura (obrigatória em produção, opcional em desenvolvimento)
+    // 2. Valida assinatura (OPCIONAL - e-Rede pode não enviar)
+    // NOTA: A e-Rede não permite configurar secret no portal.
+    // A segurança principal é via IP Whitelist (REDE_WEBHOOK_IP_WHITELIST).
     if (signature) {
       if (!validateWebhookSignature(webhookBody, signature)) {
         throw new Error('Assinatura do webhook inválida');
       }
-    } else if (process.env.NODE_ENV === 'production') {
-      // Em produção, assinatura é obrigatória
-      throw new Error('Webhook recebido sem assinatura em produção');
+      console.log('✅ Assinatura do webhook validada com sucesso');
     } else {
-      // Em desenvolvimento, apenas loga aviso
-      console.warn('⚠️  Webhook recebido sem assinatura (desenvolvimento)');
+      // e-Rede pode não enviar assinatura - isso é normal
+      console.log('ℹ️  Webhook recebido sem assinatura (e-Rede pode não enviar)');
     }
 
     // 3. Extrai dados do webhook

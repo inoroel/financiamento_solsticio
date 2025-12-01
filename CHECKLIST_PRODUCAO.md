@@ -12,9 +12,11 @@ Este documento lista todas as configurações necessárias para colocar o sistem
 - [ ] **REDE_TOKEN** - Token de autenticação da e-Rede
   - Onde obter: https://developer.userede.com.br/e-rede → Sua conta → Credenciais
   
-- [ ] **REDE_WEBHOOK_SECRET** - Secret para validação de webhooks
+- [ ] **REDE_WEBHOOK_SECRET** - Secret para validação de webhooks (OPCIONAL)
   - Como gerar: `openssl rand -hex 32`
-  - ⚠️ Configure o mesmo valor na plataforma e-Rede → Configurações de Webhook
+  - ⚠️ NOTA: A e-Rede NÃO permite configurar secret no portal de webhooks
+  - ⚠️ Este secret só será usado se a e-Rede enviar assinatura no header (pode não acontecer)
+  - ⚠️ A segurança principal é via IP Whitelist (REDE_WEBHOOK_IP_WHITELIST)
   
 - [ ] **REDE_ENVIRONMENT** - Ambiente da API
   - Valor: `production` (não use `sandbox` em produção!)
@@ -43,9 +45,11 @@ Este documento lista todas as configurações necessárias para colocar o sistem
 
 ## 🔒 Variáveis de Ambiente Opcionais (Recomendadas)
 
-- [ ] **REDE_WEBHOOK_IP_WHITELIST** - IPs permitidos para webhooks
+- [ ] **REDE_WEBHOOK_IP_WHITELIST** - IPs permitidos para webhooks (RECOMENDADO EM PRODUÇÃO)
+  - ⚠️ PRINCIPAL MÉTODO DE SEGURANÇA (a e-Rede não permite configurar secret no portal)
   - Exemplo: `192.168.1.1,10.0.0.0/8`
-  - Consulte a documentação da e-Rede para obter os IPs de origem
+  - Consulte a documentação da e-Rede para obter os IPs de origem dos webhooks
+  - Se não configurado, webhooks de qualquer IP serão aceitos (apenas em desenvolvimento)
 
 - [ ] **PORT** - Porta do servidor (opcional, Vercel define automaticamente)
 
@@ -95,9 +99,11 @@ npm run verificar-vercel
 
 ### e-Rede
 
-1. Acesse a plataforma e-Rede → Configurações de Webhook
+1. Acesse a plataforma e-Rede → Configurações de Webhook / Criar Notificação Automática
 2. Configure a URL do webhook: `https://seu-projeto.vercel.app/api/webhook/pagamento`
-3. Configure o **Webhook Secret** (mesmo valor de `REDE_WEBHOOK_SECRET`)
+3. ⚠️ NOTA: A e-Rede NÃO permite configurar secret no portal
+4. ⚠️ Configure o tipo de evento (ex: "Estorno", "Pagamento confirmado", etc.)
+5. ⚠️ Configure `REDE_WEBHOOK_IP_WHITELIST` com os IPs da e-Rede (principal método de segurança)
 4. (Opcional) Configure IP Whitelist se disponível
 
 ### Stellar

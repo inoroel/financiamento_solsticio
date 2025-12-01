@@ -70,7 +70,8 @@ Este documento descreve as medidas de segurança implementadas no sistema de doa
 # e-Rede
 REDE_PV=...
 REDE_TOKEN=...
-REDE_WEBHOOK_SECRET=seu_secret_forte_aqui  # OBRIGATÓRIO EM PRODUÇÃO
+REDE_WEBHOOK_SECRET=seu_secret_forte_aqui  # OPCIONAL (e-Rede pode não enviar assinatura)
+REDE_WEBHOOK_IP_WHITELIST=192.168.1.1,10.0.0.0/8  # RECOMENDADO (principal método de segurança)
 
 # Stellar
 STELLAR_SECRET_KEY=...
