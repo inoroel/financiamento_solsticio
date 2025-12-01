@@ -38,6 +38,12 @@ function getAuthHeaders() {
     throw new Error('REDE_PV e REDE_TOKEN devem estar configurados');
   }
 
+  // Log de diagnóstico (sem expor credenciais completas)
+  console.log(`🔐 Usando ambiente: ${ENVIRONMENT}`);
+  console.log(`🔐 API Base URL: ${API_BASE_URL}`);
+  console.log(`🔐 PV configurado: ${PV ? 'Sim (primeiros 4 chars: ' + PV.substring(0, 4) + '...)' : 'Não'}`);
+  console.log(`🔐 TOKEN configurado: ${TOKEN ? 'Sim (primeiros 4 chars: ' + TOKEN.substring(0, 4) + '...)' : 'Não'}`);
+
   return {
     'Authorization': `Basic ${Buffer.from(`${PV}:${TOKEN}`).toString('base64')}`,
     'Content-Type': 'application/json',
@@ -197,14 +203,20 @@ async function createPixCharge(txid, valor, solicitacaoPagador = "Doação para 
       requestBody.description = mensagemSanitizada;
     }
 
+    const headers = {
+      ...getAuthHeaders(),
+      'X-Request-Id': correlationId
+    };
+
+    console.log(`📤 Enviando requisição para: ${API_BASE_URL}${endpoint}`);
+    console.log(`📤 Correlation ID: ${correlationId}`);
+
     const response = await axios.post(
       `${API_BASE_URL}${endpoint}`,
       requestBody,
       {
-        headers: {
-          ...getAuthHeaders(),
-          'X-Request-Id': correlationId
-        }
+        headers,
+        timeout: 30000 // 30 segundos de timeout
       }
     );
 
