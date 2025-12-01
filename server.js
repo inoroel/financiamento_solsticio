@@ -2,7 +2,7 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
-const { testConnection, initializeDatabase } = require('./config/database');
+const { testConnection, initializeDatabase, getDatabaseDiagnostics } = require('./config/database');
 const paymentRoutes = require('./routes/paymentRoutes');
 const { requestLogger, errorHandler, notFoundHandler } = require('./middleware/errorHandler');
 const { helmetConfig } = require('./middleware/security');
@@ -44,12 +44,31 @@ app.use('/api', paymentRoutes);
 
 // Rota de health check
 app.get('/health', async (req, res) => {
-  const dbStatus = await testConnection();
+  const dbTest = await testConnection();
+  const dbStatus = dbTest.success;
   res.status(dbStatus ? 200 : 503).json({
     status: dbStatus ? 'healthy' : 'unhealthy',
     timestamp: new Date().toISOString(),
     database: dbStatus ? 'connected' : 'disconnected'
   });
+});
+
+// Rota de diagnóstico detalhado do banco de dados
+app.get('/test-db', async (req, res) => {
+  try {
+    const diagnostics = await getDatabaseDiagnostics();
+    res.status(200).json({
+      success: true,
+      timestamp: new Date().toISOString(),
+      diagnostics
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
 });
 
 // =================================================================
@@ -65,7 +84,8 @@ async function startServer() {
   try {
     // Testa conexão com banco de dados
     console.log('🔌 Testando conexão com banco de dados...');
-    const dbConnected = await testConnection();
+    const dbTest = await testConnection();
+    const dbConnected = dbTest.success;
     
     if (dbConnected) {
       // Inicializa o banco (cria tabelas se não existirem)
@@ -73,6 +93,9 @@ async function startServer() {
       await initializeDatabase();
     } else {
       console.warn('⚠️  Banco de dados não conectado. O servidor continuará, mas algumas funcionalidades podem não funcionar.');
+      if (dbTest.error) {
+        console.warn('⚠️  Erro de conexão:', dbTest.error);
+      }
     }
 
     // Na Vercel, não precisa fazer listen - ela gerencia isso
@@ -90,7 +113,8 @@ async function startServer() {
         console.log(`   POST   http://localhost:${PORT}/api/confirm-donation`);
         console.log(`   POST   http://localhost:${PORT}/api/check-payment-by-memo`);
         console.log(`   POST   http://localhost:${PORT}/api/webhook/stellar`);
-        console.log(`   GET    http://localhost:${PORT}/health\n`);
+        console.log(`   GET    http://localhost:${PORT}/health`);
+        console.log(`   GET    http://localhost:${PORT}/test-db\n`);
       });
     } else {
       console.log('\n✅ Servidor configurado para Vercel');

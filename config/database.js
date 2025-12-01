@@ -86,20 +86,91 @@ if (useLocalPg) {
 
 /**
  * Testa a conexão com o banco de dados
+ * @returns {Promise<{success: boolean, error?: string, data?: any}>}
  */
 async function testConnection() {
   try {
+    // Verifica se sql está definido
+    if (!sql) {
+      const error = 'sql não está definido. Driver não foi inicializado corretamente.';
+      console.error('❌ Erro ao conectar com banco de dados:', error);
+      return { success: false, error };
+    }
+
     const result = await sql`SELECT NOW() as current_time`;
-    console.log('✅ Conexão com banco de dados estabelecida:', result.rows[0].current_time);
-    return true;
+    const currentTime = result.rows[0]?.current_time;
+    console.log('✅ Conexão com banco de dados estabelecida:', currentTime);
+    return { success: true, data: { currentTime } };
   } catch (error) {
-    console.error('❌ Erro ao conectar com banco de dados:', error.message);
+    const errorMessage = error.message || String(error);
+    console.error('❌ Erro ao conectar com banco de dados:', errorMessage);
     if (dbType === 'local') {
       console.error('💡 Verifique se o PostgreSQL está rodando e se as credenciais no .env estão corretas');
       console.error('💡 Teste a conexão: psql -d financiamento_solsticio');
     }
-    return false;
+    return { success: false, error: errorMessage, stack: error.stack };
   }
+}
+
+/**
+ * Retorna informações detalhadas de diagnóstico sobre o banco de dados
+ * @returns {Promise<Object>} Objeto com informações de diagnóstico
+ */
+async function getDatabaseDiagnostics() {
+  const diagnostics = {
+    // Informações sobre variáveis de ambiente
+    environment: {
+      hasPostgresUrl: !!process.env.POSTGRES_URL,
+      postgresUrlLength: process.env.POSTGRES_URL?.length || 0,
+      hasPostgresPrismaUrl: !!process.env.POSTGRES_PRISMA_URL,
+      hasPostgresUrlNonPooling: !!process.env.POSTGRES_URL_NON_POOLING,
+      vercelEnv: process.env.VERCEL === '1',
+      nodeEnv: process.env.NODE_ENV || 'development',
+      // Informações sobre a URL (sem expor credenciais)
+      postgresUrlPreview: process.env.POSTGRES_URL 
+        ? `${process.env.POSTGRES_URL.substring(0, 20)}...${process.env.POSTGRES_URL.substring(process.env.POSTGRES_URL.length - 10)}`
+        : null
+    },
+    
+    // Informações sobre o driver
+    driver: {
+      type: dbType,
+      isVercelUrl: isVercelUrl,
+      isVercel: isVercel,
+      useLocalPg: useLocalPg,
+      sqlDefined: typeof sql === 'function',
+      poolDefined: !!pool
+    },
+    
+    // Informações sobre módulos
+    modules: {
+      vercelPostgresLoaded: false,
+      pgLoaded: false
+    },
+    
+    // Teste de conexão
+    connectionTest: null
+  };
+
+  // Verifica se os módulos estão carregados
+  try {
+    require.resolve('@vercel/postgres');
+    diagnostics.modules.vercelPostgresLoaded = true;
+  } catch (e) {
+    diagnostics.modules.vercelPostgresLoaded = false;
+  }
+
+  try {
+    require.resolve('pg');
+    diagnostics.modules.pgLoaded = true;
+  } catch (e) {
+    diagnostics.modules.pgLoaded = false;
+  }
+
+  // Executa teste de conexão
+  diagnostics.connectionTest = await testConnection();
+
+  return diagnostics;
 }
 
 /**
@@ -181,5 +252,6 @@ module.exports = {
   sql,
   testConnection,
   initializeDatabase,
+  getDatabaseDiagnostics,
   dbType
 };
