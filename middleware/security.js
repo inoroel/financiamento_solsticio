@@ -55,11 +55,13 @@ const webhookLimiter = rateLimit({
 /**
  * Configuração do Helmet para headers de segurança
  * CSP desabilitado para APIs (não aplicável a JSON APIs)
+ * IMPORTANTE: Não interfere com headers CORS
  */
 const helmetConfig = helmet({
   contentSecurityPolicy: false, // Desabilita CSP para APIs (não necessário para JSON)
   crossOriginEmbedderPolicy: false, // Desabilita para APIs
   crossOriginResourcePolicy: { policy: "cross-origin" }, // Permite recursos cross-origin
+  crossOriginOpenerPolicy: false, // Não interfere com CORS
   hsts: {
     maxAge: 31536000,
     includeSubDomains: true,

@@ -57,26 +57,31 @@ const corsOptions = {
 };
 
 // Handler explícito para OPTIONS (preflight) - DEVE VIR ANTES DE TUDO
-app.options('*', (req, res) => {
-  const origin = req.headers.origin;
-  if (isOriginAllowed(origin)) {
-    res.header('Access-Control-Allow-Origin', origin || '*');
-    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
-    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Request-Id, Accept');
-    res.header('Access-Control-Allow-Credentials', 'true');
-    res.header('Access-Control-Max-Age', '86400'); // 24 horas
-    res.status(200).end();
-  } else {
-    res.status(403).json({ error: 'CORS: Origin not allowed' });
+// Este handler precisa retornar imediatamente, sem passar por outros middlewares
+app.use((req, res, next) => {
+  if (req.method === 'OPTIONS') {
+    const origin = req.headers.origin;
+    if (isOriginAllowed(origin)) {
+      res.setHeader('Access-Control-Allow-Origin', origin || '*');
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Request-Id, Accept');
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+      res.setHeader('Access-Control-Max-Age', '86400'); // 24 horas
+      return res.status(200).end();
+    } else {
+      return res.status(403).json({ error: 'CORS: Origin not allowed' });
+    }
   }
+  next();
 });
 
-// Aplica CORS para todas as rotas
+// Aplica CORS para todas as rotas (para requisições não-OPTIONS)
 app.use(cors(corsOptions));
 
 // =================================================================
 // MIDDLEWARES GLOBAIS DE SEGURANÇA
 // =================================================================
+// Helmet DEPOIS do CORS para não interferir nos headers CORS
 app.use(helmetConfig); // Headers de segurança (XSS, clickjacking, etc)
 app.use(express.json({ limit: '10kb' })); // Limita tamanho do JSON (previne DoS)
 app.use(express.urlencoded({ extended: true, limit: '10kb' })); // Limita tamanho do URL encoded
