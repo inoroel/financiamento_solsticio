@@ -19,11 +19,37 @@ app.use(express.urlencoded({ extended: true, limit: '10kb' })); // Limita tamanh
 
 // CORS configurado de forma segura
 const corsOptions = {
-  origin: process.env.ALLOWED_ORIGINS 
-    ? process.env.ALLOWED_ORIGINS.split(',') 
-    : (process.env.NODE_ENV === 'production' ? false : '*'), // Em produção, deve especificar origens
+  origin: function (origin, callback) {
+    // Se ALLOWED_ORIGINS está configurado, usa ele
+    if (process.env.ALLOWED_ORIGINS) {
+      const allowedOrigins = process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim());
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        if (process.env.NODE_ENV === 'development') {
+          console.warn(`⚠️  CORS: Origem bloqueada: ${origin}. Permitidas: ${allowedOrigins.join(', ')}`);
+        }
+        callback(new Error('Not allowed by CORS'));
+      }
+    } else {
+      // Se não está configurado, permite localhost para desenvolvimento/testes
+      // e também permite requisições sem origin (ex: Postman, curl)
+      if (!origin || origin.includes('localhost') || origin.includes('127.0.0.1')) {
+        callback(null, true);
+      } else if (process.env.NODE_ENV === 'production') {
+        // Em produção sem ALLOWED_ORIGINS configurado, bloqueia outras origens
+        console.warn(`⚠️  CORS: Origem bloqueada em produção: ${origin}. Configure ALLOWED_ORIGINS.`);
+        callback(new Error('CORS: ALLOWED_ORIGINS não configurado. Configure as origens permitidas.'));
+      } else {
+        // Em desenvolvimento, permite tudo
+        callback(null, true);
+      }
+    }
+  },
   credentials: true,
-  optionsSuccessStatus: 200
+  optionsSuccessStatus: 200,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-Id']
 };
 app.use(cors(corsOptions));
 
