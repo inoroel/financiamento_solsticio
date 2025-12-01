@@ -240,8 +240,9 @@ async function processConfirmedTransaction(webhookData, doadorData = null) {
     }
     
     if (!cobranca || cobranca.rows.length === 0) {
-      console.error(`❌ Cobrança não encontrada - txid: ${txid}, provider_tid: ${finalProviderTid}, rede_tid: ${rede_tid}`);
-      throw new Error(`Cobrança ${txid || finalProviderTid || rede_tid} não encontrada`);
+      console.error(`❌ SEGURANÇA: Cobrança não encontrada - txid: ${txid}, provider_tid: ${finalProviderTid}, rede_tid: ${rede_tid}`);
+      console.error(`   ⚠️  PAGAMENTO REJEITADO: Cobrança deve existir antes do pagamento ser processado`);
+      throw new Error(`Cobrança ${txid || finalProviderTid || rede_tid} não encontrada. Pagamento rejeitado por segurança.`);
     }
     
     // Verifica se já foi processada (idempotência) - por txid, provider_tid ou rede_tid

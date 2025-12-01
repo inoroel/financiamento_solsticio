@@ -430,7 +430,10 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
       dadosPagamento = {
         tipo: 'CRIPTO',
         currency: currencyUpper,
-        provider: 'STELLAR'
+        provider: 'STELLAR',
+        memo: cobranca.memo || txid, // IMPORTANTE: Salva o memo para busca posterior
+        paymentMemo: cobranca.memo || txid, // Compatibilidade
+        txid: txid // Salva também o txid para referência
       };
     }
 
@@ -469,10 +472,25 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
     if (!cobrancaSalva) {
       console.error(`❌ ERRO CRÍTICO: Cobrança criada mas não salva no DB: ${txid}`);
       console.error(`   Tipo: ${tipoPagamento}, Provider: ${provider}`);
-      // Não retorna erro aqui, mas loga para debug
-    } else {
-      console.log(`✅ Cobrança confirmada salva no DB: ${cobrancaSalva.txid}`);
+      // CRÍTICO: Se a cobrança não foi salva, não podemos continuar
+      // Isso é uma falha de segurança - a cobrança DEVE existir antes do pagamento
+      return res.status(500).json({
+        error: 'Erro ao salvar cobrança no banco de dados. Tente novamente.',
+        txid: txid
+      });
     }
+    
+    // Verifica se a cobrança realmente foi salva (validação de segurança)
+    const cobrancaVerificada = await getCobranca(cobrancaSalva.txid);
+    if (!cobrancaVerificada) {
+      console.error(`❌ ERRO CRÍTICO: Cobrança salva mas não encontrada no DB: ${cobrancaSalva.txid}`);
+      return res.status(500).json({
+        error: 'Erro ao verificar cobrança no banco de dados. Tente novamente.',
+        txid: cobrancaSalva.txid
+      });
+    }
+    
+    console.log(`✅ Cobrança confirmada salva e verificada no DB: ${cobrancaSalva.txid}`);
 
     // Retorna resposta conforme tipo de pagamento
     const response = {
