@@ -212,7 +212,40 @@ async function processWebhook(webhookBody, signature = null, clientIp = null, do
     if (!cobranca) {
       console.warn(`⚠️  Webhook Stellar recebido para cobrança inexistente: ${webhookData.txid || webhookData.provider_tid}`);
       console.warn(`   Tentou buscar por: txid=${webhookData.txid}, provider_tid=${webhookData.provider_tid}`);
-      // Não bloqueia, mas vai falhar no processConfirmedTransaction se não encontrar
+      
+      // SOLUÇÃO TEMPORÁRIA: Cria a cobrança se não existir (pode acontecer se a criação falhou)
+      // Isso permite processar pagamentos que foram feitos mesmo sem cobrança prévia
+      console.log(`🔄 Tentando criar cobrança automaticamente para txid: ${webhookData.txid}`);
+      try {
+        const { saveCobranca } = require('./dbService');
+        const novaCobranca = await saveCobranca({
+          txid: webhookData.txid,
+          valor: webhookData.valor,
+          status: 'AGUARDANDO', // Será atualizado para CONFIRMADA no processConfirmedTransaction
+          campanhaId: null, // Não temos o cid aqui, mas pode ser atualizado depois
+          tipoPagamento: 'CRIPTO',
+          provider: 'STELLAR',
+          cryptoCurrency: webhookData.currency,
+          cryptoAddress: webhookData.to || null,
+          providerTid: webhookData.provider_tid,
+          dadosPagamento: {
+            memo: webhookData.txid,
+            paymentMemo: webhookData.txid,
+            currency: webhookData.currency,
+            network: 'public' // Assumindo mainnet, pode ser ajustado
+          }
+        });
+        
+        if (novaCobranca) {
+          console.log(`✅ Cobrança criada automaticamente: ${novaCobranca.txid}`);
+          cobranca = await getCobranca(webhookData.txid);
+        } else {
+          console.error(`❌ Falha ao criar cobrança automaticamente para txid: ${webhookData.txid}`);
+        }
+      } catch (error) {
+        console.error(`❌ Erro ao criar cobrança automaticamente:`, error.message);
+        // Continua mesmo assim, pode ser que processConfirmedTransaction consiga criar
+      }
     }
 
     // Verifica se já foi processado (idempotência)

@@ -13,12 +13,21 @@ async function saveCobranca(cobranca) {
       redeTid, providerTid, dadosPagamento, cryptoCurrency, cryptoAddress, dadosDoadorTemp 
     } = cobranca;
     
+    console.log(`\n💾 saveCobranca: Salvando cobrança:`);
+    console.log(`   - txid: ${txid} (tamanho: ${txid?.length})`);
+    console.log(`   - tipoPagamento: ${tipoPagamento}`);
+    console.log(`   - provider: ${provider}`);
+    console.log(`   - valor: ${valor}`);
+    console.log(`   - status: ${status}`);
+    console.log(`   - cryptoCurrency: ${cryptoCurrency}`);
+    console.log(`   - cryptoAddress: ${cryptoAddress}`);
+    
     // Usa provider_tid se fornecido, senão usa rede_tid (compatibilidade)
     const finalProviderTid = providerTid || redeTid || null;
     const finalProvider = provider || 'REDE';
     
     // @vercel/postgres trata JSONB automaticamente quando passamos um objeto
-    await sql`
+    const result = await sql`
       INSERT INTO cobrancas (
         txid, valor, status, campanha_id, tipo_pagamento, provider, chave_pix, brcode, expiracao, 
         rede_tid, provider_tid, dados_pagamento, crypto_currency, crypto_address, dados_doador_temp
@@ -41,12 +50,20 @@ async function saveCobranca(cobranca) {
         crypto_address = EXCLUDED.crypto_address,
         dados_doador_temp = EXCLUDED.dados_doador_temp,
         atualizado_em = CURRENT_TIMESTAMP
+      RETURNING txid, tipo_pagamento, provider, status
     `;
     
-    console.log(`✅ Cobrança ${txid} salva no banco de dados`);
-    return { txid, valor, status, tipoPagamento: tipoPagamento || 'PIX', provider: finalProvider };
+    if (result.rows && result.rows.length > 0) {
+      console.log(`✅ Cobrança ${txid} salva no banco de dados (${result.rows[0].tipo_pagamento}, ${result.rows[0].provider})`);
+      return { txid, valor, status, tipoPagamento: tipoPagamento || 'PIX', provider: finalProvider };
+    } else {
+      console.warn(`⚠️  saveCobranca: INSERT executado mas nenhuma linha retornada para txid: ${txid}`);
+      return { txid, valor, status, tipoPagamento: tipoPagamento || 'PIX', provider: finalProvider };
+    }
   } catch (error) {
     console.error('❌ Erro ao salvar cobrança no banco:', error.message);
+    console.error('   Stack:', error.stack);
+    console.error('   Dados da cobrança:', JSON.stringify({ txid, tipoPagamento, provider, valor }, null, 2));
     return null;
   }
 }

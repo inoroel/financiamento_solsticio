@@ -467,7 +467,11 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
     });
 
     if (!cobrancaSalva) {
-      console.warn(`⚠️  Cobrança criada mas não salva no DB: ${txid}`);
+      console.error(`❌ ERRO CRÍTICO: Cobrança criada mas não salva no DB: ${txid}`);
+      console.error(`   Tipo: ${tipoPagamento}, Provider: ${provider}`);
+      // Não retorna erro aqui, mas loga para debug
+    } else {
+      console.log(`✅ Cobrança confirmada salva no DB: ${cobrancaSalva.txid}`);
     }
 
     // Retorna resposta conforme tipo de pagamento
