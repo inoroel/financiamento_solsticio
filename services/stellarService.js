@@ -31,36 +31,48 @@ function generateStellarURI(destination, amount, currency, memo) {
   const currencyUpper = currency.toUpperCase();
   
   // Constrói o URI baseado na especificação SEP-7
-  // Formato: web+stellar:pay?destination=...&amount=...&memo=...&memo_type=...
-  const params = new URLSearchParams();
+  // IMPORTANTE: Endereços Stellar (começam com G) NÃO devem ser codificados
+  // Vamos construir manualmente para garantir compatibilidade com Freighter
   
-  // Destination (obrigatório)
-  params.append('destination', destination);
+  // Valida o endereço
+  if (!destination || !destination.startsWith('G') || destination.length !== 56) {
+    throw new Error('Endereço Stellar inválido');
+  }
   
-  // Amount (obrigatório) - garantir formato numérico correto
-  params.append('amount', amount.toString());
+  // Constrói os parâmetros manualmente (sem codificar o endereço)
+  const params = [];
+  
+  // Destination (obrigatório) - NÃO codificar endereços Stellar
+  params.push(`destination=${destination}`);
+  
+  // Amount (obrigatório)
+  params.push(`amount=${amount.toString()}`);
   
   // Asset (se não for XLM nativo)
   if (currencyUpper === 'USDC') {
-    params.append('asset_code', USDC_ASSET_CODE);
-    params.append('asset_issuer', USDC_ISSUER);
+    params.push(`asset_code=${USDC_ASSET_CODE}`);
+    params.push(`asset_issuer=${USDC_ISSUER}`);
   }
   
   // Memo (se fornecido)
-  // IMPORTANTE: Algumas carteiras (como Freighter) podem ter problemas com memo_type=text
-  // Vamos usar apenas o memo sem memo_type para melhor compatibilidade
-  // O Freighter geralmente detecta automaticamente que é texto
+  // IMPORTANTE: Para memos simples (apenas alfanuméricos), não precisa codificar
+  // Apenas codificar se tiver caracteres especiais
   if (memo && memo.trim()) {
     const memoTrimmed = memo.trim();
-    // Adicionar memo sem memo_type primeiro (mais compatível com Freighter)
-    params.append('memo', memoTrimmed);
-    // Adicionar memo_type=text como fallback para outras carteiras
-    params.append('memo_type', 'text');
+    // Verificar se o memo tem caracteres que precisam de encoding
+    if (/^[a-zA-Z0-9_-]+$/.test(memoTrimmed)) {
+      // Memo simples - não precisa codificar (melhor compatibilidade com Freighter)
+      params.push(`memo=${memoTrimmed}`);
+    } else {
+      // Memo com caracteres especiais - codificar
+      params.push(`memo=${encodeURIComponent(memoTrimmed)}`);
+    }
+    // Adicionar memo_type=text para compatibilidade
+    params.push(`memo_type=text`);
   }
   
   // Constrói o URI final
-  // Usar toString() que já faz o encoding correto
-  const uri = `web+stellar:pay?${params.toString()}`;
+  const uri = `web+stellar:pay?${params.join('&')}`;
   
   return uri;
 }
@@ -173,25 +185,37 @@ async function createStellarPayment(txid, valor, currency = 'USDC', memo = null)
     const amountInStroops = Math.round(valorValidado * 10000000);
 
     // Gera URI Stellar (SEP-7) para pagamento direto na carteira
+    console.log(`\n🔍 Validando endereço Stellar: ${publicKey}`);
+    console.log(`   - Começa com G: ${publicKey.startsWith('G')}`);
+    console.log(`   - Tamanho: ${publicKey.length} (esperado: 56)`);
+    
     const stellarURI = generateStellarURI(publicKey, valorValidado, currencyUpper, paymentMemo);
     console.log('🔗 URI Stellar gerado:', stellarURI);
+    console.log('   - Tamanho do URI:', stellarURI.length);
     
     // Gera também uma versão alternativa sem memo_type (para compatibilidade com Freighter)
     // IMPORTANTE: O memo SEMPRE deve ser incluído para identificar a transação!
     // Apenas removemos o memo_type, mas o memo continua presente
     let stellarURIAlt = null;
     if (paymentMemo) {
-      const paramsAlt = new URLSearchParams();
-      paramsAlt.append('destination', publicKey);
-      paramsAlt.append('amount', valorValidado.toString());
+      // Constrói manualmente (sem URLSearchParams) para garantir que o endereço não seja codificado
+      const paramsAlt = [];
+      paramsAlt.push(`destination=${publicKey}`); // NÃO codificar endereço
+      paramsAlt.push(`amount=${valorValidado.toString()}`);
       if (currencyUpper === 'USDC') {
-        paramsAlt.append('asset_code', USDC_ASSET_CODE);
-        paramsAlt.append('asset_issuer', USDC_ISSUER);
+        paramsAlt.push(`asset_code=${USDC_ASSET_CODE}`);
+        paramsAlt.push(`asset_issuer=${USDC_ISSUER}`);
       }
       // Versão alternativa: memo SEM memo_type (algumas carteiras preferem assim)
       // O MEMO ESTÁ INCLUÍDO - é essencial para identificar a transação!
-      paramsAlt.append('memo', paymentMemo.trim());
-      stellarURIAlt = `web+stellar:pay?${paramsAlt.toString()}`;
+      const memoTrimmed = paymentMemo.trim();
+      // Para memos simples, não codificar (melhor compatibilidade)
+      if (/^[a-zA-Z0-9_-]+$/.test(memoTrimmed)) {
+        paramsAlt.push(`memo=${memoTrimmed}`);
+      } else {
+        paramsAlt.push(`memo=${encodeURIComponent(memoTrimmed)}`);
+      }
+      stellarURIAlt = `web+stellar:pay?${paramsAlt.join('&')}`;
       console.log('🔗 URI Stellar alternativo (memo incluído, sem memo_type):', stellarURIAlt);
       console.log('⚠️  IMPORTANTE: O memo está presente no URI alternativo para identificação da transação');
     }
