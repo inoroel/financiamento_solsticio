@@ -78,7 +78,10 @@ async function tokenizeCard(cardData, brandName = 'visa') {
       expirationMonth: String(cardData.expirationMonth).padStart(2, '0'),
       expirationYear: String(cardData.expirationYear),
       securityCode: cardData.securityCode,
-      brand: brandName.toLowerCase()
+      brand: brandName.toLowerCase(),
+      email: cardData.email || 'teste@example.com', // Email obrigatório na API e-Rede
+      storageCard: cardData.storageCard || '0', // 0 = não armazenado, 1 = primeira vez, 2 = já armazenado
+      kind: cardData.kind || 'credit' // credit ou debit
     };
 
     const response = await axios.post(
@@ -342,9 +345,10 @@ async function createCreditCardTransaction(txid, valor, cartaoData, parcelas = 1
  * @param {Object} cartaoData - Dados do cartão tokenizado
  * @param {string} bandeira - Bandeira do cartão (Mastercard, Visa ou Elo)
  * @param {Object} recurrenceData - Dados de recorrência/COF (opcional): {subscription, storageCard, brandTid, credentialId}
+ * @param {Object} threeDSecure - Dados de autenticação 3DS (obrigatório para débito)
  * @returns {Object|null} Dados da transação criada ou null em caso de erro
  */
-async function createDebitCardTransaction(txid, valor, cartaoData, bandeira = null, recurrenceData = null) {
+async function createDebitCardTransaction(txid, valor, cartaoData, bandeira = null, recurrenceData = null, threeDSecure = null) {
   try {
     // Validações
     const { validateValor } = require('../utils/validation');
@@ -410,6 +414,17 @@ async function createDebitCardTransaction(txid, valor, cartaoData, bandeira = nu
       }
 
       console.log('🔄 Transação DÉBITO com dados de recorrência/COF configurados');
+    }
+
+    // Adiciona dados de autenticação 3DS (obrigatório para débito)
+    if (threeDSecure && typeof threeDSecure === 'object') {
+      requestBody.threeDSecure = {
+        embedded: threeDSecure.embedded !== false, // Default: true (frictionless)
+        onFailure: threeDSecure.onFailure || 'decline', // 'decline' para débito (obrigatório)
+        ...threeDSecure // Permite outros campos como eci, cavv, xid, etc.
+      };
+
+      console.log('🔒 Transação DÉBITO com autenticação 3DS ativada');
     }
 
     const response = await axios.post(
