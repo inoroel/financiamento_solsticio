@@ -11,12 +11,8 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // =================================================================
-// MIDDLEWARES GLOBAIS DE SEGURANÇA
+// CORS - DEVE SER O PRIMEIRO MIDDLEWARE (antes de tudo)
 // =================================================================
-app.use(helmetConfig); // Headers de segurança (XSS, clickjacking, etc)
-app.use(express.json({ limit: '10kb' })); // Limita tamanho do JSON (previne DoS)
-app.use(express.urlencoded({ extended: true, limit: '10kb' })); // Limita tamanho do URL encoded
-
 // CORS configurado de forma segura
 const corsOptions = {
   origin: function (origin, callback) {
@@ -54,9 +50,20 @@ const corsOptions = {
   optionsSuccessStatus: 200,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-Id', 'Accept'],
-  exposedHeaders: ['Content-Type', 'X-Request-Id']
+  exposedHeaders: ['Content-Type', 'X-Request-Id'],
+  preflightContinue: false
 };
 app.use(cors(corsOptions));
+
+// Tratamento explícito para preflight OPTIONS (garantir que funciona)
+app.options('*', cors(corsOptions));
+
+// =================================================================
+// MIDDLEWARES GLOBAIS DE SEGURANÇA
+// =================================================================
+app.use(helmetConfig); // Headers de segurança (XSS, clickjacking, etc)
+app.use(express.json({ limit: '10kb' })); // Limita tamanho do JSON (previne DoS)
+app.use(express.urlencoded({ extended: true, limit: '10kb' })); // Limita tamanho do URL encoded
 
 app.use(requestLogger); // Logging de requisições
 

@@ -14,6 +14,16 @@ const createChargeLimiter = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
+  skip: (req) => {
+    // Pula rate limiting para requisições OPTIONS (preflight)
+    return req.method === 'OPTIONS';
+  },
+  handler: (req, res) => {
+    // Retorna 429 (Too Many Requests) ao invés de 403
+    res.status(429).json({
+      error: 'Muitas tentativas. Por favor, tente novamente em alguns minutos.'
+    });
+  }
 });
 
 /**

@@ -50,11 +50,30 @@ function errorHandler(err, req, res, next) {
     });
   }
 
+  // Erros de CORS - retorna 403 mas com mensagem clara
+  if (err.message && (err.message.includes('CORS') || err.message.includes('Not allowed by CORS'))) {
+    return res.status(403).json({
+      success: false,
+      error: 'Origem não permitida. Verifique a configuração de CORS.',
+      message: process.env.NODE_ENV === 'development' ? err.message : undefined,
+      origin: req.headers.origin,
+      allowedOrigins: process.env.ALLOWED_ORIGINS || 'localhost (padrão)'
+    });
+  }
+
   // Erros de autenticação/autorização
   if (err.status === 401 || err.name === 'UnauthorizedError') {
     return res.status(401).json({
       success: false,
       error: 'Não autorizado'
+    });
+  }
+
+  // Erros de rate limiting (429)
+  if (err.status === 429) {
+    return res.status(429).json({
+      success: false,
+      error: err.message || 'Muitas requisições. Tente novamente mais tarde.'
     });
   }
 
