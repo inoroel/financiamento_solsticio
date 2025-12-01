@@ -1,5 +1,8 @@
 // Serviço de integração com a rede Stellar (USDC e XLM)
-const { Server, Asset, Keypair, TransactionBuilder, Operation, Networks } = require('@stellar/stellar-sdk');
+const StellarSdk = require('@stellar/stellar-sdk');
+// Na versão 14.x do SDK, Server está em Horizon.Server
+const Server = StellarSdk.Horizon.Server;
+const { Asset, Keypair, TransactionBuilder, Operation, Networks } = StellarSdk;
 const axios = require('axios');
 require('dotenv').config();
 
