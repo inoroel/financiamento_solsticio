@@ -29,27 +29,9 @@ const {
   sanitizeString
 } = require('../utils/validation');
 
-// Handler OPTIONS para todas as rotas (preflight CORS)
-// IMPORTANTE: Deve vir antes de qualquer rota que use rate limiting
-// Este handler é executado ANTES do rate limiter, garantindo que preflight sempre funcione
-router.options('*', (req, res) => {
-  const origin = req.headers.origin;
-  // Permite localhost se ALLOWED_ORIGINS não estiver configurado
-  const allowed = !process.env.ALLOWED_ORIGINS 
-    ? (origin?.includes('localhost') || origin?.includes('127.0.0.1') || !origin)
-    : process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim()).includes(origin || '');
-  
-  if (allowed || !origin) {
-    res.setHeader('Access-Control-Allow-Origin', origin || '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Request-Id, Accept');
-    res.setHeader('Access-Control-Allow-Credentials', 'true');
-    res.setHeader('Access-Control-Max-Age', '86400');
-    return res.status(200).end();
-  } else {
-    return res.status(403).json({ error: 'CORS: Origin not allowed' });
-  }
-});
+// NOTA: O handler OPTIONS para preflight CORS está no server.js
+// O handler global já cuida de todas as requisições OPTIONS antes de chegar nas rotas
+// Não precisamos de um handler específico aqui, pois o Express Router não suporta router.options('*', ...)
 
 /**
  * Detecta bandeira do cartão pelo número
