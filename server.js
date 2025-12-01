@@ -13,35 +13,39 @@ const PORT = process.env.PORT || 3000;
 // =================================================================
 // CORS - DEVE SER O PRIMEIRO MIDDLEWARE (antes de tudo)
 // =================================================================
+// Função para verificar origem permitida
+function isOriginAllowed(origin) {
+  // Permite requisições sem origin (ex: Postman, curl, mobile apps)
+  if (!origin) {
+    return true;
+  }
+
+  // Se ALLOWED_ORIGINS está configurado, usa APENAS a lista (não permite localhost automaticamente)
+  if (process.env.ALLOWED_ORIGINS) {
+    const allowedOrigins = process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim());
+    return allowedOrigins.includes(origin);
+  } else {
+    // Se ALLOWED_ORIGINS NÃO está configurado, permite localhost para desenvolvimento/testes
+    if (origin.includes('localhost') || origin.includes('127.0.0.1')) {
+      return true;
+    } else if (process.env.NODE_ENV === 'production') {
+      // Em produção sem ALLOWED_ORIGINS configurado, bloqueia outras origens
+      return false;
+    } else {
+      // Em desenvolvimento (NODE_ENV !== 'production'), permite tudo
+      return true;
+    }
+  }
+}
+
 // CORS configurado de forma segura
 const corsOptions = {
   origin: function (origin, callback) {
-    // Permite requisições sem origin (ex: Postman, curl, mobile apps)
-    if (!origin) {
-      return callback(null, true);
-    }
-
-    // Se ALLOWED_ORIGINS está configurado, usa APENAS a lista (não permite localhost automaticamente)
-    if (process.env.ALLOWED_ORIGINS) {
-      const allowedOrigins = process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim());
-      if (allowedOrigins.includes(origin)) {
-        callback(null, true);
-      } else {
-        console.warn(`⚠️  CORS: Origem bloqueada: ${origin}. Permitidas: ${allowedOrigins.join(', ')}`);
-        callback(new Error('Not allowed by CORS'));
-      }
+    if (isOriginAllowed(origin)) {
+      callback(null, true);
     } else {
-      // Se ALLOWED_ORIGINS NÃO está configurado, permite localhost para desenvolvimento/testes
-      if (origin.includes('localhost') || origin.includes('127.0.0.1')) {
-        callback(null, true);
-      } else if (process.env.NODE_ENV === 'production') {
-        // Em produção sem ALLOWED_ORIGINS configurado, bloqueia outras origens
-        console.warn(`⚠️  CORS: Origem bloqueada em produção: ${origin}. Configure ALLOWED_ORIGINS ou use localhost.`);
-        callback(new Error('CORS: ALLOWED_ORIGINS não configurado. Configure as origens permitidas.'));
-      } else {
-        // Em desenvolvimento (NODE_ENV !== 'production'), permite tudo
-        callback(null, true);
-      }
+      console.warn(`⚠️  CORS: Origem bloqueada: ${origin}`);
+      callback(new Error('Not allowed by CORS'));
     }
   },
   credentials: true,
@@ -51,10 +55,24 @@ const corsOptions = {
   exposedHeaders: ['Content-Type', 'X-Request-Id'],
   preflightContinue: false
 };
-app.use(cors(corsOptions));
 
-// Tratamento explícito para preflight OPTIONS (garantir que funciona)
-app.options('*', cors(corsOptions));
+// Handler explícito para OPTIONS (preflight) - DEVE VIR ANTES DE TUDO
+app.options('*', (req, res) => {
+  const origin = req.headers.origin;
+  if (isOriginAllowed(origin)) {
+    res.header('Access-Control-Allow-Origin', origin || '*');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Request-Id, Accept');
+    res.header('Access-Control-Allow-Credentials', 'true');
+    res.header('Access-Control-Max-Age', '86400'); // 24 horas
+    res.status(200).end();
+  } else {
+    res.status(403).json({ error: 'CORS: Origin not allowed' });
+  }
+});
+
+// Aplica CORS para todas as rotas
+app.use(cors(corsOptions));
 
 // =================================================================
 // MIDDLEWARES GLOBAIS DE SEGURANÇA
