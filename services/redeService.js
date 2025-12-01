@@ -41,7 +41,9 @@ function getAuthHeaders() {
   return {
     'Authorization': `Basic ${Buffer.from(`${PV}:${TOKEN}`).toString('base64')}`,
     'Content-Type': 'application/json',
-    'User-Agent': 'financiamento-solsticio/1.0'
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Accept': 'application/json',
+    'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7'
   };
 }
 
@@ -247,6 +249,14 @@ async function createPixCharge(txid, valor, solicitacaoPagador = "Doação para 
           errorDetails.message = 'Credenciais e-Rede inválidas ou não configuradas. Verifique REDE_PV e REDE_TOKEN nas variáveis de ambiente da Vercel.';
         } else {
           errorDetails.message = 'Não autorizado. Verifique se REDE_PV e REDE_TOKEN estão corretos.';
+        }
+      } else if (error.response.status === 403) {
+        // CloudFront bloqueando a requisição
+        const isCloudFrontError = typeof error.response.data === 'string' && error.response.data.includes('CloudFront');
+        if (isCloudFrontError) {
+          errorDetails.message = 'A requisição foi bloqueada pelo CloudFront da e-Rede. Isso pode acontecer se: (1) O IP do servidor não está na whitelist da e-Rede, (2) A API está em manutenção, ou (3) Há um problema de configuração na e-Rede. Entre em contato com o suporte da e-Rede.';
+        } else {
+          errorDetails.message = 'Acesso negado pela API e-Rede. Verifique as permissões da sua conta.';
         }
       } else if (error.response.status === 400) {
         errorDetails.message = error.response.data?.returnMessage || 'Dados inválidos na requisição.';
