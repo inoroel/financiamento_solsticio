@@ -163,21 +163,56 @@ async function processWebhook(webhookBody, signature = null, clientIp = null, do
     // Verifica se a cobrança existe no banco (por txid ou memo)
     let cobranca = null;
     if (webhookData.txid) {
+      console.log(`🔍 Buscando cobrança por txid: ${webhookData.txid} (tamanho: ${webhookData.txid.length})`);
       cobranca = await getCobranca(webhookData.txid);
+      if (cobranca) {
+        console.log(`✅ Cobrança encontrada por txid: ${cobranca.txid}`);
+      } else {
+        console.log(`⚠️  Cobrança não encontrada por txid: ${webhookData.txid}`);
+      }
     }
 
     // Se não encontrou por txid, tenta buscar por provider_tid
     if (!cobranca && webhookData.provider_tid) {
+      console.log(`🔍 Buscando cobrança por provider_tid: ${webhookData.provider_tid}`);
       const { sql } = require('../config/database');
       const result = await sql`
         SELECT * FROM cobrancas WHERE provider_tid = ${webhookData.provider_tid}
       `;
       cobranca = result.rows.length > 0 ? result.rows[0] : null;
+      if (cobranca) {
+        console.log(`✅ Cobrança encontrada por provider_tid: ${cobranca.txid}`);
+      }
+    }
+    
+    // Se ainda não encontrou, tenta buscar por memo nos dados_pagamento
+    if (!cobranca && webhookData.txid) {
+      console.log(`🔍 Buscando cobrança por memo nos dados_pagamento: ${webhookData.txid}`);
+      const { sql } = require('../config/database');
+      const allCobrancas = await sql`
+        SELECT * FROM cobrancas 
+        WHERE tipo_pagamento = 'CRIPTO' AND provider = 'STELLAR'
+        ORDER BY criado_em DESC
+        LIMIT 50
+      `;
+      
+      // Verifica se alguma cobrança tem memo que corresponde ao txid
+      for (const c of allCobrancas.rows) {
+        if (c.dados_pagamento && typeof c.dados_pagamento === 'object') {
+          const memo = c.dados_pagamento.memo || c.dados_pagamento.paymentMemo;
+          if (memo === webhookData.txid) {
+            console.log(`✅ Cobrança encontrada por memo nos dados_pagamento: ${c.txid}`);
+            cobranca = c;
+            break;
+          }
+        }
+      }
     }
 
     if (!cobranca) {
       console.warn(`⚠️  Webhook Stellar recebido para cobrança inexistente: ${webhookData.txid || webhookData.provider_tid}`);
-      // Pode ser um pagamento direto, mas vamos processar mesmo assim
+      console.warn(`   Tentou buscar por: txid=${webhookData.txid}, provider_tid=${webhookData.provider_tid}`);
+      // Não bloqueia, mas vai falhar no processConfirmedTransaction se não encontrar
     }
 
     // Verifica se já foi processado (idempotência)

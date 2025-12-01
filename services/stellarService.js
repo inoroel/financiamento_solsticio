@@ -177,7 +177,11 @@ async function createStellarPayment(txid, valor, currency = 'USDC', memo = null)
     }
 
     // Gera memo para identificar a transação (máximo 28 caracteres)
-    const paymentMemo = memo || txid.slice(-28);
+    // IMPORTANTE: Se o txid tem 28 caracteres ou menos, usa o txid completo
+    // Se tiver mais, trunca para os últimos 28 caracteres
+    // Mas preferimos usar o txid completo se couber
+    const paymentMemo = memo || (txid.length <= 28 ? txid : txid.slice(-28));
+    console.log(`📝 Memo gerado: ${paymentMemo} (txid original: ${txid}, tamanho: ${txid.length})`);
 
     // Converte valor para a unidade correta
     // XLM: 1 XLM = 10^7 stroops

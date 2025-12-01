@@ -58,11 +58,29 @@ async function saveCobranca(cobranca) {
  */
 async function getCobranca(txid) {
   try {
+    console.log(`🔍 getCobranca: buscando txid="${txid}" (tamanho: ${txid?.length})`);
     const result = await sql`
       SELECT * FROM cobrancas WHERE txid = ${txid}
     `;
     
-    return result.rows.length > 0 ? result.rows[0] : null;
+    if (result.rows.length > 0) {
+      console.log(`✅ getCobranca: encontrada cobrança txid="${result.rows[0].txid}"`);
+      return result.rows[0];
+    } else {
+      console.log(`⚠️  getCobranca: nenhuma cobrança encontrada com txid="${txid}"`);
+      // Debug: lista algumas cobranças recentes para ver o formato
+      const recent = await sql`
+        SELECT txid, tipo_pagamento, provider, criado_em 
+        FROM cobrancas 
+        WHERE tipo_pagamento = 'CRIPTO' 
+        ORDER BY criado_em DESC 
+        LIMIT 5
+      `;
+      if (recent.rows.length > 0) {
+        console.log(`📋 Cobranças CRIPTO recentes:`, recent.rows.map(r => ({ txid: r.txid, provider: r.provider })));
+      }
+      return null;
+    }
   } catch (error) {
     console.error('❌ Erro ao buscar cobrança:', error.message);
     return null;
@@ -167,6 +185,7 @@ async function processConfirmedTransaction(webhookData, doadorData = null) {
     
     // Se não encontrou por txid, tenta por provider_tid
     if ((!cobranca || cobranca.rows.length === 0) && finalProviderTid) {
+      console.log(`🔍 Buscando cobrança por provider_tid: ${finalProviderTid}`);
       cobranca = await sql`
         SELECT * FROM cobrancas WHERE provider_tid = ${finalProviderTid}
       `;
@@ -174,12 +193,37 @@ async function processConfirmedTransaction(webhookData, doadorData = null) {
     
     // Se não encontrou por provider_tid, tenta por rede_tid (compatibilidade)
     if ((!cobranca || cobranca.rows.length === 0) && rede_tid) {
+      console.log(`🔍 Buscando cobrança por rede_tid: ${rede_tid}`);
       cobranca = await sql`
         SELECT * FROM cobrancas WHERE rede_tid = ${rede_tid}
       `;
     }
     
+    // Se ainda não encontrou, tenta buscar por memo (para Stellar, o memo pode ser o txid)
+    if ((!cobranca || cobranca.rows.length === 0) && txid) {
+      console.log(`🔍 Buscando cobrança por txid (como memo): ${txid}`);
+      // Tenta buscar todas as cobranças e verificar se o memo corresponde
+      const allCobrancas = await sql`
+        SELECT * FROM cobrancas WHERE tipo_pagamento = 'CRIPTO' AND provider = 'STELLAR'
+        ORDER BY criado_em DESC
+        LIMIT 50
+      `;
+      
+      // Verifica se alguma cobrança tem memo que corresponde ao txid
+      for (const c of allCobrancas.rows) {
+        if (c.dados_pagamento && typeof c.dados_pagamento === 'object') {
+          const memo = c.dados_pagamento.memo || c.dados_pagamento.paymentMemo;
+          if (memo === txid) {
+            console.log(`✅ Cobrança encontrada por memo: ${c.txid}`);
+            cobranca = { rows: [c] };
+            break;
+          }
+        }
+      }
+    }
+    
     if (!cobranca || cobranca.rows.length === 0) {
+      console.error(`❌ Cobrança não encontrada - txid: ${txid}, provider_tid: ${finalProviderTid}, rede_tid: ${rede_tid}`);
       throw new Error(`Cobrança ${txid || finalProviderTid || rede_tid} não encontrada`);
     }
     
