@@ -1,4 +1,4 @@
-// Servidor Express - Backend de Pagamentos (e-Rede + Binance Pay)
+// Servidor Express - Backend de Pagamentos (e-Rede + Stellar)
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -87,6 +87,9 @@ async function startServer() {
         console.log(`   GET    http://localhost:${PORT}/api/cobranca/:tid`);
         console.log(`   GET    http://localhost:${PORT}/api/cobranca/txid/:txid`);
         console.log(`   POST   http://localhost:${PORT}/api/webhook/pagamento`);
+        console.log(`   POST   http://localhost:${PORT}/api/confirm-donation`);
+        console.log(`   POST   http://localhost:${PORT}/api/check-payment-by-memo`);
+        console.log(`   POST   http://localhost:${PORT}/api/webhook/stellar`);
         console.log(`   GET    http://localhost:${PORT}/health\n`);
       });
     } else {

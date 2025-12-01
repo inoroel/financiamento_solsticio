@@ -348,6 +348,7 @@ async function getTransacao(txid) {
         t.*,
         c.valor as valor_cobranca,
         c.status as status_cobranca,
+        c.campanha_id,
         d.nome as doador_nome,
         d.whatsapp as doador_whatsapp,
         d.anonimo as doador_anonimo
@@ -378,6 +379,7 @@ async function getTransacaoByRedeTid(rede_tid) {
         t.*,
         c.valor as valor_cobranca,
         c.status as status_cobranca,
+        c.campanha_id,
         d.nome as doador_nome,
         d.whatsapp as doador_whatsapp,
         d.anonimo as doador_anonimo
@@ -396,6 +398,37 @@ async function getTransacaoByRedeTid(rede_tid) {
   }
 }
 
+/**
+ * Busca uma transação pelo provider_tid (genérico para qualquer provider)
+ * @param {string} provider_tid - Transaction ID do provider
+ * @returns {Object|null} Transação encontrada ou null
+ */
+async function getTransacaoByProviderTid(provider_tid) {
+  try {
+    const result = await sql`
+      SELECT 
+        t.*,
+        c.valor as valor_cobranca,
+        c.status as status_cobranca,
+        c.campanha_id,
+        d.nome as doador_nome,
+        d.whatsapp as doador_whatsapp,
+        d.anonimo as doador_anonimo
+      FROM transacoes t
+      LEFT JOIN cobrancas c ON t.cobranca_txid = c.txid
+      LEFT JOIN doadores d ON t.doador_id = d.id
+      WHERE t.provider_tid = ${provider_tid}
+      ORDER BY t.criado_em DESC
+      LIMIT 1
+    `;
+    
+    return result.rows.length > 0 ? result.rows[0] : null;
+  } catch (error) {
+    console.error('❌ Erro ao buscar transação por provider_tid:', error.message);
+    return null;
+  }
+}
+
 module.exports = {
   saveCobranca,
   getCobranca,
@@ -403,6 +436,7 @@ module.exports = {
   saveDoador,
   processConfirmedTransaction,
   getTransacao,
-  getTransacaoByRedeTid
+  getTransacaoByRedeTid,
+  getTransacaoByProviderTid
 };
 

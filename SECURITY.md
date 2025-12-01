@@ -67,17 +67,19 @@ Este documento descreve as medidas de segurança implementadas no sistema de doa
 ### Variáveis de Ambiente Obrigatórias (Produção)
 
 ```env
-# Itaú
-ITAU_CLIENT_ID=...
-ITAU_CLIENT_SECRET=...
-ITAU_API_KEY=...
-ITAU_CHAVE_PIX=...
+# e-Rede
+REDE_PV=...
+REDE_TOKEN=...
+REDE_WEBHOOK_SECRET=seu_secret_forte_aqui  # OBRIGATÓRIO EM PRODUÇÃO
+
+# Stellar
+STELLAR_SECRET_KEY=...
+STELLAR_NETWORK=public
+STELLAR_WEBHOOK_SECRET=seu_secret_forte_aqui  # OBRIGATÓRIO EM PRODUÇÃO
 
 # Segurança
-WEBHOOK_SECRET=seu_secret_forte_aqui  # OBRIGATÓRIO EM PRODUÇÃO
 ALLOWED_ORIGINS=https://seu-dominio.com,https://www.seu-dominio.com  # OBRIGATÓRIO EM PRODUÇÃO
 NODE_ENV=production
-ITAU_REQUIRE_CLIENT_CERT=true  # se o Itaú exigir mTLS
 
 # PostgreSQL
 POSTGRES_URL=...

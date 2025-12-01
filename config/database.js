@@ -9,8 +9,15 @@ let pool = null;
 // Detecta qual driver usar baseado nas variáveis de ambiente
 // Na Vercel, sempre usa @vercel/postgres
 // Localmente, usa pg se POSTGRES_URL não contém 'vercel'
-const isVercel = process.env.VERCEL === '1' || process.env.POSTGRES_URL?.includes('vercel');
-const useLocalPg = !isVercel && process.env.POSTGRES_URL && !process.env.POSTGRES_URL.includes('vercel');
+// Verifica múltiplas variações possíveis da URL da Vercel
+const postgresUrl = process.env.POSTGRES_URL || '';
+const isVercelUrl = postgresUrl.includes('vercel') || 
+                     postgresUrl.includes('vercel-storage') ||
+                     postgresUrl.includes('neon.tech') ||
+                     postgresUrl.includes('neon.tech/') ||
+                     postgresUrl.includes('ep-') && postgresUrl.includes('.postgres');
+const isVercel = process.env.VERCEL === '1' || isVercelUrl;
+const useLocalPg = !isVercel && process.env.POSTGRES_URL && !isVercelUrl;
 
 if (useLocalPg) {
   // Usa pg (PostgreSQL local) em desenvolvimento local

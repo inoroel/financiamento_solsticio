@@ -10,7 +10,7 @@ async function getCobrancaByRedeTid(rede_tid) {
     const result = await sql`
       SELECT * FROM cobrancas WHERE rede_tid = ${rede_tid}
     `;
-    
+
     return result.rows.length > 0 ? result.rows[0] : null;
   } catch (error) {
     console.error('❌ Erro ao buscar cobrança por rede_tid:', error.message);
@@ -25,7 +25,7 @@ async function getCobrancaByRedeTid(rede_tid) {
  */
 function validateWebhookIP(clientIp) {
   const ipWhitelist = process.env.REDE_WEBHOOK_IP_WHITELIST;
-  
+
   if (!ipWhitelist) {
     // Se não houver whitelist configurada, permite em desenvolvimento
     if (process.env.NODE_ENV === 'production') {
@@ -33,14 +33,14 @@ function validateWebhookIP(clientIp) {
     }
     return true; // Permite se não houver whitelist (desenvolvimento)
   }
-  
+
   const allowedIPs = ipWhitelist.split(',').map(ip => ip.trim());
-  
+
   // Verifica se o IP está na whitelist
   if (allowedIPs.includes(clientIp)) {
     return true;
   }
-  
+
   // Verifica ranges CIDR (básico)
   for (const allowedIP of allowedIPs) {
     if (allowedIP.includes('/')) {
@@ -53,7 +53,7 @@ function validateWebhookIP(clientIp) {
       }
     }
   }
-  
+
   console.error(`❌ IP ${clientIp} não está na whitelist permitida`);
   return false;
 }
@@ -66,7 +66,7 @@ function validateWebhookIP(clientIp) {
  */
 function validateWebhookSignature(payload, signature) {
   const webhookSecret = process.env.REDE_WEBHOOK_SECRET;
-  
+
   // Em produção, SEMPRE deve ter secret configurado
   if (!webhookSecret) {
     if (process.env.NODE_ENV === 'production') {
@@ -81,7 +81,7 @@ function validateWebhookSignature(payload, signature) {
     console.warn('⚠️  REDE_WEBHOOK_SECRET não configurado - validação de assinatura desabilitada (apenas em desenvolvimento)');
     return true;
   }
-  
+
   // Em produção, assinatura é obrigatória
   if (!signature) {
     if (process.env.NODE_ENV === 'production') {
@@ -91,7 +91,7 @@ function validateWebhookSignature(payload, signature) {
     console.warn('⚠️  Webhook recebido sem assinatura (desenvolvimento)');
     return false; // Por padrão, exige assinatura se secret estiver configurado
   }
-  
+
   // Implementa validação HMAC conforme documentação da e-Rede
   // A e-Rede pode usar diferentes métodos de validação (HMAC-SHA256, etc)
   const payloadString = typeof payload === 'string' ? payload : JSON.stringify(payload);
@@ -99,7 +99,7 @@ function validateWebhookSignature(payload, signature) {
     .createHmac('sha256', webhookSecret)
     .update(payloadString)
     .digest('hex');
-  
+
   // Comparação segura contra timing attacks
   return crypto.timingSafeEqual(
     Buffer.from(signature),
@@ -115,21 +115,44 @@ function validateWebhookSignature(payload, signature) {
 function extractWebhookData(webhookBody) {
   try {
     // O formato do webhook da e-Rede pode variar
-    // Aqui assumimos um formato comum baseado na documentação
-    const transaction = webhookBody.transaction || webhookBody;
-    
+    // Suporta formato legado (transaction) e novo formato de eventos (PIX)
+    let transaction = webhookBody.transaction || webhookBody;
+
+    // Tratamento específico para formato de eventos (ex: PIX)
+    if (webhookBody.events && webhookBody.data) {
+      // Exemplo: { events: ['PV.UPDATE_TRANSACTION_PIX'], data: { id: '...' } }
+      const isPixEvent = webhookBody.events.some(e => e.includes('PIX'));
+
+      return {
+        rede_tid: webhookBody.data.id, // ID da transação no objeto data
+        provider_tid: webhookBody.data.id,
+        provider: 'REDE',
+        txid: webhookBody.data.id, // Usa ID como referência se não houver outra
+        tipo_pagamento: isPixEvent ? 'PIX' : 'DESCONHECIDO',
+        valor: null, // Valor geralmente não vem no payload de evento simples
+        status: 'CONFIRMADA', // Assume confirmada se recebeu evento de update/sucesso
+        horario: new Date().toISOString(),
+        returnCode: '00',
+        returnMessage: 'Webhook Event Received',
+        authorizationCode: null,
+        bandeira: null,
+        parcelas: 1,
+        rawData: webhookBody
+      };
+    }
+
     // Valida e sanitiza TID (Transaction ID da Rede)
     const rede_tid = transaction.tid || transaction.reference || webhookBody.tid;
     if (!rede_tid || typeof rede_tid !== 'string') {
       throw new Error('TID não encontrado ou inválido no webhook');
     }
-    
+
     // Valida valor monetário (em centavos na e-Rede)
     const valor = transaction.amount ? parseFloat(transaction.amount) / 100 : null;
     if (valor !== null && (isNaN(valor) || valor <= 0)) {
       throw new Error('Valor do webhook inválido');
     }
-    
+
     // Determina tipo de pagamento
     let tipoPagamento = 'PIX';
     if (transaction.kind === 'credit') {
@@ -137,7 +160,7 @@ function extractWebhookData(webhookBody) {
     } else if (transaction.kind === 'debit') {
       tipoPagamento = 'DEBITO';
     }
-    
+
     // Determina status
     let status = 'CONFIRMADA';
     if (transaction.returnCode !== '00') {
@@ -145,7 +168,7 @@ function extractWebhookData(webhookBody) {
     } else if (transaction.status) {
       status = transaction.status.toUpperCase();
     }
-    
+
     return {
       rede_tid,
       provider_tid: rede_tid, // provider_tid genérico (mesmo valor para e-Rede)
@@ -183,7 +206,7 @@ async function processWebhook(webhookBody, signature = null, clientIp = null, do
     if (clientIp && !validateWebhookIP(clientIp)) {
       throw new Error('IP de origem não autorizado');
     }
-    
+
     // 2. Valida assinatura (obrigatória em produção, opcional em desenvolvimento)
     if (signature) {
       if (!validateWebhookSignature(webhookBody, signature)) {
@@ -196,30 +219,30 @@ async function processWebhook(webhookBody, signature = null, clientIp = null, do
       // Em desenvolvimento, apenas loga aviso
       console.warn('⚠️  Webhook recebido sem assinatura (desenvolvimento)');
     }
-    
+
     // 3. Extrai dados do webhook
     const webhookData = extractWebhookData(webhookBody);
     if (!webhookData || !webhookData.rede_tid) {
       throw new Error('Dados do webhook inválidos ou TID não encontrado');
     }
-    
+
     // 4. Verifica se a cobrança existe no banco (por rede_tid ou txid)
     let cobranca = null;
     if (webhookData.rede_tid) {
       // Busca por rede_tid primeiro
       cobranca = await getCobrancaByRedeTid(webhookData.rede_tid);
     }
-    
+
     // Se não encontrou por rede_tid, tenta por txid
     if (!cobranca && webhookData.txid) {
       cobranca = await getCobranca(webhookData.txid);
     }
-    
+
     if (!cobranca) {
       console.warn(`⚠️  Webhook e-Rede recebido para cobrança inexistente: ${webhookData.rede_tid || webhookData.txid}`);
       // Pode ser uma cobrança criada externamente, mas vamos processar mesmo assim
     }
-    
+
     // 5. Verifica se já foi processado (idempotência)
     // Isso evita processar o mesmo webhook múltiplas vezes
     const existingTransaction = await require('./dbService').getTransacaoByRedeTid(webhookData.rede_tid);
@@ -231,7 +254,7 @@ async function processWebhook(webhookBody, signature = null, clientIp = null, do
         transacao: existingTransaction
       };
     }
-    
+
     // 6. Recupera dados do doador da cobrança (se não fornecidos explicitamente)
     let dadosDoadorFinal = doadorData;
     if (!dadosDoadorFinal && cobranca && cobranca.dados_doador_temp) {
@@ -247,25 +270,25 @@ async function processWebhook(webhookBody, signature = null, clientIp = null, do
       }
       dadosDoadorFinal = dadosDoadorTemp;
     }
-    
+
     // 7. Processa a transação confirmada usando controle de transação
     // IMPORTANTE: Esta é a ÚNICA função que salva dados do doador na tabela 'doadores'
     // Os dados só são persistidos APÓS confirmação do pagamento via webhook
     const result = await processConfirmedTransaction(webhookData, dadosDoadorFinal);
-    
+
     if (!result) {
       throw new Error('Falha ao processar transação no banco de dados');
     }
-    
+
     console.log(`✅ Webhook e-Rede processado com sucesso para tid: ${webhookData.rede_tid}`);
-    
+
     return {
       success: true,
       message: 'Transação confirmada e processada',
       transacao: result.transacao,
       doador: result.doador
     };
-    
+
   } catch (error) {
     console.error('❌ Erro ao processar webhook e-Rede:', error.message);
     return {

@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS cobrancas (
     criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     atualizado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT check_tipo_pagamento CHECK (tipo_pagamento IN ('PIX', 'CREDITO', 'DEBITO', 'CRIPTO')),
-    CONSTRAINT check_provider CHECK (provider IN ('REDE', 'ITAU', 'BINANCE_PAY'))
+    CONSTRAINT check_provider CHECK (provider IN ('REDE', 'STELLAR'))
 );
 
 -- Tabela de doadores
@@ -53,7 +53,7 @@ CREATE TABLE IF NOT EXISTS transacoes (
     dados_webhook JSONB,
     criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT check_tipo_pagamento_transacoes CHECK (tipo_pagamento IN ('PIX', 'CREDITO', 'DEBITO', 'CRIPTO')),
-    CONSTRAINT check_provider_transacoes CHECK (provider IN ('REDE', 'ITAU', 'BINANCE_PAY'))
+    CONSTRAINT check_provider_transacoes CHECK (provider IN ('REDE', 'STELLAR'))
 );
 
 -- Índices para melhor performance

@@ -185,9 +185,10 @@ Resposta esperada:
 Após criar o banco com sucesso:
 
 1. ✅ Configure as variáveis da e-Rede (`REDE_PV`, `REDE_TOKEN`, etc)
-2. ✅ Teste a criação de uma cobrança PIX
-3. ✅ Implemente Binance Pay (Fase 3)
-4. ✅ Configure webhooks na plataforma e-Rede
+2. ✅ Configure as variáveis do Stellar (`STELLAR_SECRET_KEY`, `STELLAR_NETWORK`, etc)
+3. ✅ Teste a criação de uma cobrança PIX
+4. ✅ Teste a criação de uma cobrança Stellar (USDC/XLM)
+5. ✅ Configure webhooks na plataforma e-Rede
 
 ## 🔗 Links Úteis
 
