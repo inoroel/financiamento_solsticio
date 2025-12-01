@@ -21,27 +21,25 @@ const corsOptions = {
       return callback(null, true);
     }
 
-    // Se ALLOWED_ORIGINS está configurado, usa ele
+    // Se ALLOWED_ORIGINS está configurado, usa APENAS a lista (não permite localhost automaticamente)
     if (process.env.ALLOWED_ORIGINS) {
       const allowedOrigins = process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim());
       if (allowedOrigins.includes(origin)) {
         callback(null, true);
       } else {
-        if (process.env.NODE_ENV === 'development') {
-          console.warn(`⚠️  CORS: Origem bloqueada: ${origin}. Permitidas: ${allowedOrigins.join(', ')}`);
-        }
+        console.warn(`⚠️  CORS: Origem bloqueada: ${origin}. Permitidas: ${allowedOrigins.join(', ')}`);
         callback(new Error('Not allowed by CORS'));
       }
     } else {
-      // Se não está configurado, permite localhost para desenvolvimento/testes
+      // Se ALLOWED_ORIGINS NÃO está configurado, permite localhost para desenvolvimento/testes
       if (origin.includes('localhost') || origin.includes('127.0.0.1')) {
         callback(null, true);
       } else if (process.env.NODE_ENV === 'production') {
         // Em produção sem ALLOWED_ORIGINS configurado, bloqueia outras origens
-        console.warn(`⚠️  CORS: Origem bloqueada em produção: ${origin}. Configure ALLOWED_ORIGINS.`);
+        console.warn(`⚠️  CORS: Origem bloqueada em produção: ${origin}. Configure ALLOWED_ORIGINS ou use localhost.`);
         callback(new Error('CORS: ALLOWED_ORIGINS não configurado. Configure as origens permitidas.'));
       } else {
-        // Em desenvolvimento, permite tudo
+        // Em desenvolvimento (NODE_ENV !== 'production'), permite tudo
         callback(null, true);
       }
     }
