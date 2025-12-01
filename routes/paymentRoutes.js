@@ -292,9 +292,8 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
           || cobranca?.message 
           || 'Não foi possível gerar a cobrança PIX na e-Rede.';
         
-        const statusCode = cobranca?.errorDetails?.status === 401 || cobranca?.errorDetails?.status === 403
-          ? 401
-          : cobranca?.errorDetails?.status || 500;
+        // Preserva o status code original (403 para CloudFront, 401 para credenciais, etc)
+        const statusCode = cobranca?.errorDetails?.status || 500;
         
         return res.status(statusCode).json({
           error: errorMessage,
