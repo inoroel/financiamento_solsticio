@@ -161,21 +161,28 @@ async function createPixCharge(txid, valor, solicitacaoPagador = "Doação para 
       mensagemSanitizada = mensagemSanitizada.slice(0, 140);
     }
 
-    // Valida expiração (máximo 24 horas, padrão 3600 se não informado)
-    const expiracaoValidada = expiracao ? Math.min(Math.max(parseInt(expiracao) || 3600, 60), 86400) : 3600;
+    // Valida expiração (máximo 15 dias, padrão 1 hora se não informado)
+    const expiracaoSegundos = expiracao ? Math.min(Math.max(parseInt(expiracao) || 3600, 60), 1296000) : 3600; // Máximo 15 dias (1296000 segundos)
+    
+    // Calcula data/hora de expiração no formato YYYY-MM-DDThh:mm:ss
+    const dataExpiracao = new Date(Date.now() + expiracaoSegundos * 1000);
+    const dataExpiracaoFormatada = dataExpiracao.toISOString().slice(0, 19); // Remove milissegundos e timezone
 
     console.log(`\n📝 Criando cobrança PIX e-Rede com txid: ${txid} e valor: ${valorValidado}`);
+    console.log(`📅 Expiração: ${dataExpiracaoFormatada} (${expiracaoSegundos} segundos)`);
 
     const endpoint = '/v2/transactions';
     const correlationId = generateCorrelationId();
 
     // Estrutura da requisição para PIX conforme documentação e-Rede
+    // Documentação: Manual p.6437-6451
     const requestBody = {
-      capture: true,
       kind: 'pix',
-      amount: Math.round(valorValidado * 100), // Valor em centavos
       reference: txid,
-      expirationTime: expiracaoValidada
+      amount: String(Math.round(valorValidado * 100)), // Valor em centavos (string conforme documentação)
+      qrCode: {
+        'Date timeExpiration': dataExpiracaoFormatada // Formato: YYYY-MM-DDThh:mm:ss
+      }
     };
 
     // Adiciona mensagem se fornecida
@@ -197,27 +204,50 @@ async function createPixCharge(txid, valor, solicitacaoPagador = "Doação para 
     console.log('✅ COBRANÇA PIX e-Rede CRIADA COM SUCESSO!');
 
     // A e-Rede retorna o QR Code e Transaction ID (tid)
+    // Documentação: Manual p.6500-6504
+    const qrCodeData = response.data.qrCodeResponse?.qrCodeData 
+      || response.data.qrCode 
+      || response.data.qrcode 
+      || null;
+    
     return {
-      status: response.data.returnCode === '00' ? 'ATIVA' : 'ERRO',
+      status: response.data.qrCodeResponse?.status === 'Pending' || response.data.returnCode === '00' ? 'ATIVA' : 'ERRO',
       txid: txid,
       rede_tid: response.data.tid || response.data.reference,
-      brCode: response.data.qrCode || response.data.qrcode || null,
-      expiracao: expiracaoValidada,
+      brCode: qrCodeData,
+      expiracao: expiracaoSegundos,
       valor: valorValidado,
-      criadoEm: response.data.dateTime || new Date().toISOString(),
-      returnCode: response.data.returnCode,
-      returnMessage: response.data.returnMessage
+      criadoEm: response.data.qrCodeResponse?.['Date time'] || response.data.dateTime || new Date().toISOString(),
+      returnCode: response.data.qrCodeResponse?.returnCode || response.data.returnCode,
+      returnMessage: response.data.qrCodeResponse?.returnMessage || response.data.returnMessage
     };
 
   } catch (error) {
     console.error('❌ ERRO AO CRIAR COBRANÇA PIX e-Rede ---');
+    let errorDetails = {
+      message: error.message || 'Erro desconhecido',
+      status: null,
+      data: null
+    };
+    
     if (error.response) {
+      errorDetails.status = error.response.status;
+      errorDetails.data = error.response.data;
       console.error('Status:', error.response.status);
       console.error('Data:', JSON.stringify(error.response.data, null, 2));
+    } else if (error.request) {
+      errorDetails.message = 'Erro de conexão com a API e-Rede. Verifique suas credenciais e conexão.';
+      console.error('Erro de requisição:', error.request);
     } else {
       console.error('Erro:', error.message);
     }
-    return null;
+    
+    // Retorna objeto com erro ao invés de null para melhor diagnóstico
+    return {
+      error: true,
+      errorDetails: errorDetails,
+      message: errorDetails.message
+    };
   }
 }
 

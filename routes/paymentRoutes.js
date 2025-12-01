@@ -280,9 +280,19 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
 
       cobranca = await createPixCharge(txid, valorValidado, solicitacaoPagador);
 
-      if (!cobranca) {
-        return res.status(500).json({
-          error: 'Não foi possível gerar a cobrança PIX na e-Rede.'
+      if (!cobranca || cobranca.error) {
+        // Se retornou erro, inclui detalhes para diagnóstico
+        const errorMessage = cobranca?.errorDetails?.data?.returnMessage 
+          || cobranca?.message 
+          || 'Não foi possível gerar a cobrança PIX na e-Rede.';
+        
+        const statusCode = cobranca?.errorDetails?.status === 401 || cobranca?.errorDetails?.status === 403
+          ? 401
+          : cobranca?.errorDetails?.status || 500;
+        
+        return res.status(statusCode).json({
+          error: errorMessage,
+          details: process.env.NODE_ENV === 'development' ? cobranca?.errorDetails : undefined
         });
       }
     } else if (tipoPagamento === 'CREDITO') {
