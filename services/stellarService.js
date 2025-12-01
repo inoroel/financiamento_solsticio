@@ -233,6 +233,22 @@ async function createStellarPayment(txid, valor, currency = 'USDC', memo = null)
     if (stellarURIAlt) {
       qrCodeAltBase64 = await generateStellarQRCode(stellarURIAlt);
     }
+    
+    // Gera QR codes separados: um com endereço/valor e outro com memo
+    // Isso pode funcionar melhor com Freighter que não aceita URI SEP-7 completo
+    let qrCodeAddressBase64 = null;
+    let qrCodeMemoBase64 = null;
+    
+    // QR Code 1: Apenas o endereço (para escanear e preencher valor manualmente)
+    const addressOnly = publicKey;
+    qrCodeAddressBase64 = await generateStellarQRCode(addressOnly);
+    console.log('✅ QR Code do endereço gerado');
+    
+    // QR Code 2: Apenas o memo (para copiar/preencher manualmente)
+    if (paymentMemo) {
+      qrCodeMemoBase64 = await generateStellarQRCode(paymentMemo);
+      console.log('✅ QR Code do memo gerado');
+    }
 
     // Retorna dados do pagamento
     // O usuário enviará o pagamento para a conta pública com o memo
@@ -252,6 +268,8 @@ async function createStellarPayment(txid, valor, currency = 'USDC', memo = null)
       stellar_uri_alt: stellarURIAlt, // URI alternativo sem memo_type (para Freighter)
       qr_code: qrCodeBase64, // QR code em base64 para escanear
       qr_code_alt: qrCodeAltBase64, // QR code alternativo sem memo_type
+      qr_code_address: qrCodeAddressBase64, // QR code apenas com o endereço Stellar
+      qr_code_memo: qrCodeMemoBase64, // QR code apenas com o memo
       created_at: new Date().toISOString()
     };
 

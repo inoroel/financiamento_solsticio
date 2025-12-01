@@ -494,6 +494,8 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
       response.stellar_uri_alt = cobranca.stellar_uri_alt; // URI alternativo sem memo_type (para Freighter)
       response.qr_code = cobranca.qr_code; // QR code em base64 para escanear
       response.qr_code_alt = cobranca.qr_code_alt; // QR code alternativo sem memo_type
+      response.qr_code_address = cobranca.qr_code_address; // QR code apenas com o endereço Stellar
+      response.qr_code_memo = cobranca.qr_code_memo; // QR code apenas com o memo
     } else {
       response.autorizacao = {
         codigo: cobranca.authorizationCode,
