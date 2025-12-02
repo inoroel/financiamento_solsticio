@@ -13,6 +13,11 @@ async function saveCobranca(cobranca) {
       redeTid, providerTid, dadosPagamento, cryptoCurrency, cryptoAddress, dadosDoadorTemp 
     } = cobranca;
     
+    // Validação crítica
+    if (!txid || typeof txid !== 'string' || txid.length < 10) {
+      throw new Error(`TXID inválido: ${txid}`);
+    }
+    
     console.log(`\n💾 saveCobranca: Salvando cobrança:`);
     console.log(`   - txid: ${txid} (tamanho: ${txid?.length})`);
     console.log(`   - tipoPagamento: ${tipoPagamento}`);
@@ -21,6 +26,11 @@ async function saveCobranca(cobranca) {
     console.log(`   - status: ${status}`);
     console.log(`   - cryptoCurrency: ${cryptoCurrency}`);
     console.log(`   - cryptoAddress: ${cryptoAddress}`);
+    
+    // Verifica se sql está disponível
+    if (!sql) {
+      throw new Error('sql não está definido. Banco de dados não inicializado.');
+    }
     
     // Usa provider_tid se fornecido, senão usa rede_tid (compatibilidade)
     const finalProviderTid = providerTid || redeTid || null;
@@ -50,21 +60,30 @@ async function saveCobranca(cobranca) {
         crypto_address = EXCLUDED.crypto_address,
         dados_doador_temp = EXCLUDED.dados_doador_temp,
         atualizado_em = CURRENT_TIMESTAMP
-      RETURNING txid, tipo_pagamento, provider, status
+      RETURNING txid, tipo_pagamento, provider, status, criado_em
     `;
     
     if (result.rows && result.rows.length > 0) {
       console.log(`✅ Cobrança ${txid} salva no banco de dados (${result.rows[0].tipo_pagamento}, ${result.rows[0].provider})`);
+      
+      // VERIFICAÇÃO CRÍTICA: Confirma que a cobrança realmente foi salva
+      const cobrancaVerificada = await getCobranca(txid);
+      if (!cobrancaVerificada) {
+        console.error(`❌ ERRO CRÍTICO: Cobrança salva mas não encontrada imediatamente após INSERT: ${txid}`);
+        throw new Error(`Falha ao verificar cobrança salva: ${txid}`);
+      }
+      
+      console.log(`✅ Cobrança ${txid} verificada e confirmada no banco`);
       return { txid, valor, status, tipoPagamento: tipoPagamento || 'PIX', provider: finalProvider };
     } else {
-      console.warn(`⚠️  saveCobranca: INSERT executado mas nenhuma linha retornada para txid: ${txid}`);
-      return { txid, valor, status, tipoPagamento: tipoPagamento || 'PIX', provider: finalProvider };
+      console.error(`❌ ERRO CRÍTICO: INSERT executado mas nenhuma linha retornada para txid: ${txid}`);
+      throw new Error(`Falha ao salvar cobrança: nenhuma linha retornada para ${txid}`);
     }
   } catch (error) {
     console.error('❌ Erro ao salvar cobrança no banco:', error.message);
     console.error('   Stack:', error.stack);
     console.error('   Dados da cobrança:', JSON.stringify({ txid, tipoPagamento, provider, valor }, null, 2));
-    return null;
+    throw error; // Lança o erro em vez de retornar null
   }
 }
 
@@ -75,31 +94,55 @@ async function saveCobranca(cobranca) {
  */
 async function getCobranca(txid) {
   try {
+    if (!txid || typeof txid !== 'string') {
+      console.error(`❌ getCobranca: txid inválido: ${txid}`);
+      return null;
+    }
+    
     console.log(`🔍 getCobranca: buscando txid="${txid}" (tamanho: ${txid?.length})`);
+    
+    // Verifica se sql está disponível
+    if (!sql) {
+      console.error(`❌ getCobranca: sql não está definido. Banco não inicializado.`);
+      return null;
+    }
+    
     const result = await sql`
       SELECT * FROM cobrancas WHERE txid = ${txid}
     `;
     
-    if (result.rows.length > 0) {
+    if (result.rows && result.rows.length > 0) {
       console.log(`✅ getCobranca: encontrada cobrança txid="${result.rows[0].txid}"`);
+      console.log(`   - Tipo: ${result.rows[0].tipo_pagamento}, Provider: ${result.rows[0].provider}`);
+      console.log(`   - Status: ${result.rows[0].status}, Valor: ${result.rows[0].valor}`);
       return result.rows[0];
     } else {
       console.log(`⚠️  getCobranca: nenhuma cobrança encontrada com txid="${txid}"`);
       // Debug: lista algumas cobranças recentes para ver o formato
-      const recent = await sql`
-        SELECT txid, tipo_pagamento, provider, criado_em 
-        FROM cobrancas 
-        WHERE tipo_pagamento = 'CRIPTO' 
-        ORDER BY criado_em DESC 
-        LIMIT 5
-      `;
-      if (recent.rows.length > 0) {
-        console.log(`📋 Cobranças CRIPTO recentes:`, recent.rows.map(r => ({ txid: r.txid, provider: r.provider })));
+      try {
+        const recent = await sql`
+          SELECT txid, tipo_pagamento, provider, criado_em, status
+          FROM cobrancas 
+          WHERE tipo_pagamento = 'CRIPTO' 
+          ORDER BY criado_em DESC 
+          LIMIT 10
+        `;
+        if (recent.rows && recent.rows.length > 0) {
+          console.log(`📋 Cobranças CRIPTO recentes (últimas 10):`);
+          recent.rows.forEach((r, i) => {
+            console.log(`   ${i + 1}. txid="${r.txid}" (tamanho: ${r.txid?.length}), provider="${r.provider}", status="${r.status}"`);
+          });
+        } else {
+          console.log(`⚠️  Nenhuma cobrança CRIPTO encontrada no banco`);
+        }
+      } catch (debugError) {
+        console.error(`❌ Erro ao buscar cobranças recentes para debug:`, debugError.message);
       }
       return null;
     }
   } catch (error) {
     console.error('❌ Erro ao buscar cobrança:', error.message);
+    console.error('   Stack:', error.stack);
     return null;
   }
 }
