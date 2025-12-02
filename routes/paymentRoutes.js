@@ -469,7 +469,7 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
         provider: provider,
         chavePix: null, // A chave PIX é configurada no portal e-Rede e usada automaticamente pela API
         brCode: tipoPagamento === 'PIX' ? cobranca.brCode : null,
-        expiracao: tipoPagamento === 'PIX' ? (cobranca.expiracao || 3600) : null,
+        expiracao: tipoPagamento === 'PIX' ? (cobranca.expiracao || 3600) : (tipoPagamento === 'CRIPTO' ? 2592000 : 3600), // 30 dias para CRIPTO, 1 hora para outros
         redeTid: cobranca.rede_tid || null,
         providerTid: cobranca.provider_tid || cobranca.rede_tid || null,
         cryptoCurrency: tipoPagamento === 'CRIPTO' ? (cobranca.currency || currencyUpper) : null,

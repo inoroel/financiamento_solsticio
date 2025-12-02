@@ -344,6 +344,11 @@ async function processConfirmedTransaction(webhookData, doadorData = null) {
     }
     const dadosDoadorFinal = doadorData || dadosDoadorTemp || null;
     
+    console.log(`\n👤 Dados do doador para processamento:`);
+    console.log(`   - doadorData fornecido: ${doadorData ? 'SIM' : 'NÃO'}`);
+    console.log(`   - dados_doador_temp na cobrança: ${dadosDoadorTemp ? 'SIM' : 'NÃO'}`);
+    console.log(`   - dadosDoadorFinal: ${dadosDoadorFinal ? JSON.stringify(dadosDoadorFinal) : 'null'}`);
+    
     // 3. Cria o doador APENAS APÓS confirmação do pagamento (se dados fornecidos)
     // IMPORTANTE: Esta é a única função que salva dados do doador no banco
     // Os dados só são persistidos quando o webhook confirma o pagamento
@@ -378,21 +383,40 @@ async function processConfirmedTransaction(webhookData, doadorData = null) {
             const doadorResult = await sql`
               INSERT INTO doadores (nome, whatsapp, anonimo)
               VALUES (${nome}, ${whatsapp}, false)
-              RETURNING id
+              RETURNING id, nome, whatsapp, anonimo
             `;
             doadorId = doadorResult.rows[0].id;
+            console.log(`✅ Doador criado: ID=${doadorId}, nome="${nome}", whatsapp="${whatsapp}"`);
           }
         }
       } catch (error) {
         console.error('❌ Erro ao criar doador:', error.message);
+        console.error('   Stack:', error.stack);
         // Continua mesmo se falhar ao criar doador (pode ser duplicado, etc)
       }
+    } else {
+      console.log(`ℹ️  Nenhum dado do doador disponível para txid: ${txid}`);
     }
     
     // 4. Cria o registro de transação confirmada
     const txidFinal = txid || cobranca.rows[0].txid;
     const finalProvider = provider || cobranca.rows[0].provider || 'REDE';
     const finalProviderTidForTransaction = provider_tid || rede_tid || null;
+    
+    // Validação do valor - garante que seja numérico e positivo
+    // IMPORTANTE: Usa o valor do webhook (valor confirmado), não o valor da cobrança
+    const valorFinal = parseFloat(valor);
+    if (isNaN(valorFinal) || valorFinal <= 0) {
+      console.error(`❌ Valor inválido na transação: ${valor} (txid: ${txidFinal})`);
+      throw new Error(`Valor inválido: ${valor}`);
+    }
+    
+    console.log(`\n💰 Criando transação:`);
+    console.log(`   - txid: ${txidFinal}`);
+    console.log(`   - valor: ${valorFinal} (tipo: ${typeof valorFinal}, original: ${valor})`);
+    console.log(`   - doador_id: ${doadorId || 'null'}`);
+    console.log(`   - provider_tid: ${finalProviderTidForTransaction}`);
+    console.log(`   - crypto_currency: ${crypto_currency || 'null'}`);
     
     const transacaoResult = await sql`
       INSERT INTO transacoes (
@@ -414,7 +438,7 @@ async function processConfirmedTransaction(webhookData, doadorData = null) {
       VALUES (
         ${txidFinal}, 
         ${doadorId}, 
-        ${valor}, 
+        ${valorFinal}, 
         ${status},
         ${tipo_pagamento || 'PIX'},
         ${finalProvider},
@@ -429,6 +453,15 @@ async function processConfirmedTransaction(webhookData, doadorData = null) {
       )
       RETURNING id, cobranca_txid, doador_id, valor, status, tipo_pagamento, provider, provider_tid, confirmado_em
     `;
+    
+    if (transacaoResult.rows && transacaoResult.rows.length > 0) {
+      console.log(`✅ Transação criada:`);
+      console.log(`   - ID: ${transacaoResult.rows[0].id}`);
+      console.log(`   - Valor salvo: ${transacaoResult.rows[0].valor}`);
+      console.log(`   - Doador ID: ${transacaoResult.rows[0].doador_id || 'null'}`);
+    } else {
+      console.error(`❌ ERRO: Transação não foi criada (nenhuma linha retornada)`);
+    }
     
     // 5. Atualiza o status da cobrança e remove dados temporários (última operação)
     await sql`
