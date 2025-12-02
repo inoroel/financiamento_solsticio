@@ -212,8 +212,53 @@ async function processWebhook(webhookBody, signature = null, clientIp = null, do
     if (!cobranca) {
       console.error(`❌ SEGURANÇA: Webhook Stellar recebido para cobrança inexistente: ${webhookData.txid || webhookData.provider_tid}`);
       console.error(`   Tentou buscar por: txid=${webhookData.txid}, provider_tid=${webhookData.provider_tid}`);
-      console.error(`   ⚠️  PAGAMENTO REJEITADO POR SEGURANÇA: Cobrança deve existir antes do pagamento`);
-      throw new Error(`Cobrança ${webhookData.txid || webhookData.provider_tid} não encontrada. Pagamento rejeitado por segurança.`);
+      
+      // SOLUÇÃO TEMPORÁRIA: Para pagamentos já confirmados na blockchain que não têm cobrança prévia
+      // Isso só acontece se a criação da cobrança falhou anteriormente
+      // Criamos a cobrança agora para permitir processar o pagamento já feito
+      console.warn(`⚠️  SOLUÇÃO TEMPORÁRIA: Criando cobrança retroativamente para pagamento já confirmado`);
+      console.warn(`   ⚠️  ATENÇÃO: Isso só deve acontecer em casos excepcionais!`);
+      
+      try {
+        const { saveCobranca } = require('./dbService');
+        const novaCobranca = await saveCobranca({
+          txid: webhookData.txid,
+          valor: webhookData.valor,
+          status: 'AGUARDANDO', // Será atualizado para CONFIRMADA no processConfirmedTransaction
+          campanhaId: null, // Não temos o cid aqui
+          tipoPagamento: 'CRIPTO',
+          provider: 'STELLAR',
+          cryptoCurrency: webhookData.currency || 'XLM',
+          cryptoAddress: webhookData.to || null,
+          providerTid: webhookData.provider_tid,
+          dadosPagamento: {
+            memo: webhookData.txid,
+            paymentMemo: webhookData.txid,
+            currency: webhookData.currency || 'XLM',
+            tipo: 'CRIPTO',
+            provider: 'STELLAR',
+            txid: webhookData.txid,
+            created_retroactively: true // Marca que foi criada retroativamente
+          },
+          dadosDoadorTemp: null // Não temos dados do doador aqui
+        });
+        
+        if (novaCobranca) {
+          console.log(`✅ Cobrança criada retroativamente: ${novaCobranca.txid}`);
+          cobranca = await getCobranca(webhookData.txid);
+          if (cobranca) {
+            console.log(`✅ Cobrança encontrada após criação retroativa: ${cobranca.txid}`);
+          } else {
+            throw new Error(`Cobrança criada mas não encontrada: ${webhookData.txid}`);
+          }
+        } else {
+          throw new Error(`Falha ao criar cobrança retroativamente: ${webhookData.txid}`);
+        }
+      } catch (error) {
+        console.error(`❌ ERRO ao criar cobrança retroativamente: ${error.message}`);
+        console.error(`   Stack: ${error.stack}`);
+        throw new Error(`Cobrança ${webhookData.txid || webhookData.provider_tid} não encontrada e falha ao criar retroativamente. Pagamento rejeitado.`);
+      }
     }
 
     // Verifica se já foi processado (idempotência)

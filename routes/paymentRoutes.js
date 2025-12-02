@@ -419,13 +419,17 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
       }
 
       // Cria pagamento Stellar
+      console.log(`\n🚀 Criando pagamento Stellar para txid: ${txid}`);
       cobranca = await createStellarPayment(txid, valorValidado, currencyUpper, txid);
 
       if (!cobranca) {
+        console.error(`❌ createStellarPayment retornou null para txid: ${txid}`);
         return res.status(500).json({
           error: 'Não foi possível gerar o pagamento Stellar.'
         });
       }
+      
+      console.log(`✅ Pagamento Stellar criado: txid=${cobranca.txid}, memo=${cobranca.memo}`);
 
       dadosPagamento = {
         tipo: 'CRIPTO',
@@ -453,6 +457,7 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
 
     // CRÍTICO: Salva a cobrança ANTES de retornar sucesso
     // Se falhar, retorna erro 500 - não podemos continuar sem a cobrança salva
+    console.log(`\n💾 Tentando salvar cobrança no banco: txid=${cobranca.txid || txid}`);
     let cobrancaSalva;
     try {
       cobrancaSalva = await saveCobranca({
@@ -472,9 +477,11 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
         dadosPagamento: dadosPagamento,
         dadosDoadorTemp
       });
+      console.log(`✅ saveCobranca retornou:`, cobrancaSalva ? `sucesso para txid=${cobrancaSalva.txid}` : 'null');
     } catch (error) {
       console.error(`❌ ERRO CRÍTICO ao salvar cobrança: ${error.message}`);
       console.error(`   Stack: ${error.stack}`);
+      console.error(`   TXID que tentou salvar: ${cobranca.txid || txid}`);
       return res.status(500).json({
         error: 'Erro ao salvar cobrança no banco de dados. Tente novamente.',
         txid: txid,
@@ -484,6 +491,7 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
     
     if (!cobrancaSalva) {
       console.error(`❌ ERRO CRÍTICO: saveCobranca retornou null para txid: ${txid}`);
+      console.error(`   Cobrança criada mas não salva! Isso é um problema grave.`);
       return res.status(500).json({
         error: 'Erro ao salvar cobrança no banco de dados. Tente novamente.',
         txid: txid
@@ -491,17 +499,25 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
     }
     
     // Verificação final: confirma que a cobrança existe no banco
+    console.log(`🔍 Verificando se cobrança foi salva: txid=${cobrancaSalva.txid}`);
     const cobrancaVerificada = await getCobranca(cobrancaSalva.txid);
     if (!cobrancaVerificada) {
       console.error(`❌ ERRO CRÍTICO: Cobrança salva mas não encontrada no DB: ${cobrancaSalva.txid}`);
       console.error(`   Isso indica um problema grave com o banco de dados`);
-      return res.status(500).json({
-        error: 'Erro ao verificar cobrança no banco de dados. Tente novamente.',
-        txid: cobrancaSalva.txid
-      });
+      console.error(`   Tentando buscar novamente em 1 segundo...`);
+      // Tenta novamente após 1 segundo (pode ser delay de replicação)
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      const cobrancaVerificada2 = await getCobranca(cobrancaSalva.txid);
+      if (!cobrancaVerificada2) {
+        return res.status(500).json({
+          error: 'Erro ao verificar cobrança no banco de dados. Tente novamente.',
+          txid: cobrancaSalva.txid
+        });
+      }
+      console.log(`✅ Cobrança encontrada na segunda tentativa: ${cobrancaSalva.txid}`);
+    } else {
+      console.log(`✅ Cobrança confirmada salva e verificada no DB: ${cobrancaSalva.txid}`);
     }
-    
-    console.log(`✅ Cobrança confirmada salva e verificada no DB: ${cobrancaSalva.txid}`);
 
     // Retorna resposta conforme tipo de pagamento
     const response = {
