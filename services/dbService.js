@@ -81,7 +81,7 @@ async function saveCobranca(cobranca) {
       }
       
       console.log(`✅ Cobrança ${txid} verificada e confirmada no banco`);
-      return { txid, valor, status, tipoPagamento: tipoPagamento || 'PIX', provider: finalProvider };
+    return { txid, valor, status, tipoPagamento: tipoPagamento || 'PIX', provider: finalProvider };
     } else {
       console.error(`❌ ERRO CRÍTICO: INSERT executado mas nenhuma linha retornada para txid: ${txid}`);
       throw new Error(`Falha ao salvar cobrança: nenhuma linha retornada para ${txid}`);

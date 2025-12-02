@@ -310,48 +310,27 @@ async function processWebhook(webhookBody, signature = null, clientIp = null, do
       };
     }
 
-    // VALIDAÇÃO CRÍTICA: Verifica moeda e valor (se valor foi declarado na cobrança)
-    // IMPORTANTE: Para CRIPTO, o valor pode não ter sido declarado (será obtido da blockchain)
+    // VALIDAÇÃO: apenas moeda e memo
+    // Regra de negócio atual: qualquer valor é aceito, desde que o MEMO corresponda
     if (cobranca) {
-      const valorEsperado = parseFloat(cobranca.valor) || 0; // 0 se não foi declarado
       const valorRecebido = parseFloat(transactionData.valor);
       const currencyEsperada = cobranca.crypto_currency || 'USDC';
       const currencyRecebida = transactionData.crypto_currency || 'USDC';
       
-      console.log(`\n💰 VALIDAÇÃO DE VALOR:`);
-      console.log(`   - Valor esperado (cobrança): ${valorEsperado > 0 ? valorEsperado : 'NÃO DECLARADO (será obtido da blockchain)'} ${currencyEsperada}`);
-      console.log(`   - Valor recebido (blockchain): ${valorRecebido} ${currencyRecebida}`);
+      console.log(`\n💰 VALIDAÇÃO DE MOEDA (sem comparação de valor):`);
+      console.log(`   - Moeda esperada (cobrança): ${currencyEsperada}`);
+      console.log(`   - Moeda recebida (blockchain): ${currencyRecebida}`);
+      console.log(`   - Valor recebido (blockchain): ${valorRecebido}`);
       
       // Valida moeda (sempre obrigatório)
       if (currencyEsperada !== currencyRecebida) {
         console.error(`❌ ERRO: Moeda não corresponde! Esperado: ${currencyEsperada}, Recebido: ${currencyRecebida}`);
         throw new Error(`Moeda da transação (${currencyRecebida}) não corresponde à moeda esperada (${currencyEsperada})`);
       }
-      
-      // Se valor foi declarado na cobrança, valida se corresponde
-      // Se não foi declarado (valorEsperado === 0), aceita qualquer valor da blockchain
-      if (valorEsperado > 0) {
-        // Tolerância de 0.1% para diferenças de arredondamento ou taxas
-        const tolerancia = 0.001;
-        const diferencaPercentual = Math.abs((valorRecebido - valorEsperado) / valorEsperado);
-        
-        if (valorRecebido < valorEsperado * (1 - tolerancia)) {
-          console.error(`❌ ERRO: Valor recebido (${valorRecebido}) é menor que o esperado (${valorEsperado})`);
-          throw new Error(`Valor recebido (${valorRecebido} ${currencyRecebida}) é menor que o valor esperado (${valorEsperado} ${currencyEsperada}). Pagamento rejeitado.`);
-        }
-        
-        if (diferencaPercentual > tolerancia) {
-          console.warn(`⚠️  AVISO: Diferença significativa entre valor esperado e recebido: ${(diferencaPercentual * 100).toFixed(2)}%`);
-          console.warn(`   Valor esperado: ${valorEsperado}, Valor recebido: ${valorRecebido}`);
-          // Continua, mas registra o aviso
-        } else {
-          console.log(`✅ Valor validado: ${valorRecebido} ${currencyRecebida} corresponde ao esperado`);
-        }
-      } else {
-        console.log(`✅ Valor obtido da blockchain: ${valorRecebido} ${currencyRecebida} (não havia valor declarado)`);
-      }
+
+      console.log(`✅ Moeda validada. Valor aceito da blockchain: ${valorRecebido} ${currencyRecebida}`);
     } else {
-      console.warn(`⚠️  Não foi possível validar o valor: cobrança não encontrada`);
+      console.warn(`⚠️  Não foi possível validar a moeda: cobrança não encontrada (seguindo apenas memo e dados da transação)`);
     }
 
     // Recupera dados do doador da cobrança (se não fornecidos explicitamente)

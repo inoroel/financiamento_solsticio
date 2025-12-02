@@ -88,17 +88,17 @@ function validateWebhookSignature(payload, signature) {
 
   // Se houver secret E assinatura, valida HMAC
   try {
-    const payloadString = typeof payload === 'string' ? payload : JSON.stringify(payload);
-    const expectedSignature = crypto
-      .createHmac('sha256', webhookSecret)
-      .update(payloadString)
-      .digest('hex');
+  const payloadString = typeof payload === 'string' ? payload : JSON.stringify(payload);
+  const expectedSignature = crypto
+    .createHmac('sha256', webhookSecret)
+    .update(payloadString)
+    .digest('hex');
 
-    // Comparação segura contra timing attacks
+  // Comparação segura contra timing attacks
     const isValid = crypto.timingSafeEqual(
-      Buffer.from(signature),
-      Buffer.from(expectedSignature)
-    );
+    Buffer.from(signature),
+    Buffer.from(expectedSignature)
+  );
 
     if (!isValid) {
       console.error('❌ Assinatura do webhook inválida');

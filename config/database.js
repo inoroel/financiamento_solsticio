@@ -135,9 +135,9 @@ if (useLocalPg) {
     }
   } else {
     // Sem variáveis de ambiente, usa sql padrão
-    const vercelPostgres = require('@vercel/postgres');
-    sql = vercelPostgres.sql;
-    dbType = 'vercel';
+  const vercelPostgres = require('@vercel/postgres');
+  sql = vercelPostgres.sql;
+  dbType = 'vercel';
     console.warn('⚠️  POSTGRES_URL e POSTGRES_PRISMA_URL não configuradas');
   }
 }

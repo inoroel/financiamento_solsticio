@@ -56,8 +56,8 @@ function detectarBandeira(cardNumber) {
     return 'elo';
   }
   
-  return null;
-}
+    return null;
+  }
 
 /**
  * Valida e processa dados do cartão
@@ -72,8 +72,8 @@ async function processarDadosCartao(cartaoData) {
 
   // Se já tem token, retorna direto
   if (cartaoData.token && typeof cartaoData.token === 'string') {
-    return {
-      token: cartaoData.token,
+  return {
+    token: cartaoData.token,
       bandeira: cartaoData.bandeira || null,
       jaTokenizado: true
     };
@@ -195,10 +195,10 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
       // Se fornecido, apenas valida o formato (mas não é obrigatório)
       if (valor !== undefined && valor !== null) {
         valorValidado = validateValor(valor, 0.01, 100000);
-        if (!valorValidado) {
-          return res.status(400).json({
-            error: 'Valor inválido. Deve ser um número entre R$ 0,01 e R$ 100.000,00.'
-          });
+    if (!valorValidado) {
+      return res.status(400).json({
+        error: 'Valor inválido. Deve ser um número entre R$ 0,01 e R$ 100.000,00.'
+      });
         }
       }
       // Se não fornecido, valorValidado permanece null - será obtido da blockchain depois
@@ -246,7 +246,7 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
       try {
         cartaoProcessado = await processarDadosCartao(cartao);
         if (!cartaoProcessado) {
-          return res.status(400).json({
+        return res.status(400).json({
             error: 'Dados do cartão inválidos. Forneça um token ou dados completos do cartão (número, nome, validade, CVV, email).'
           });
         }
@@ -482,22 +482,22 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
     let cobrancaSalva;
     try {
       cobrancaSalva = await saveCobranca({
-        txid: cobranca.txid || txid,
+      txid: cobranca.txid || txid,
         valor: tipoPagamento === 'CRIPTO' ? (cobranca.valor || valorValidado || 0) : (cobranca.valor || valorValidado), // Para CRIPTO, pode ser 0 se não fornecido
-        status: statusInicial,
-        campanhaId: cid,
-        tipoPagamento: tipoPagamento,
+      status: statusInicial,
+      campanhaId: cid,
+      tipoPagamento: tipoPagamento,
         provider: provider,
         chavePix: null, // A chave PIX é configurada no portal e-Rede e usada automaticamente pela API
-        brCode: tipoPagamento === 'PIX' ? cobranca.brCode : null,
+      brCode: tipoPagamento === 'PIX' ? cobranca.brCode : null,
         expiracao: tipoPagamento === 'PIX' ? (cobranca.expiracao || 3600) : (tipoPagamento === 'CRIPTO' ? 2592000 : 3600), // 30 dias para CRIPTO, 1 hora para outros
-        redeTid: cobranca.rede_tid || null,
+      redeTid: cobranca.rede_tid || null,
         providerTid: cobranca.provider_tid || cobranca.rede_tid || null,
         cryptoCurrency: tipoPagamento === 'CRIPTO' ? (cobranca.currency || currencyUpper) : null,
         cryptoAddress: tipoPagamento === 'CRIPTO' ? (cobranca.recipient_address || null) : null,
-        dadosPagamento: dadosPagamento,
-        dadosDoadorTemp
-      });
+      dadosPagamento: dadosPagamento,
+      dadosDoadorTemp
+    });
       console.log(`✅ saveCobranca retornou:`, cobrancaSalva ? `sucesso para txid=${cobrancaSalva.txid}` : 'null');
     } catch (error) {
       console.error(`❌ ERRO CRÍTICO ao salvar cobrança: ${error.message}`);
@@ -509,7 +509,7 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
         details: process.env.NODE_ENV === 'development' ? error.message : undefined
       });
     }
-    
+
     if (!cobrancaSalva) {
       console.error(`❌ ERRO CRÍTICO: saveCobranca retornou null para txid: ${txid}`);
       console.error(`   Cobrança criada mas não salva! Isso é um problema grave.`);
