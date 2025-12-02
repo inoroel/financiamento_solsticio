@@ -45,8 +45,10 @@ function generateStellarURI(destination, amount, currency, memo) {
   // Destination (obrigatório) - NÃO codificar endereços Stellar
   params.push(`destination=${destination}`);
   
-  // Amount (obrigatório)
-  params.push(`amount=${amount.toString()}`);
+  // Amount (opcional - se não fornecido, usuário informa na carteira)
+  if (amount !== null && amount !== undefined) {
+    params.push(`amount=${amount.toString()}`);
+  }
   
   // Asset (se não for XLM nativo)
   if (currencyUpper === 'USDC') {
@@ -118,7 +120,7 @@ function isSupportedCurrency(currency) {
 /**
  * Cria um endereço de pagamento Stellar para uma cobrança
  * @param {string} txid - Identificador único da transação
- * @param {number} valor - Valor da cobrança
+ * @param {number|null} valor - Valor da cobrança (opcional - será obtido da blockchain quando confirmado)
  * @param {string} currency - Moeda ('USDC' ou 'XLM')
  * @param {string} memo - Memo opcional para identificar a transação
  * @returns {Object|null} Dados do pagamento criado ou null em caso de erro
@@ -132,9 +134,13 @@ async function createStellarPayment(txid, valor, currency = 'USDC', memo = null)
       throw new Error('TXID inválido');
     }
 
-    const valorValidado = validateValor(valor, 0.01, 100000);
-    if (!valorValidado) {
-      throw new Error('Valor inválido');
+    // Valor é opcional - se fornecido, valida; se não, será obtido da blockchain depois
+    let valorValidado = null;
+    if (valor !== undefined && valor !== null) {
+      valorValidado = validateValor(valor, 0.01, 100000);
+      if (!valorValidado) {
+        throw new Error('Valor inválido');
+      }
     }
 
     const currencyUpper = currency.toUpperCase();
@@ -150,7 +156,7 @@ async function createStellarPayment(txid, valor, currency = 'USDC', memo = null)
     const keypair = Keypair.fromSecret(STELLAR_SECRET_KEY);
     const publicKey = keypair.publicKey();
 
-    console.log(`\n📝 Criando pagamento Stellar: ${currencyUpper} ${valorValidado} (txid: ${txid})`);
+    console.log(`\n📝 Criando pagamento Stellar: ${currencyUpper} ${valorValidado || '(valor será obtido da blockchain)'} (txid: ${txid})`);
 
     // Verifica se a conta existe e está ativa
     const server = getHorizonServer();
@@ -183,17 +189,20 @@ async function createStellarPayment(txid, valor, currency = 'USDC', memo = null)
     const paymentMemo = memo || (txid.length <= 28 ? txid : txid.slice(-28));
     console.log(`📝 Memo gerado: ${paymentMemo} (txid original: ${txid}, tamanho: ${txid.length})`);
 
-    // Converte valor para a unidade correta
+    // Converte valor para a unidade correta (se fornecido)
     // XLM: 1 XLM = 10^7 stroops
     // USDC: 1 USDC = 10^7 stroops (mesma precisão)
-    const amountInStroops = Math.round(valorValidado * 10000000);
+    const amountInStroops = valorValidado ? Math.round(valorValidado * 10000000) : null;
 
     // Gera URI Stellar (SEP-7) para pagamento direto na carteira
+    // Se valor não fornecido, não inclui no URI (usuário informa o valor na carteira)
     console.log(`\n🔍 Validando endereço Stellar: ${publicKey}`);
     console.log(`   - Começa com G: ${publicKey.startsWith('G')}`);
     console.log(`   - Tamanho: ${publicKey.length} (esperado: 56)`);
     
-    const stellarURI = generateStellarURI(publicKey, valorValidado, currencyUpper, paymentMemo);
+    const stellarURI = valorValidado 
+      ? generateStellarURI(publicKey, valorValidado, currencyUpper, paymentMemo)
+      : generateStellarURI(publicKey, null, currencyUpper, paymentMemo); // Sem valor no URI
     console.log('🔗 URI Stellar gerado:', stellarURI);
     console.log('   - Tamanho do URI:', stellarURI.length);
     
@@ -203,9 +212,12 @@ async function createStellarPayment(txid, valor, currency = 'USDC', memo = null)
     let stellarURIAlt = null;
     if (paymentMemo) {
       // Constrói manualmente (sem URLSearchParams) para garantir que o endereço não seja codificado
+      // Se valor não fornecido, também não inclui no URI alternativo
       const paramsAlt = [];
       paramsAlt.push(`destination=${publicKey}`); // NÃO codificar endereço
-      paramsAlt.push(`amount=${valorValidado.toString()}`);
+      if (valorValidado) {
+        paramsAlt.push(`amount=${valorValidado.toString()}`);
+      }
       if (currencyUpper === 'USDC') {
         paramsAlt.push(`asset_code=${USDC_ASSET_CODE}`);
         paramsAlt.push(`asset_issuer=${USDC_ISSUER}`);
@@ -256,12 +268,13 @@ async function createStellarPayment(txid, valor, currency = 'USDC', memo = null)
 
     // Retorna dados do pagamento
     // O usuário enviará o pagamento para a conta pública com o memo
+    // IMPORTANTE: Se valor não foi fornecido, será obtido da blockchain quando confirmado
     return {
       status: 'AGUARDANDO',
       txid: txid,
       provider_tid: null, // Será preenchido quando o pagamento for confirmado
       provider: 'STELLAR',
-      valor: valorValidado,
+      valor: valorValidado || null, // null se não fornecido - será obtido da blockchain
       currency: currencyUpper,
       recipient_address: publicKey,
       memo: paymentMemo,

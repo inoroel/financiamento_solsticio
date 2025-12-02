@@ -144,17 +144,52 @@ async function processWebhook(webhookBody, signature = null, clientIp = null, do
       throw new Error('Dados do webhook inválidos ou hash não encontrado');
     }
 
+    // VALIDAÇÃO CRÍTICA: Busca o valor real da transação na blockchain
+    // Isso garante que o valor processado seja o valor realmente enviado, não o declarado pelo usuário
+    let valorRealBlockchain = null;
+    let currencyRealBlockchain = null;
+    
+    try {
+      const { findPaymentByMemo, consultStellarTransaction } = require('./stellarService');
+      
+      // Tenta buscar pela transação usando o hash (mais confiável)
+      if (webhookData.hash && webhookData.hash.length === 64) {
+        console.log(`🔍 Buscando valor real na blockchain por hash: ${webhookData.hash}`);
+        const transactionReal = await consultStellarTransaction(webhookData.hash);
+        if (transactionReal && transactionReal.valor > 0) {
+          valorRealBlockchain = transactionReal.valor;
+          currencyRealBlockchain = transactionReal.currency;
+          console.log(`✅ Valor encontrado na blockchain: ${valorRealBlockchain} ${currencyRealBlockchain}`);
+        }
+      }
+      
+      // Se não encontrou por hash, tenta por memo
+      if (!valorRealBlockchain && webhookData.txid) {
+        console.log(`🔍 Buscando valor real na blockchain por memo: ${webhookData.txid}`);
+        const paymentReal = await findPaymentByMemo(webhookData.txid);
+        if (paymentReal && paymentReal.valor > 0) {
+          valorRealBlockchain = paymentReal.valor;
+          currencyRealBlockchain = paymentReal.currency;
+          console.log(`✅ Valor encontrado na blockchain por memo: ${valorRealBlockchain} ${currencyRealBlockchain}`);
+        }
+      }
+    } catch (error) {
+      console.warn(`⚠️  Erro ao buscar valor na blockchain: ${error.message}`);
+      console.warn(`   Continuando com valor do webhook, mas será validado contra a cobrança`);
+    }
+    
     // Prepara dados para processConfirmedTransaction
     // O campanha_id será obtido automaticamente da cobrança encontrada
+    // IMPORTANTE: Usa o valor da blockchain se disponível, senão usa o do webhook
     const transactionData = {
       txid: webhookData.txid,
       provider_tid: webhookData.provider_tid,
       provider: 'STELLAR',
       tipo_pagamento: 'CRIPTO',
-      valor: webhookData.valor,
+      valor: valorRealBlockchain || webhookData.valor, // Prioriza valor da blockchain
       status: webhookData.status,
       horario: webhookData.horario,
-      crypto_currency: webhookData.currency,
+      crypto_currency: currencyRealBlockchain || webhookData.currency,
       crypto_address: webhookData.to || null,
       endToEndId: webhookData.hash
       // campanha_id não precisa ser passado aqui, pois será obtido da cobrança
@@ -275,6 +310,50 @@ async function processWebhook(webhookBody, signature = null, clientIp = null, do
       };
     }
 
+    // VALIDAÇÃO CRÍTICA: Verifica moeda e valor (se valor foi declarado na cobrança)
+    // IMPORTANTE: Para CRIPTO, o valor pode não ter sido declarado (será obtido da blockchain)
+    if (cobranca) {
+      const valorEsperado = parseFloat(cobranca.valor) || 0; // 0 se não foi declarado
+      const valorRecebido = parseFloat(transactionData.valor);
+      const currencyEsperada = cobranca.crypto_currency || 'USDC';
+      const currencyRecebida = transactionData.crypto_currency || 'USDC';
+      
+      console.log(`\n💰 VALIDAÇÃO DE VALOR:`);
+      console.log(`   - Valor esperado (cobrança): ${valorEsperado > 0 ? valorEsperado : 'NÃO DECLARADO (será obtido da blockchain)'} ${currencyEsperada}`);
+      console.log(`   - Valor recebido (blockchain): ${valorRecebido} ${currencyRecebida}`);
+      
+      // Valida moeda (sempre obrigatório)
+      if (currencyEsperada !== currencyRecebida) {
+        console.error(`❌ ERRO: Moeda não corresponde! Esperado: ${currencyEsperada}, Recebido: ${currencyRecebida}`);
+        throw new Error(`Moeda da transação (${currencyRecebida}) não corresponde à moeda esperada (${currencyEsperada})`);
+      }
+      
+      // Se valor foi declarado na cobrança, valida se corresponde
+      // Se não foi declarado (valorEsperado === 0), aceita qualquer valor da blockchain
+      if (valorEsperado > 0) {
+        // Tolerância de 0.1% para diferenças de arredondamento ou taxas
+        const tolerancia = 0.001;
+        const diferencaPercentual = Math.abs((valorRecebido - valorEsperado) / valorEsperado);
+        
+        if (valorRecebido < valorEsperado * (1 - tolerancia)) {
+          console.error(`❌ ERRO: Valor recebido (${valorRecebido}) é menor que o esperado (${valorEsperado})`);
+          throw new Error(`Valor recebido (${valorRecebido} ${currencyRecebida}) é menor que o valor esperado (${valorEsperado} ${currencyEsperada}). Pagamento rejeitado.`);
+        }
+        
+        if (diferencaPercentual > tolerancia) {
+          console.warn(`⚠️  AVISO: Diferença significativa entre valor esperado e recebido: ${(diferencaPercentual * 100).toFixed(2)}%`);
+          console.warn(`   Valor esperado: ${valorEsperado}, Valor recebido: ${valorRecebido}`);
+          // Continua, mas registra o aviso
+        } else {
+          console.log(`✅ Valor validado: ${valorRecebido} ${currencyRecebida} corresponde ao esperado`);
+        }
+      } else {
+        console.log(`✅ Valor obtido da blockchain: ${valorRecebido} ${currencyRecebida} (não havia valor declarado)`);
+      }
+    } else {
+      console.warn(`⚠️  Não foi possível validar o valor: cobrança não encontrada`);
+    }
+
     // Recupera dados do doador da cobrança (se não fornecidos explicitamente)
     let dadosDoadorFinal = doadorData;
     if (!dadosDoadorFinal && cobranca && cobranca.dados_doador_temp) {
@@ -291,6 +370,7 @@ async function processWebhook(webhookBody, signature = null, clientIp = null, do
     }
 
     // Processa a transação confirmada
+    // IMPORTANTE: Usa o valor da blockchain (já validado acima)
     const result = await processConfirmedTransaction(transactionData, dadosDoadorFinal);
 
     if (!result) {

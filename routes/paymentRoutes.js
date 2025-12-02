@@ -186,12 +186,30 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
 
     const tipoPagamento = tipo_pagamento.toUpperCase();
 
-    // Validação rigorosa do valor monetário
-    const valorValidado = validateValor(valor, 0.01, 100000);
-    if (!valorValidado) {
-      return res.status(400).json({
-        error: 'Valor inválido. Deve ser um número entre R$ 0,01 e R$ 100.000,00.'
-      });
+    // Validação do valor monetário
+    // Para CRIPTO: valor é opcional (será obtido da blockchain quando confirmado)
+    // Para outros tipos: valor é obrigatório
+    let valorValidado = null;
+    if (tipoPagamento === 'CRIPTO') {
+      // Para CRIPTO, o valor é opcional - será obtido da blockchain quando o pagamento for confirmado
+      // Se fornecido, apenas valida o formato (mas não é obrigatório)
+      if (valor !== undefined && valor !== null) {
+        valorValidado = validateValor(valor, 0.01, 100000);
+        if (!valorValidado) {
+          return res.status(400).json({
+            error: 'Valor inválido. Deve ser um número entre R$ 0,01 e R$ 100.000,00.'
+          });
+        }
+      }
+      // Se não fornecido, valorValidado permanece null - será obtido da blockchain depois
+    } else {
+      // Para PIX, CREDITO, DEBITO: valor é obrigatório
+      valorValidado = validateValor(valor, 0.01, 100000);
+      if (!valorValidado) {
+        return res.status(400).json({
+          error: 'Valor inválido. Deve ser um número entre R$ 0,01 e R$ 100.000,00.'
+        });
+      }
     }
 
     // Validação do ID de campanha
@@ -419,7 +437,10 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
       }
 
       // Cria pagamento Stellar
+      // IMPORTANTE: Para CRIPTO, o valor é opcional - será obtido da blockchain quando confirmado
+      // Passamos null se não fornecido, e o valor será buscado da blockchain no webhook
       console.log(`\n🚀 Criando pagamento Stellar para txid: ${txid}`);
+      console.log(`   Valor fornecido: ${valorValidado || 'NÃO FORNECIDO (será obtido da blockchain)'}`);
       cobranca = await createStellarPayment(txid, valorValidado, currencyUpper, txid);
 
       if (!cobranca) {
@@ -462,7 +483,7 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
     try {
       cobrancaSalva = await saveCobranca({
         txid: cobranca.txid || txid,
-        valor: cobranca.valor || valorValidado,
+        valor: tipoPagamento === 'CRIPTO' ? (cobranca.valor || valorValidado || 0) : (cobranca.valor || valorValidado), // Para CRIPTO, pode ser 0 se não fornecido
         status: statusInicial,
         campanhaId: cid,
         tipoPagamento: tipoPagamento,
