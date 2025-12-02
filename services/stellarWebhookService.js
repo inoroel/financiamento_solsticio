@@ -228,6 +228,9 @@ async function processWebhook(webhookBody, signature = null, clientIp = null, do
           campanhaId: null, // Não temos o cid aqui
           tipoPagamento: 'CRIPTO',
           provider: 'STELLAR',
+          chavePix: null,
+          brCode: null,
+          expiracao: 2592000, // 30 dias em segundos (CRIPTO não expira, mas campo é NOT NULL)
           cryptoCurrency: webhookData.currency || 'XLM',
           cryptoAddress: webhookData.to || null,
           providerTid: webhookData.provider_tid,

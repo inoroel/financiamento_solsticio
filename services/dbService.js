@@ -36,6 +36,13 @@ async function saveCobranca(cobranca) {
     const finalProviderTid = providerTid || redeTid || null;
     const finalProvider = provider || 'REDE';
     
+    // expiracao é NOT NULL, então precisa de um valor padrão para CRIPTO
+    // Para PIX, usa o valor fornecido ou 3600 (1 hora)
+    // Para CRIPTO, usa um valor alto (30 dias em segundos) já que não expira
+    const expiracaoFinal = expiracao !== null && expiracao !== undefined 
+      ? expiracao 
+      : (tipoPagamento === 'CRIPTO' ? 2592000 : 3600); // 30 dias para CRIPTO, 1 hora para outros
+    
     // @vercel/postgres trata JSONB automaticamente quando passamos um objeto
     const result = await sql`
       INSERT INTO cobrancas (
@@ -44,7 +51,7 @@ async function saveCobranca(cobranca) {
       )
       VALUES (
         ${txid}, ${valor}, ${status}, ${campanhaId || null}, 
-        ${tipoPagamento || 'PIX'}, ${finalProvider}, ${chavePix || null}, ${brCode}, ${expiracao}, 
+        ${tipoPagamento || 'PIX'}, ${finalProvider}, ${chavePix || null}, ${brCode}, ${expiracaoFinal}, 
         ${redeTid || null}, ${finalProviderTid}, ${dadosPagamento || null}, 
         ${cryptoCurrency || null}, ${cryptoAddress || null}, ${dadosDoadorTemp}
       )
@@ -82,7 +89,17 @@ async function saveCobranca(cobranca) {
   } catch (error) {
     console.error('❌ Erro ao salvar cobrança no banco:', error.message);
     console.error('   Stack:', error.stack);
-    console.error('   Dados da cobrança:', JSON.stringify({ txid, tipoPagamento, provider, valor }, null, 2));
+    // Usa cobranca.txid se txid não estiver definido (pode acontecer se erro ocorrer antes da desestruturação)
+    const txidParaLog = txid || (cobranca && cobranca.txid) || 'desconhecido';
+    const tipoPagamentoParaLog = tipoPagamento || (cobranca && cobranca.tipoPagamento) || 'desconhecido';
+    const providerParaLog = provider || (cobranca && cobranca.provider) || 'desconhecido';
+    const valorParaLog = valor !== undefined ? valor : (cobranca && cobranca.valor) || 'desconhecido';
+    console.error('   Dados da cobrança:', JSON.stringify({ 
+      txid: txidParaLog, 
+      tipoPagamento: tipoPagamentoParaLog, 
+      provider: providerParaLog, 
+      valor: valorParaLog 
+    }, null, 2));
     throw error; // Lança o erro em vez de retornar null
   }
 }
