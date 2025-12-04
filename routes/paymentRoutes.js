@@ -1918,29 +1918,65 @@ router.post('/3ds/callback', async (req, res) => {
       return res.status(200).json({ received: true, authorized: false });
     }
 
-    console.log(`✅ Transação autorizada. Fazendo captura...`);
+    console.log(`✅ Transação autorizada. Verificando se precisa capturar...`);
 
-    // Faz captura da transação autorizada
-    // IMPORTANTE: Conforme documentação, a captura é obrigatória após autorização
-    const amountCentavos = Math.round(cobranca.valor * 100);
-    const captureResult = await captureTransaction(tid, amountCentavos);
+    // IMPORTANTE: Para DÉBITO, a captura já é automática (capture: true na criação)
+    // Para CRÉDITO, precisamos capturar manualmente após autorização
+    let captureResult = null;
+    let foiCapturada = false;
+    
+    if (cobranca.tipo_pagamento === 'DEBITO') {
+      // Débito já é capturado automaticamente na autorização
+      console.log(`ℹ️  Transação de DÉBITO - captura já foi feita automaticamente na autorização`);
+      foiCapturada = true;
+      // Usa os dados do callback como se fosse resultado da captura
+      captureResult = {
+        returnCode: returnCode,
+        returnMessage: returnMessage,
+        authorizationCode: callbackData.authorizationCode,
+        dateTime: callbackData.date && callbackData.time 
+          ? `${callbackData.date}T${callbackData.time}` 
+          : new Date().toISOString()
+      };
+    } else {
+      // Para CRÉDITO, faz captura manual
+      console.log(`💰 Fazendo captura manual para transação de CRÉDITO...`);
+      const amountCentavos = Math.round(cobranca.valor * 100);
+      captureResult = await captureTransaction(tid, amountCentavos);
 
-    if (!captureResult || captureResult.returnCode !== '00') {
-      console.error(`❌ Falha ao capturar transação`);
-      console.error(`   ReturnCode: ${captureResult?.returnCode || 'N/A'}`);
-      console.error(`   ReturnMessage: ${captureResult?.returnMessage || 'N/A'}`);
-      
-      // Loga erro mas mantém transação como AUTORIZADA (pode tentar capturar depois)
-      // Não atualiza status para não perder a autorização
-      return res.status(200).json({ 
-        received: true, 
-        authorized: true, 
-        captured: false,
-        error: 'Capture failed but transaction is authorized'
-      });
+      if (!captureResult || captureResult.returnCode !== '00') {
+        // Se erro 171 (Operation not allowed), pode ser que já foi capturada
+        if (captureResult?.returnCode === '171') {
+          console.log(`ℹ️  Erro 171: Transação pode já ter sido capturada. Processando como confirmada...`);
+          foiCapturada = true;
+          // Usa dados do callback como fallback
+          captureResult = {
+            returnCode: returnCode,
+            returnMessage: returnMessage,
+            authorizationCode: callbackData.authorizationCode,
+            dateTime: callbackData.date && callbackData.time 
+              ? `${callbackData.date}T${callbackData.time}` 
+              : new Date().toISOString()
+          };
+        } else {
+          console.error(`❌ Falha ao capturar transação`);
+          console.error(`   ReturnCode: ${captureResult?.returnCode || 'N/A'}`);
+          console.error(`   ReturnMessage: ${captureResult?.returnMessage || 'N/A'}`);
+          
+          // Loga erro mas mantém transação como AUTORIZADA (pode tentar capturar depois)
+          // Não atualiza status para não perder a autorização
+          return res.status(200).json({ 
+            received: true, 
+            authorized: true, 
+            captured: false,
+            error: 'Capture failed but transaction is authorized'
+          });
+        }
+      } else {
+        foiCapturada = true;
+        console.log(`✅ Transação capturada com sucesso`);
+      }
     }
-
-    console.log(`✅ Transação capturada com sucesso`);
 
     // Processa transação confirmada (salva doador e cria entrada em transacoes)
     const webhookData = {
@@ -1951,10 +1987,12 @@ router.post('/3ds/callback', async (req, res) => {
       tipo_pagamento: cobranca.tipo_pagamento,
       valor: cobranca.valor,
       status: 'CONFIRMADA',
-      horario: captureResult.dateTime || new Date().toISOString(),
+      horario: captureResult?.dateTime || (callbackData.date && callbackData.time 
+        ? `${callbackData.date}T${callbackData.time}` 
+        : new Date().toISOString()),
       bandeira: cobranca.dados_pagamento?.bandeira || null,
       parcelas: cobranca.dados_pagamento?.parcelas || null,
-      authorizationCode: captureResult.authorizationCode || callbackData.authorizationCode
+      authorizationCode: captureResult?.authorizationCode || callbackData.authorizationCode
     };
 
     const dadosDoadorTemp = cobranca.dados_doador_temp ? JSON.parse(cobranca.dados_doador_temp) : null;
