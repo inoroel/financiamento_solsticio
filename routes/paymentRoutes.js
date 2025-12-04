@@ -807,7 +807,8 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
       authorizationCode: cobranca.authorizationCode,
       returnCode: cobranca.returnCode,
       foiAutorizado,
-      statusInicial
+      statusInicial,
+      cobrancaCompleta: JSON.stringify(cobranca, null, 2) // DEBUG: mostra objeto completo
     });
 
     // Determina provider baseado no tipo de pagamento
@@ -895,6 +896,17 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
     // Não precisamos esperar pelo webhook para cartões que são autorizados na hora
     // Verifica se foi realmente autorizado através do authorizationCode e returnCode
     const foiRealmenteAutorizado = foiAutorizado && (tipoPagamento === 'CREDITO' || tipoPagamento === 'DEBITO');
+    
+    console.log(`🔍 DEBUG gravação transação:`, {
+      tipoPagamento,
+      foiAutorizado,
+      foiRealmenteAutorizado,
+      cobrancaAuthorizationCode: cobranca?.authorizationCode,
+      cobrancaReturnCode: cobranca?.returnCode,
+      cobrancaStatus: cobranca?.status,
+      requires3DS
+    });
+    
     if (foiRealmenteAutorizado) {
       console.log(`\n💰 Transação ${tipoPagamento} foi AUTORIZADA imediatamente. Criando entrada na tabela transacoes...`);
       
