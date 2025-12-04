@@ -1121,84 +1121,54 @@ async function createDebitCardTransaction(txid, valor, cartaoData, bandeira = nu
         throw new Error('threeDSecure.billing é obrigatório para MPI Rede (objeto com address, city, postalcode, state, country, emailAddress, phoneNumber)');
       }
 
-      requestBody.threeDSecure = {
-        embedded: threeDSecure.embedded !== false, // Default: true (MPI Rede)
-        onFailure: threeDSecure.onFailure || 'decline', // 'decline' para débito (obrigatório)
-        userAgent: threeDSecure.userAgent, // OBRIGATÓRIO
-        ipAddress: threeDSecure.ipAddress, // OBRIGATÓRIO (IPv4)
-        device: {
-          colorDepth: parseInt(threeDSecure.device.colorDepth) || 24, // OBRIGATÓRIO (2 numérico)
-          deviceType3ds: threeDSecure.device.deviceType3ds || 'BROWSER', // OBRIGATÓRIO (20 alfanumérico)
-          javaEnabled: threeDSecure.device.javaEnabled === true, // OBRIGATÓRIO (booleano)
-          language: threeDSecure.device.language || 'pt-BR', // OBRIGATÓRIO (10 alfanumérico, IETF BCP47)
-          screenHeight: parseInt(threeDSecure.device.screenHeight) || 1080, // OBRIGATÓRIO (6 numérico)
-          screenWidth: parseInt(threeDSecure.device.screenWidth) || 1920, // OBRIGATÓRIO (6 numérico)
-          timeZoneOffset: (() => {
-            // Valida e formata timeZoneOffset
-            // Formato esperado: string numérica SEM sinal negativo (ex: "3" para UTC-3)
-            // NOTA: A documentação mostra exemplos com número positivo (3) mesmo para UTC-3
-            // A diferença é calculada como: UTC - Local = offset
-            // Para UTC-3 (Brasil), o offset é 3 (3 horas de diferença)
-            const offset = threeDSecure.device.timeZoneOffset;
-            let finalOffset;
-            
-            if (offset !== undefined && offset !== null) {
-              // Se for número, converte para string e usa valor absoluto
-              if (typeof offset === 'number') {
-                // Valida que está no range válido (-12 a +14)
-                if (offset >= -12 && offset <= 14) {
-                  // Usa valor absoluto (sem sinal negativo)
-                  finalOffset = String(Math.abs(offset));
-                } else {
-                  // Range inválido, calcula dinamicamente
-                  const timezoneOffset = Math.round(new Date().getTimezoneOffset() / -60);
-                  finalOffset = String(Math.abs(Math.max(-12, Math.min(14, timezoneOffset))));
-                }
-              }
-              // Se for string, valida formato
-              else if (typeof offset === 'string') {
-                const trimmed = offset.trim();
-                // Remove sinal negativo se presente
-                const cleanOffset = trimmed.replace(/^-/, '');
-                // Valida formato: apenas dígitos
-                if (/^\d+$/.test(cleanOffset)) {
-                  const numOffset = parseInt(cleanOffset, 10);
-                  // Valida range
-                  if (numOffset >= 0 && numOffset <= 14) {
-                    finalOffset = cleanOffset;
-                  } else {
-                    // Range inválido, calcula dinamicamente
-                    const timezoneOffset = Math.round(new Date().getTimezoneOffset() / -60);
-                    finalOffset = String(Math.abs(Math.max(-12, Math.min(14, timezoneOffset))));
-                  }
-                } else {
-                  // Formato inválido, calcula dinamicamente
-                  const timezoneOffset = Math.round(new Date().getTimezoneOffset() / -60);
-                  finalOffset = String(Math.abs(Math.max(-12, Math.min(14, timezoneOffset))));
-                }
+      // Prepara device com timeZoneOffset validado (mesma lógica do crédito)
+      const timeZoneOffsetValue = (() => {
+        const offset = threeDSecure.device.timeZoneOffset;
+        let finalOffset;
+        
+        if (offset !== undefined && offset !== null) {
+          if (typeof offset === 'number') {
+            if (offset >= -12 && offset <= 14) {
+              finalOffset = Math.abs(offset);
+            } else {
+              const timezoneOffset = Math.round(new Date().getTimezoneOffset() / -60);
+              finalOffset = Math.abs(Math.max(-12, Math.min(14, timezoneOffset)));
+            }
+          } else if (typeof offset === 'string') {
+            const trimmed = offset.trim().replace(/^-/, '');
+            if (/^\d+$/.test(trimmed)) {
+              const numOffset = parseInt(trimmed, 10);
+              if (numOffset >= 0 && numOffset <= 14) {
+                finalOffset = numOffset;
               } else {
-                // Tipo inválido, calcula dinamicamente
                 const timezoneOffset = Math.round(new Date().getTimezoneOffset() / -60);
-                finalOffset = String(Math.abs(Math.max(-12, Math.min(14, timezoneOffset))));
+                finalOffset = Math.abs(Math.max(-12, Math.min(14, timezoneOffset)));
               }
             } else {
-              // Não fornecido, calcula dinamicamente do servidor
               const timezoneOffset = Math.round(new Date().getTimezoneOffset() / -60);
-              // Usa valor absoluto (sem sinal negativo)
-              finalOffset = String(Math.abs(Math.max(-12, Math.min(14, timezoneOffset))));
+              finalOffset = Math.abs(Math.max(-12, Math.min(14, timezoneOffset)));
             }
-            
-            console.log(`🌍 timeZoneOffset calculado: ${finalOffset} (original: ${offset}, tipo: ${typeof offset})`);
-            // IMPORTANTE: A documentação mostra exemplos com número (3), não string
-            // Sempre envia como número (não string)
-            const numOffset = parseInt(finalOffset, 10);
-            if (!isNaN(numOffset) && numOffset >= 0 && numOffset <= 14) {
-              return numOffset; // Envia como número
-            }
-            // Fallback seguro: retorna 3 (UTC-3 Brasil) se cálculo falhar
-            console.warn(`⚠️  timeZoneOffset inválido após cálculo, usando fallback: 3`);
-            return 3;
-          })() // OBRIGATÓRIO (número, diferença em horas do UTC, SEM sinal negativo, range: 0-14)
+          } else {
+            const timezoneOffset = Math.round(new Date().getTimezoneOffset() / -60);
+            finalOffset = Math.abs(Math.max(-12, Math.min(14, timezoneOffset)));
+          }
+        } else {
+          const timezoneOffset = Math.round(new Date().getTimezoneOffset() / -60);
+          finalOffset = Math.abs(Math.max(-12, Math.min(14, timezoneOffset)));
+        }
+        
+        console.log(`🌍 timeZoneOffset calculado: ${finalOffset} (número, original: ${offset}, tipo original: ${typeof offset})`);
+        return finalOffset;
+      })();
+      
+      const deviceData = {
+        colorDepth: parseInt(threeDSecure.device.colorDepth) || 24, // OBRIGATÓRIO (2 numérico)
+        deviceType3ds: threeDSecure.device.deviceType3ds || 'BROWSER', // OBRIGATÓRIO (20 alfanumérico)
+        javaEnabled: threeDSecure.device.javaEnabled === true, // OBRIGATÓRIO (booleano)
+        language: threeDSecure.device.language || 'pt-BR', // OBRIGATÓRIO (10 alfanumérico, IETF BCP47)
+        screenHeight: parseInt(threeDSecure.device.screenHeight) || 1080, // OBRIGATÓRIO (6 numérico)
+        screenWidth: parseInt(threeDSecure.device.screenWidth) || 1920, // OBRIGATÓRIO (6 numérico)
+        timeZoneOffset: timeZoneOffsetValue // OBRIGATÓRIO (número, diferença em horas do UTC, SEM sinal negativo)
       };
       
       console.log('📋 Device data preparado:', JSON.stringify(deviceData, null, 2));
