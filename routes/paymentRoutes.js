@@ -1885,21 +1885,16 @@ router.post('/3ds/callback', async (req, res) => {
 
     console.log(`✅ Autenticação 3DS bem-sucedida`);
 
-    // Consulta status da transação na e-Rede para verificar autorização
-    const transactionData = await queryTransactionByReference(reference);
+    // IMPORTANTE: O callback já contém todos os dados necessários da transação
+    // Não precisamos consultar novamente - os dados já estão no callback
+    // O callback vem com: returnCode, returnMessage, authorizationCode, etc.
+    const foiAutorizada = returnCode === '00';
     
-    if (!transactionData) {
-      console.error(`❌ Não foi possível consultar transação na e-Rede`);
-      return res.status(200).json({ received: true, error: 'Could not query transaction' });
-    }
-
-    console.log(`📊 Status da transação consultada:`);
-    console.log(`   ReturnCode: ${transactionData.returnCode}`);
-    console.log(`   ReturnMessage: ${transactionData.returnMessage}`);
-    console.log(`   AuthorizationCode: ${transactionData.authorizationCode || 'N/A'}`);
-
-    // Verifica se transação foi autorizada
-    const foiAutorizada = transactionData.returnCode === '00';
+    console.log(`📊 Status da transação (do callback):`);
+    console.log(`   ReturnCode: ${returnCode}`);
+    console.log(`   ReturnMessage: ${returnMessage}`);
+    console.log(`   AuthorizationCode: ${callbackData.authorizationCode || 'N/A'}`);
+    console.log(`   TID: ${tid}`);
     
     if (!foiAutorizada) {
       console.log(`❌ Transação não foi autorizada. ReturnCode: ${transactionData.returnCode}`);
@@ -1959,7 +1954,7 @@ router.post('/3ds/callback', async (req, res) => {
       horario: captureResult.dateTime || new Date().toISOString(),
       bandeira: cobranca.dados_pagamento?.bandeira || null,
       parcelas: cobranca.dados_pagamento?.parcelas || null,
-      authorizationCode: captureResult.authorizationCode || transactionData.authorizationCode
+      authorizationCode: captureResult.authorizationCode || callbackData.authorizationCode
     };
 
     const dadosDoadorTemp = cobranca.dados_doador_temp ? JSON.parse(cobranca.dados_doador_temp) : null;
