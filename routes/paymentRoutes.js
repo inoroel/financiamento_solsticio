@@ -568,6 +568,15 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
         });
       }
 
+      // Verifica se há erro específico (ex: erro 204 - cartão não suporta 3DS)
+      if (cobranca.error) {
+        return res.status(400).json({
+          error: cobranca.returnMessage || 'Erro ao processar pagamento com cartão de débito.',
+          returnCode: cobranca.returnCode,
+          details: 'Para transações de débito, o 3DS é obrigatório. O cartão não suporta autenticação 3DS. Entre em contato com o banco emissor.'
+        });
+      }
+
       dadosPagamento = {
         tipo: 'DEBITO',
         bandeira: cobranca.bandeira

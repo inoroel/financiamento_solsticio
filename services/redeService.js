@@ -1041,6 +1041,22 @@ async function createDebitCardTransaction(txid, valor, cartaoData, bandeira = nu
     if (error.response) {
       console.error('Status:', error.response.status);
       console.error('Data:', JSON.stringify(error.response.data, null, 2));
+      
+      // Erro 204: Portador não registrado no programa de autenticação 3DS
+      // Para débito, 3DS é obrigatório, então não podemos tentar sem 3DS
+      if (error.response.data && error.response.data.returnCode === '204') {
+        console.error('⚠️  ERRO 204: Portador não registrado no programa de autenticação 3DS do banco emissor.');
+        console.error('   Para transações de débito, o 3DS é obrigatório e não pode ser desabilitado.');
+        console.error('   O cartão não suporta autenticação 3DS. Entre em contato com o banco emissor.');
+        
+        // Retorna um objeto com erro específico para que a rota possa tratar adequadamente
+        return {
+          error: true,
+          returnCode: '204',
+          returnMessage: 'Cardholder not registered in the issuer\'s authentication program. Para transações de débito, o 3DS é obrigatório e o cartão não suporta autenticação 3DS.',
+          status: 'NEGADA'
+        };
+      }
     } else {
       console.error('Erro:', error.message);
     }
