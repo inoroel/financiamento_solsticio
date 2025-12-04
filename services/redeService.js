@@ -767,7 +767,10 @@ async function createCreditCardTransaction(txid, valor, cartaoData, parcelas = 1
           emailAddress: threeDSecure.billing.emailAddress, // OBRIGATÓRIO (até 128)
           phoneNumber: threeDSecure.billing.phoneNumber // OBRIGATÓRIO (até 32 numérico)
         },
-        ...threeDSecure // Permite outros campos como challengePreference, eci, cavv, xid, etc.
+        // IMPORTANTE: Remove device e billing do spread para não sobrescrever os valores validados
+        ...(Object.fromEntries(
+          Object.entries(threeDSecure).filter(([key]) => key !== 'device' && key !== 'billing')
+        )) // Permite outros campos como challengePreference, eci, cavv, xid, etc. (SEM device e billing)
       };
 
       // URLs de callback são obrigatórias quando usa 3DS/DataOnly
@@ -1188,7 +1191,10 @@ async function createDebitCardTransaction(txid, valor, cartaoData, bandeira = nu
           emailAddress: threeDSecure.billing.emailAddress, // OBRIGATÓRIO (até 128)
           phoneNumber: threeDSecure.billing.phoneNumber // OBRIGATÓRIO (até 32 numérico)
         },
-        ...threeDSecure // Permite outros campos como challengePreference, eci, cavv, xid, etc.
+        // IMPORTANTE: Remove device e billing do spread para não sobrescrever os valores validados
+        ...(Object.fromEntries(
+          Object.entries(threeDSecure).filter(([key]) => key !== 'device' && key !== 'billing')
+        )) // Permite outros campos como challengePreference, eci, cavv, xid, etc. (SEM device e billing)
       };
 
       // URLs de callback são obrigatórias quando usa 3DS/DataOnly
