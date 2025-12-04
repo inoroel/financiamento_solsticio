@@ -418,7 +418,7 @@ async function createPixCharge(txid, valor, solicitacaoPagador = "Doação para 
       if (error.response.status === 401) {
         if (error.response.data?.returnMessage?.includes('Affiliation')) {
           errorDetails.message = 'Credenciais e-Rede inválidas ou não configuradas. Verifique REDE_PV e REDE_TOKEN nas variáveis de ambiente da Vercel.';
-        } else {
+    } else {
           errorDetails.message = 'Não autorizado. Verifique se REDE_PV e REDE_TOKEN estão corretos.';
         }
       } else if (error.response.status === 403) {
@@ -619,7 +619,7 @@ async function createCreditCardTransaction(txid, valor, cartaoData, parcelas = 1
         // Usando cardToken - brand no nível raiz
         requestBody.brand = bandeira;
       } else if (requestBody.card) {
-        requestBody.card.brand = bandeira;
+      requestBody.card.brand = bandeira;
       } else {
         // Usando cardNumber diretamente - brand no nível raiz
         requestBody.brand = bandeira;
@@ -679,30 +679,26 @@ async function createCreditCardTransaction(txid, valor, cartaoData, parcelas = 1
       baseUrl = baseUrl.replace(/\/$/, '');
       
       // URLs devem ser curtas (máximo 87 caracteres conforme documentação)
-      const successUrl = `${baseUrl}/3ds/success`;
-      const failureUrl = `${baseUrl}/3ds/failure`;
+      // Usa uma única rota de callback que processa success e failure
+      const callbackUrl = `${baseUrl}/api/3ds/callback`;
       
-      // Valida tamanho das URLs (máximo 87 caracteres)
-      if (successUrl.length > 87 || failureUrl.length > 87) {
-        console.error(`❌ URLs de callback muito longas! Máximo permitido: 87 caracteres`);
-        console.error(`   Success URL: ${successUrl.length} caracteres - ${successUrl}`);
-        console.error(`   Failure URL: ${failureUrl.length} caracteres - ${failureUrl}`);
-        throw new Error(`URLs de callback 3DS excedem o limite de 87 caracteres. Configure BASE_URL ou CUSTOM_DOMAIN com um domínio mais curto.`);
+      // Valida tamanho da URL (máximo 87 caracteres)
+      if (callbackUrl.length > 87) {
+        console.error(`❌ URL de callback muito longa! Máximo permitido: 87 caracteres`);
+        console.error(`   Callback URL: ${callbackUrl.length} caracteres - ${callbackUrl}`);
+        throw new Error(`URL de callback 3DS excede o limite de 87 caracteres. Configure BASE_URL ou CUSTOM_DOMAIN com um domínio mais curto.`);
       }
       
+      // Conforme documentação, podemos usar threeDSecureCallback para uma única URL
       requestBody.urls = [
         {
-          kind: 'threeDSecureSuccess',
-          url: successUrl
-        },
-        {
-          kind: 'threeDSecureFailure',
-          url: failureUrl
+          kind: 'threeDSecureCallback',
+          url: callbackUrl
         }
       ];
 
       console.log('🔒 Transação com autenticação 3DS/DataOnly ativada');
-      console.log(`📋 URLs de callback 3DS: success=${requestBody.urls[0].url}, failure=${requestBody.urls[1].url}`);
+      console.log(`📋 URL de callback 3DS: ${callbackUrl}`);
     }
 
     const authHeaders = await getAuthHeaders();
@@ -711,15 +707,15 @@ async function createCreditCardTransaction(txid, valor, cartaoData, parcelas = 1
     let response;
     try {
       response = await axios.post(
-        `${API_BASE_URL}${endpoint}`,
-        requestBody,
-        {
-          headers: {
+      `${API_BASE_URL}${endpoint}`,
+      requestBody,
+      {
+        headers: {
             ...authHeaders,
-            'X-Request-Id': correlationId
-          }
+          'X-Request-Id': correlationId
         }
-      );
+      }
+    );
     } catch (firstError) {
       // Se retornar erro 204 (portador não registrado no 3DS) e for crédito,
       // tenta novamente sem 3DS/DataOnly (3DS é opcional para crédito)
@@ -758,6 +754,25 @@ async function createCreditCardTransaction(txid, valor, cartaoData, parcelas = 1
     }
 
     console.log('✅ TRANSAÇÃO DE CRÉDITO e-Rede CRIADA COM SUCESSO!');
+
+    // Detecta returnCode 220 (requer autenticação 3DS com redirecionamento)
+    if (response.data.returnCode === '220' && response.data.threeDSecure?.url) {
+      console.log('🔒 Transação requer autenticação 3DS (returnCode 220)');
+      return {
+        status: 'PENDENTE_3DS',
+        requires3DS: true,
+        threeDSecureUrl: response.data.threeDSecure.url,
+        txid: txid,
+        rede_tid: response.data.tid || response.data.reference,
+        valor: valorValidado,
+        parcelas: parcelas,
+        bandeira: response.data.card?.brand || bandeira || 'UNKNOWN',
+        criadoEm: response.data.dateTime || new Date().toISOString(),
+        returnCode: response.data.returnCode,
+        returnMessage: response.data.returnMessage,
+        threeDSecure: response.data.threeDSecure
+      };
+    }
 
     return {
       status: response.data.returnCode === '00' ? 'AUTORIZADA' : 'NEGADA',
@@ -927,7 +942,7 @@ async function createDebitCardTransaction(txid, valor, cartaoData, bandeira = nu
         // Usando cardToken - brand no nível raiz
         requestBody.brand = bandeira;
       } else if (requestBody.card) {
-        requestBody.card.brand = bandeira;
+      requestBody.card.brand = bandeira;
       } else {
         // Usando cardNumber diretamente - brand no nível raiz
         requestBody.brand = bandeira;
@@ -984,30 +999,26 @@ async function createDebitCardTransaction(txid, valor, cartaoData, bandeira = nu
       baseUrl = baseUrl.replace(/\/$/, '');
       
       // URLs devem ser curtas (máximo 87 caracteres conforme documentação)
-      const successUrl = `${baseUrl}/3ds/success`;
-      const failureUrl = `${baseUrl}/3ds/failure`;
+      // Usa uma única rota de callback que processa success e failure
+      const callbackUrl = `${baseUrl}/api/3ds/callback`;
       
-      // Valida tamanho das URLs (máximo 87 caracteres)
-      if (successUrl.length > 87 || failureUrl.length > 87) {
-        console.error(`❌ URLs de callback muito longas! Máximo permitido: 87 caracteres`);
-        console.error(`   Success URL: ${successUrl.length} caracteres - ${successUrl}`);
-        console.error(`   Failure URL: ${failureUrl.length} caracteres - ${failureUrl}`);
-        throw new Error(`URLs de callback 3DS excedem o limite de 87 caracteres. Configure BASE_URL ou CUSTOM_DOMAIN com um domínio mais curto.`);
+      // Valida tamanho da URL (máximo 87 caracteres)
+      if (callbackUrl.length > 87) {
+        console.error(`❌ URL de callback muito longa! Máximo permitido: 87 caracteres`);
+        console.error(`   Callback URL: ${callbackUrl.length} caracteres - ${callbackUrl}`);
+        throw new Error(`URL de callback 3DS excede o limite de 87 caracteres. Configure BASE_URL ou CUSTOM_DOMAIN com um domínio mais curto.`);
       }
       
+      // Conforme documentação, podemos usar threeDSecureCallback para uma única URL
       requestBody.urls = [
         {
-          kind: 'threeDSecureSuccess',
-          url: successUrl
-        },
-        {
-          kind: 'threeDSecureFailure',
-          url: failureUrl
+          kind: 'threeDSecureCallback',
+          url: callbackUrl
         }
       ];
 
       console.log('🔒 Transação DÉBITO com autenticação 3DS ativada');
-      console.log(`📋 URLs de callback 3DS: success=${requestBody.urls[0].url}, failure=${requestBody.urls[1].url}`);
+      console.log(`📋 URL de callback 3DS: ${callbackUrl}`);
     }
 
     const authHeaders = await getAuthHeaders();
@@ -1023,6 +1034,24 @@ async function createDebitCardTransaction(txid, valor, cartaoData, bandeira = nu
     );
 
     console.log('✅ TRANSAÇÃO DE DÉBITO e-Rede CRIADA COM SUCESSO!');
+
+    // Detecta returnCode 220 (requer autenticação 3DS com redirecionamento)
+    if (response.data.returnCode === '220' && response.data.threeDSecure?.url) {
+      console.log('🔒 Transação requer autenticação 3DS (returnCode 220)');
+      return {
+        status: 'PENDENTE_3DS',
+        requires3DS: true,
+        threeDSecureUrl: response.data.threeDSecure.url,
+        txid: txid,
+        rede_tid: response.data.tid || response.data.reference,
+        valor: valorValidado,
+        bandeira: response.data.card?.brand || bandeira || 'UNKNOWN',
+        criadoEm: response.data.dateTime || new Date().toISOString(),
+        returnCode: response.data.returnCode,
+        returnMessage: response.data.returnMessage,
+        threeDSecure: response.data.threeDSecure
+      };
+    }
 
     return {
       status: response.data.returnCode === '00' ? 'CAPTURADA' : 'NEGADA',
@@ -1295,6 +1324,104 @@ async function authorizeZeroDollar(cardData, txid, kind = 'credit') {
   }
 }
 
+/**
+ * Consulta uma transação pelo reference (código de referência)
+ * Conforme documentação: GET /v2/transactions?reference={reference}
+ * @param {string} reference - Código de referência da transação (txid)
+ * @returns {Object|null} Dados da transação ou null em caso de erro
+ */
+async function queryTransactionByReference(reference) {
+  try {
+    if (!reference || typeof reference !== 'string') {
+      throw new Error('Reference inválido');
+    }
+
+    console.log(`\n🔍 Consultando transação por reference: ${reference}`);
+
+    const endpoint = `/v2/transactions?reference=${encodeURIComponent(reference)}`;
+    const authHeaders = await getAuthHeaders();
+
+    const response = await axios.get(
+      `${API_BASE_URL}${endpoint}`,
+      {
+        headers: {
+          ...authHeaders,
+          'X-Request-Id': generateCorrelationId()
+        }
+      }
+    );
+
+    console.log('✅ Transação consultada com sucesso');
+    return response.data;
+  } catch (error) {
+    console.error('❌ ERRO AO CONSULTAR TRANSAÇÃO POR REFERENCE ---');
+    if (error.response) {
+      console.error('Status:', error.response.status);
+      console.error('Data:', JSON.stringify(error.response.data, null, 2));
+    } else {
+      console.error('Erro:', error.message);
+    }
+    return null;
+  }
+}
+
+/**
+ * Captura uma transação autorizada (confirma a autorização)
+ * Conforme documentação: PUT /v2/transactions/{tid}
+ * IMPORTANTE: "Ao realizar uma autorização, é necessária a confirmação desta transação (captura). 
+ * Nesse momento é gerada a cobrança na fatura do portador do cartão."
+ * @param {string} tid - Número identificador único da transação (rede_tid)
+ * @param {number} amount - Valor da transação em centavos
+ * @returns {Object|null} Dados da transação capturada ou null em caso de erro
+ */
+async function captureTransaction(tid, amount) {
+  try {
+    if (!tid || typeof tid !== 'string') {
+      throw new Error('TID inválido');
+    }
+
+    if (!amount || typeof amount !== 'number' || amount <= 0) {
+      throw new Error('Amount inválido (deve ser um número positivo em centavos)');
+    }
+
+    console.log(`\n💰 Capturando transação TID: ${tid}, Amount: ${amount} centavos`);
+
+    const endpoint = `/v2/transactions/${tid}`;
+    const authHeaders = await getAuthHeaders();
+
+    const requestBody = {
+      amount: Math.round(amount) // Garante que é um número inteiro
+    };
+
+    const response = await axios.put(
+      `${API_BASE_URL}${endpoint}`,
+      requestBody,
+      {
+        headers: {
+          ...authHeaders,
+          'Content-Type': 'application/json',
+          'X-Request-Id': generateCorrelationId()
+        }
+      }
+    );
+
+    console.log('✅ Transação capturada com sucesso');
+    console.log(`   ReturnCode: ${response.data.returnCode}`);
+    console.log(`   ReturnMessage: ${response.data.returnMessage}`);
+
+    return response.data;
+  } catch (error) {
+    console.error('❌ ERRO AO CAPTURAR TRANSAÇÃO ---');
+    if (error.response) {
+      console.error('Status:', error.response.status);
+      console.error('Data:', JSON.stringify(error.response.data, null, 2));
+    } else {
+      console.error('Erro:', error.message);
+    }
+    return null;
+  }
+}
+
 module.exports = {
   createPixCharge,
   createCreditCardTransaction,
@@ -1303,6 +1430,8 @@ module.exports = {
   cancelTransaction,
   getAuthHeaders,
   tokenizeCard,
-  authorizeZeroDollar
+  authorizeZeroDollar,
+  queryTransactionByReference,
+  captureTransaction
 };
 

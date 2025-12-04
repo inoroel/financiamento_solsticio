@@ -8,7 +8,9 @@ const {
   consultTransaction,
   cancelTransaction,
   tokenizeCard,
-  authorizeZeroDollar
+  authorizeZeroDollar,
+  queryTransactionByReference,
+  captureTransaction
 } = require('../services/redeService');
 const {
   createStellarPayment,
@@ -462,6 +464,12 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
         parcelas: parcelasValidadas,
         bandeira: cobranca.bandeira
       };
+      
+      // Salva threeDSecureUrl se transação requer 3DS
+      if (cobranca.requires3DS && cobranca.threeDSecureUrl) {
+        dadosPagamento.threeDSecureUrl = cobranca.threeDSecureUrl;
+        dadosPagamento.tid = cobranca.rede_tid; // Salva tid para usar na captura
+      }
     } else if (tipoPagamento === 'DEBITO') {
       // Zero Dollar: OBRIGATÓRIO apenas quando vamos armazenar cartão
       const vaiArmazenarCartao = req.body.recurrenceData?.storageCard === '1' || 
@@ -581,6 +589,12 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
         tipo: 'DEBITO',
         bandeira: cobranca.bandeira
       };
+      
+      // Salva threeDSecureUrl se transação requer 3DS
+      if (cobranca.requires3DS && cobranca.threeDSecureUrl) {
+        dadosPagamento.threeDSecureUrl = cobranca.threeDSecureUrl;
+        dadosPagamento.tid = cobranca.rede_tid; // Salva tid para usar na captura
+      }
     } else if (tipoPagamento === 'CRIPTO') {
       // Validação de moeda para pagamentos cripto
       const currencyUpper = (currency || 'USDC').toUpperCase();
@@ -626,14 +640,19 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
     // Para cartões, verifica se foi autorizado através do objeto autorizacao
     // O status real da autorização está em autorizacao.status, não em cobranca.status
     let foiAutorizado = false;
+    let requires3DS = false;
     if (tipoPagamento === 'CREDITO' || tipoPagamento === 'DEBITO') {
+      // Verifica se requer autenticação 3DS (returnCode 220)
+      requires3DS = cobranca.requires3DS === true && !!cobranca.threeDSecureUrl;
       // Verifica se há authorizationCode (indica autorização imediata)
       foiAutorizado = cobranca.authorizationCode && cobranca.returnCode === '00';
     }
     
     const statusInicial = tipoPagamento === 'PIX' || tipoPagamento === 'CRIPTO'
       ? 'AGUARDANDO'
-      : (foiAutorizado ? 'CONFIRMADA' : 'AGUARDANDO');
+      : requires3DS
+        ? 'PENDENTE_3DS'
+        : (foiAutorizado ? 'CONFIRMADA' : 'AGUARDANDO');
     
     console.log(`📊 Status inicial determinado:`, {
       tipoPagamento,
@@ -836,17 +855,34 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
       response.qr_code_address = cobranca.qr_code_address; // QR code apenas com o endereço Stellar
       response.qr_code_memo = cobranca.qr_code_memo; // QR code apenas com o memo
     } else {
-      // Para cartões, o status real da autorização é baseado no returnCode
-      // returnCode '00' = AUTORIZADA, outros = NEGADA
-      const statusAutorizacao = cobranca.returnCode === '00' ? 'AUTORIZADA' : 'NEGADA';
-      
-      response.autorizacao = {
-        codigo: cobranca.authorizationCode || null,
-        status: statusAutorizacao,
-        bandeira: cobranca.bandeira || dadosPagamento?.bandeira || null
-      };
-      if (tipoPagamento === 'CREDITO') {
-        response.parcelas = cobranca.parcelas || dadosPagamento?.parcelas || 1;
+      // Para cartões, verifica se requer autenticação 3DS (returnCode 220)
+      if (cobranca.requires3DS && cobranca.threeDSecureUrl) {
+        response.requires3DS = true;
+        response.threeDSecureUrl = cobranca.threeDSecureUrl;
+        response.status = 'PENDENTE_3DS';
+        response.autorizacao = {
+          codigo: null,
+          status: 'PENDENTE_3DS',
+          bandeira: cobranca.bandeira || dadosPagamento?.bandeira || null
+        };
+        if (tipoPagamento === 'CREDITO') {
+          response.parcelas = cobranca.parcelas || dadosPagamento?.parcelas || 1;
+        }
+        console.log('🔒 Transação requer autenticação 3DS');
+        console.log(`   URL: ${cobranca.threeDSecureUrl}`);
+      } else {
+        // Para cartões, o status real da autorização é baseado no returnCode
+        // returnCode '00' = AUTORIZADA, outros = NEGADA
+        const statusAutorizacao = cobranca.returnCode === '00' ? 'AUTORIZADA' : 'NEGADA';
+        
+        response.autorizacao = {
+          codigo: cobranca.authorizationCode || null,
+          status: statusAutorizacao,
+          bandeira: cobranca.bandeira || dadosPagamento?.bandeira || null
+        };
+        if (tipoPagamento === 'CREDITO') {
+          response.parcelas = cobranca.parcelas || dadosPagamento?.parcelas || 1;
+        }
       }
     }
 
@@ -1537,6 +1573,213 @@ router.post('/cancelar-cobranca', async (req, res) => {
     res.status(500).json({
       error: 'Erro interno do servidor.',
       message: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+});
+
+/**
+ * Endpoint de callback 3DS
+ * Recebe callbacks da e-Rede após autenticação 3DS
+ * Conforme documentação: POST /api/3ds/callback
+ * Content-Type: application/x-www-form-urlencoded ou application/json
+ */
+router.post('/3ds/callback', async (req, res) => {
+  try {
+    console.log('\n📞 Callback 3DS recebido');
+    console.log('Headers:', JSON.stringify(req.headers, null, 2));
+    console.log('Body:', JSON.stringify(req.body, null, 2));
+
+    // Extrai dados do callback (pode vir como form-urlencoded ou JSON)
+    const callbackData = req.body;
+    
+    // Valida campos obrigatórios
+    if (!callbackData.reference && !callbackData.tid) {
+      console.error('❌ Callback 3DS inválido: falta reference ou tid');
+      return res.status(400).json({
+        error: 'Dados inválidos',
+        message: 'reference ou tid são obrigatórios'
+      });
+    }
+
+    const reference = callbackData.reference;
+    const tid = callbackData.tid;
+    const threeDSecureReturnCode = callbackData.threeDSecure?.returnCode || callbackData['threeDSecure.returnCode'];
+    const returnCode = callbackData.returnCode;
+    const returnMessage = callbackData.returnMessage;
+
+    console.log(`📋 Dados do callback:`);
+    console.log(`   Reference: ${reference}`);
+    console.log(`   TID: ${tid}`);
+    console.log(`   3DS ReturnCode: ${threeDSecureReturnCode}`);
+    console.log(`   ReturnCode: ${returnCode}`);
+    console.log(`   ReturnMessage: ${returnMessage}`);
+
+    // Busca cobrança no banco por reference (que é o txid) ou tid
+    let cobranca = null;
+    if (reference) {
+      // reference é o txid
+      cobranca = await getCobranca(reference);
+    }
+    if (!cobranca && tid) {
+      // Se não encontrou por reference, tenta buscar por provider_tid ou rede_tid
+      // Precisamos fazer uma query direta no banco
+      try {
+        const { sql } = require('../config/database');
+        const result = await sql`
+          SELECT * FROM cobrancas 
+          WHERE provider_tid = ${tid} OR rede_tid = ${tid}
+          LIMIT 1
+        `;
+        if (result.rows && result.rows.length > 0) {
+          cobranca = result.rows[0];
+        }
+      } catch (error) {
+        console.error('❌ Erro ao buscar cobrança por tid:', error.message);
+      }
+    }
+
+    if (!cobranca) {
+      console.error(`❌ Cobrança não encontrada: reference=${reference}, tid=${tid}`);
+      // Retorna 200 mesmo assim (e-Rede espera confirmação)
+      return res.status(200).json({ received: true });
+    }
+
+    console.log(`✅ Cobrança encontrada: txid=${cobranca.txid}, status=${cobranca.status}`);
+
+    // Verifica se já foi processada (idempotência)
+    if (cobranca.status === 'CONFIRMADA' || cobranca.status === 'NEGADA') {
+      console.log(`⚠️  Callback já processado anteriormente. Status atual: ${cobranca.status}`);
+      return res.status(200).json({ received: true, alreadyProcessed: true });
+    }
+
+    // Verifica autenticação 3DS
+    // threeDSecure.returnCode indica o resultado da autenticação 3DS
+    // Valores comuns: '00' (sucesso), outros códigos indicam falha
+    const threeDSAuthenticated = threeDSecureReturnCode === '00' || threeDSecureReturnCode === 'Y';
+    
+    if (!threeDSAuthenticated) {
+      console.log(`❌ Autenticação 3DS falhou. 3DS ReturnCode: ${threeDSecureReturnCode}`);
+      
+      // Atualiza status da cobrança para NEGADA
+      await saveCobranca(
+        cobranca.txid,
+        cobranca.tipo_pagamento,
+        cobranca.provider,
+        cobranca.valor,
+        'NEGADA',
+        cobranca.crypto_currency,
+        cobranca.crypto_address,
+        cobranca.dados_pagamento,
+        cobranca.dados_doador_temp
+      );
+
+      return res.status(200).json({ received: true, authenticated: false });
+    }
+
+    console.log(`✅ Autenticação 3DS bem-sucedida`);
+
+    // Consulta status da transação na e-Rede para verificar autorização
+    const transactionData = await queryTransactionByReference(reference);
+    
+    if (!transactionData) {
+      console.error(`❌ Não foi possível consultar transação na e-Rede`);
+      return res.status(200).json({ received: true, error: 'Could not query transaction' });
+    }
+
+    console.log(`📊 Status da transação consultada:`);
+    console.log(`   ReturnCode: ${transactionData.returnCode}`);
+    console.log(`   ReturnMessage: ${transactionData.returnMessage}`);
+    console.log(`   AuthorizationCode: ${transactionData.authorizationCode || 'N/A'}`);
+
+    // Verifica se transação foi autorizada
+    const foiAutorizada = transactionData.returnCode === '00';
+    
+    if (!foiAutorizada) {
+      console.log(`❌ Transação não foi autorizada. ReturnCode: ${transactionData.returnCode}`);
+      
+      // Atualiza status da cobrança para NEGADA
+      await saveCobranca(
+        cobranca.txid,
+        cobranca.tipo_pagamento,
+        cobranca.provider,
+        cobranca.valor,
+        'NEGADA',
+        cobranca.crypto_currency,
+        cobranca.crypto_address,
+        cobranca.dados_pagamento,
+        cobranca.dados_doador_temp
+      );
+
+      return res.status(200).json({ received: true, authorized: false });
+    }
+
+    console.log(`✅ Transação autorizada. Fazendo captura...`);
+
+    // Faz captura da transação autorizada
+    // IMPORTANTE: Conforme documentação, a captura é obrigatória após autorização
+    const amountCentavos = Math.round(cobranca.valor * 100);
+    const captureResult = await captureTransaction(tid, amountCentavos);
+
+    if (!captureResult || captureResult.returnCode !== '00') {
+      console.error(`❌ Falha ao capturar transação`);
+      console.error(`   ReturnCode: ${captureResult?.returnCode || 'N/A'}`);
+      console.error(`   ReturnMessage: ${captureResult?.returnMessage || 'N/A'}`);
+      
+      // Loga erro mas mantém transação como AUTORIZADA (pode tentar capturar depois)
+      // Não atualiza status para não perder a autorização
+      return res.status(200).json({ 
+        received: true, 
+        authorized: true, 
+        captured: false,
+        error: 'Capture failed but transaction is authorized'
+      });
+    }
+
+    console.log(`✅ Transação capturada com sucesso`);
+
+    // Processa transação confirmada (salva doador e cria entrada em transacoes)
+    const webhookData = {
+      txid: cobranca.txid,
+      rede_tid: tid,
+      provider_tid: tid,
+      provider: cobranca.provider || 'REDE',
+      tipo_pagamento: cobranca.tipo_pagamento,
+      valor: cobranca.valor,
+      status: 'CONFIRMADA',
+      horario: captureResult.dateTime || new Date().toISOString(),
+      bandeira: cobranca.dados_pagamento?.bandeira || null,
+      parcelas: cobranca.dados_pagamento?.parcelas || null,
+      authorizationCode: captureResult.authorizationCode || transactionData.authorizationCode
+    };
+
+    const dadosDoadorTemp = cobranca.dados_doador_temp ? JSON.parse(cobranca.dados_doador_temp) : null;
+    
+    const transacaoProcessada = await processConfirmedTransaction(webhookData, dadosDoadorTemp);
+
+    if (transacaoProcessada && transacaoProcessada.transacao) {
+      console.log(`✅ Transação processada e confirmada no banco de dados`);
+    } else {
+      console.error(`⚠️  Transação capturada mas houve erro ao processar no banco`);
+    }
+
+    // Retorna confirmação para e-Rede
+    return res.status(200).json({ 
+      received: true, 
+      authenticated: true,
+      authorized: true,
+      captured: true,
+      processed: !!transacaoProcessada
+    });
+
+  } catch (error) {
+    console.error('❌ Erro inesperado no callback 3DS:', error.message);
+    console.error(error.stack);
+    
+    // Retorna 200 mesmo em caso de erro (e-Rede espera confirmação)
+    // Loga o erro para debugging
+    return res.status(200).json({ 
+      received: true, 
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal error'
     });
   }
 });
