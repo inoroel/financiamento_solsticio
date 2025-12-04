@@ -638,7 +638,30 @@ async function createCreditCardTransaction(txid, valor, cartaoData, parcelas = 1
         ...threeDSecure // Permite outros campos como eci, cavv, xid, etc.
       };
 
+      // URLs de callback são obrigatórias quando usa 3DS/DataOnly
+      // Mesmo com embedded: true, precisamos enviar URLs de sucesso e falha
+      let baseUrl = process.env.BASE_URL;
+      if (!baseUrl) {
+        if (process.env.VERCEL_URL) {
+          baseUrl = `https://${process.env.VERCEL_URL}`;
+        } else {
+          baseUrl = 'https://api.solsticio.com.br'; // Fallback
+        }
+      }
+      
+      requestBody.urls = [
+        {
+          kind: 'threeDSecureSuccess',
+          url: `${baseUrl}/api/webhook/3ds/success`
+        },
+        {
+          kind: 'threeDSecureFailure',
+          url: `${baseUrl}/api/webhook/3ds/failure`
+        }
+      ];
+
       console.log('🔒 Transação com autenticação 3DS/DataOnly ativada');
+      console.log(`📋 URLs de callback 3DS: success=${requestBody.urls[0].url}, failure=${requestBody.urls[1].url}`);
     }
 
     const authHeaders = await getAuthHeaders();
@@ -841,7 +864,30 @@ async function createDebitCardTransaction(txid, valor, cartaoData, bandeira = nu
         ...threeDSecure // Permite outros campos como eci, cavv, xid, etc.
       };
 
+      // URLs de callback são obrigatórias quando usa 3DS/DataOnly
+      // Mesmo com embedded: true, precisamos enviar URLs de sucesso e falha
+      let baseUrl = process.env.BASE_URL;
+      if (!baseUrl) {
+        if (process.env.VERCEL_URL) {
+          baseUrl = `https://${process.env.VERCEL_URL}`;
+        } else {
+          baseUrl = 'https://api.solsticio.com.br'; // Fallback
+        }
+      }
+      
+      requestBody.urls = [
+        {
+          kind: 'threeDSecureSuccess',
+          url: `${baseUrl}/api/webhook/3ds/success`
+        },
+        {
+          kind: 'threeDSecureFailure',
+          url: `${baseUrl}/api/webhook/3ds/failure`
+        }
+      ];
+
       console.log('🔒 Transação DÉBITO com autenticação 3DS ativada');
+      console.log(`📋 URLs de callback 3DS: success=${requestBody.urls[0].url}, failure=${requestBody.urls[1].url}`);
     }
 
     const authHeaders = await getAuthHeaders();
