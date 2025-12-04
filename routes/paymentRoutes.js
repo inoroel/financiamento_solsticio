@@ -170,6 +170,14 @@ function validateParcelas(parcelas) {
  * }
  * 
  * NOTA: Para Visa e Mastercard, a tokenização e 3DS são aplicados automaticamente pelo backend.
+ * 
+ * AUTENTICAÇÃO 3DS (Pop-up):
+ * Quando a resposta contém requires3DS: true e threeDSecureUrl, o frontend deve:
+ * 1. Abrir pop-up: const popup = window.open(threeDSecureUrl, '3DS Authentication', 'width=500,height=600,scrollbars=yes,resizable=yes')
+ * 2. Monitorar fechamento: setInterval(() => { if (popup.closed) { checkTransactionStatus(txid) } }, 1000)
+ * 3. O callback 3DS será processado automaticamente pelo backend
+ * 
+ * IMPORTANTE: Usamos pop-up unificado (sandbox + produção) porque iframe não funciona em sandbox.
  */
 router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
   try {
@@ -406,6 +414,9 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
 
       // 3DS/DataOnly: DataOnly para Visa/Mastercard (melhor aprovação, sem liability shift)
       // 3DS normal para Elo (com liability shift)
+      // IMPORTANTE: Para usar MPI Rede, os seguintes campos são OBRIGATÓRIOS:
+      // - userAgent, ipAddress, device, billing
+      // Esses dados devem vir do frontend (navegador do usuário)
       let threeDSecureData = null;
       if (bandeiraLower === 'visa' || bandeiraLower === 'mastercard') {
         // DataOnly: melhor aprovação, sem challenge, sem liability shift
@@ -432,6 +443,58 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
           // Mantém challengePreference se já estava configurado para DataOnly
           challengePreference: req.body.threeDSecure.challengePreference || threeDSecureData?.challengePreference
         };
+      }
+
+      // Coleta dados obrigatórios do MPI Rede do request/frontend
+      // Se não fornecidos pelo frontend, tenta obter do request
+      if (threeDSecureData) {
+        // userAgent: deve vir do frontend (navigator.userAgent)
+        if (!threeDSecureData.userAgent) {
+          threeDSecureData.userAgent = req.headers['user-agent'] || 'Unknown';
+        }
+
+        // ipAddress: obtém do request (IPv4)
+        if (!threeDSecureData.ipAddress) {
+          // Tenta obter IP real (considera proxies)
+          const forwardedFor = req.headers['x-forwarded-for'];
+          const realIp = req.headers['x-real-ip'];
+          const clientIp = forwardedFor 
+            ? forwardedFor.split(',')[0].trim() 
+            : (realIp || req.ip || req.connection?.remoteAddress || '127.0.0.1');
+          
+          // Remove porta se presente e valida IPv4
+          const ipv4Match = clientIp.match(/^(\d{1,3}\.){3}\d{1,3}/);
+          threeDSecureData.ipAddress = ipv4Match ? ipv4Match[0] : '127.0.0.1';
+        }
+
+        // device: deve vir do frontend, mas fornece valores padrão se não disponível
+        if (!threeDSecureData.device || typeof threeDSecureData.device !== 'object') {
+          threeDSecureData.device = {
+            colorDepth: 24,
+            deviceType3ds: 'BROWSER',
+            javaEnabled: false,
+            language: req.headers['accept-language']?.split(',')[0]?.split('-')[0] || 'pt',
+            screenHeight: 1080,
+            screenWidth: 1920,
+            timeZoneOffset: '-3' // UTC-3 (Brasil)
+          };
+        }
+
+        // billing: deve vir do frontend com dados do comprador
+        // Se não fornecido, tenta usar dados do doador se disponível
+        if (!threeDSecureData.billing || typeof threeDSecureData.billing !== 'object') {
+          // Tenta usar dados do doador como fallback
+          const doador = req.body.doador || {};
+          threeDSecureData.billing = {
+            address: doador.endereco || 'Não informado',
+            city: doador.cidade || 'Não informado',
+            postalcode: doador.cep || '00000000',
+            state: doador.estado || 'SP',
+            country: 'Brasil',
+            emailAddress: doador.email || cartaoProcessado.email || 'nao-informado@example.com',
+            phoneNumber: doador.telefone || doador.whatsapp || '00000000000'
+          };
+        }
       }
 
       cobranca = await createCreditCardTransaction(
@@ -544,8 +607,10 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
 
       // 3DS é OBRIGATÓRIO para débito (conforme documentação e-Rede)
       // onFailure deve ser 'decline' (não pode continuar sem autenticação)
+      // IMPORTANTE: Para usar MPI Rede, os seguintes campos são OBRIGATÓRIOS:
+      // - userAgent, ipAddress, device, billing
       let threeDSecureData = {
-        embedded: true, // Frictionless quando possível
+        embedded: true, // MPI Rede
         onFailure: 'decline' // ✅ OBRIGATÓRIO: Rejeita se 3DS falhar (débito exige autenticação)
       };
 
@@ -556,6 +621,56 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
           ...req.body.threeDSecure,
           // Força onFailure: 'decline' para débito (obrigatório)
           onFailure: 'decline'
+        };
+      }
+
+      // Coleta dados obrigatórios do MPI Rede do request/frontend
+      // Se não fornecidos pelo frontend, tenta obter do request
+      // userAgent: deve vir do frontend (navigator.userAgent)
+      if (!threeDSecureData.userAgent) {
+        threeDSecureData.userAgent = req.headers['user-agent'] || 'Unknown';
+      }
+
+      // ipAddress: obtém do request (IPv4)
+      if (!threeDSecureData.ipAddress) {
+        // Tenta obter IP real (considera proxies)
+        const forwardedFor = req.headers['x-forwarded-for'];
+        const realIp = req.headers['x-real-ip'];
+        const clientIp = forwardedFor 
+          ? forwardedFor.split(',')[0].trim() 
+          : (realIp || req.ip || req.connection?.remoteAddress || '127.0.0.1');
+        
+        // Remove porta se presente e valida IPv4
+        const ipv4Match = clientIp.match(/^(\d{1,3}\.){3}\d{1,3}/);
+        threeDSecureData.ipAddress = ipv4Match ? ipv4Match[0] : '127.0.0.1';
+      }
+
+      // device: deve vir do frontend, mas fornece valores padrão se não disponível
+      if (!threeDSecureData.device || typeof threeDSecureData.device !== 'object') {
+        threeDSecureData.device = {
+          colorDepth: 24,
+          deviceType3ds: 'BROWSER',
+          javaEnabled: false,
+          language: req.headers['accept-language']?.split(',')[0]?.split('-')[0] || 'pt',
+          screenHeight: 1080,
+          screenWidth: 1920,
+          timeZoneOffset: '-3' // UTC-3 (Brasil)
+        };
+      }
+
+      // billing: deve vir do frontend com dados do comprador
+      // Se não fornecido, tenta usar dados do doador se disponível
+      if (!threeDSecureData.billing || typeof threeDSecureData.billing !== 'object') {
+        // Tenta usar dados do doador como fallback
+        const doador = req.body.doador || {};
+        threeDSecureData.billing = {
+          address: doador.endereco || 'Não informado',
+          city: doador.cidade || 'Não informado',
+          postalcode: doador.cep || '00000000',
+          state: doador.estado || 'SP',
+          country: 'Brasil',
+          emailAddress: doador.email || cartaoProcessado.email || 'nao-informado@example.com',
+          phoneNumber: doador.telefone || doador.whatsapp || '00000000000'
         };
       }
       
@@ -859,6 +974,7 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
       if (cobranca.requires3DS && cobranca.threeDSecureUrl) {
         response.requires3DS = true;
         response.threeDSecureUrl = cobranca.threeDSecureUrl;
+        response.threeDSecureDisplayMode = 'popup'; // Sempre pop-up (sandbox + produção)
         response.status = 'PENDENTE_3DS';
         response.autorizacao = {
           codigo: null,
@@ -870,6 +986,8 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
         }
         console.log('🔒 Transação requer autenticação 3DS');
         console.log(`   URL: ${cobranca.threeDSecureUrl}`);
+        console.log(`   Modo de exibição: popup (unificado para sandbox e produção)`);
+        console.log(`   📖 Frontend deve abrir URL em pop-up usando window.open()`);
       } else {
         // Para cartões, o status real da autorização é baseado no returnCode
         // returnCode '00' = AUTORIZADA, outros = NEGADA

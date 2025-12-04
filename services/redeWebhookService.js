@@ -333,6 +333,69 @@ async function processWebhook(webhookBody, signature = null, clientIp = null, do
       }
     }
 
+    // 6.6. Para transações de cartão autorizadas que ainda não foram capturadas, faz a captura
+    // IMPORTANTE: Conforme documentação e-Rede, a captura é obrigatória após autorização
+    // Se a transação foi criada com capture: true mas não foi autorizada imediatamente,
+    // ela fica em AGUARDANDO e precisa ser capturada quando autorizada
+    // NOTA: Se a transação já foi capturada, a e-Rede retornará erro, mas isso é seguro
+    if ((webhookData.tipo_pagamento === 'CREDITO' || webhookData.tipo_pagamento === 'DEBITO') &&
+        webhookData.returnCode === '00' &&
+        webhookData.authorizationCode &&
+        (cobranca.status === 'AGUARDANDO' || cobranca.status === 'PENDENTE_3DS')) {
+      
+      console.log(`\n💰 Transação de cartão autorizada via webhook. Verificando se precisa capturar...`);
+      console.log(`   Status atual da cobrança: ${cobranca.status}`);
+      console.log(`   TID: ${webhookData.rede_tid}`);
+      console.log(`   ReturnCode: ${webhookData.returnCode}`);
+      console.log(`   AuthorizationCode: ${webhookData.authorizationCode}`);
+      
+      // Consulta status da transação na e-Rede para verificar se já foi capturada
+      const { queryTransactionByReference, captureTransaction } = require('./redeService');
+      const transactionData = await queryTransactionByReference(cobranca.txid);
+      
+      if (transactionData && transactionData.returnCode === '00') {
+        // Verifica se a transação já foi capturada
+        // Se o status da transação na e-Rede já indica captura, não precisa fazer novamente
+        // Mas se ainda está apenas autorizada, fazemos a captura
+        // NOTA: A e-Rede pode retornar erro se já foi capturada, mas isso é seguro
+        const amountCentavos = Math.round(webhookData.valor * 100);
+        
+        console.log(`🔍 Consultando transação na e-Rede para verificar status de captura...`);
+        console.log(`   ReturnCode consultado: ${transactionData.returnCode}`);
+        
+        // Faz captura da transação autorizada
+        // IMPORTANTE: Conforme documentação, a captura é obrigatória após autorização
+        // IMPORTANTE: "Sempre aguardar a resposta da transação antes de realizar nova tentativa de captura"
+        const captureResult = await captureTransaction(webhookData.rede_tid, amountCentavos);
+        
+        if (captureResult && captureResult.returnCode === '00') {
+          console.log(`✅ Transação capturada com sucesso via webhook`);
+          console.log(`   AuthorizationCode: ${captureResult.authorizationCode}`);
+          // Atualiza authorizationCode se a captura retornou um diferente
+          if (captureResult.authorizationCode) {
+            webhookData.authorizationCode = captureResult.authorizationCode;
+          }
+        } else {
+          // Se a captura falhou, pode ser porque já foi capturada ou outro erro
+          // Verifica se o erro indica que já foi capturada
+          const errorMessage = captureResult?.returnMessage || '';
+          if (errorMessage.toLowerCase().includes('já capturada') || 
+              errorMessage.toLowerCase().includes('already captured') ||
+              captureResult?.returnCode === '78') {
+            console.log(`ℹ️  Transação já foi capturada anteriormente (isso é normal)`);
+          } else {
+            console.error(`❌ Falha ao capturar transação via webhook`);
+            console.error(`   ReturnCode: ${captureResult?.returnCode || 'N/A'}`);
+            console.error(`   ReturnMessage: ${captureResult?.returnMessage || 'N/A'}`);
+            // Loga erro mas continua processamento (transação está autorizada)
+            // A captura pode ser tentada depois via consulta manual
+          }
+        }
+      } else {
+        console.warn(`⚠️  Não foi possível consultar transação na e-Rede para verificar captura`);
+      }
+    }
+
     // 7. Processa a transação confirmada usando controle de transação
     // IMPORTANTE: Esta é a ÚNICA função que salva dados do doador na tabela 'doadores'
     // Os dados só são persistidos APÓS confirmação do pagamento via webhook

@@ -657,11 +657,47 @@ async function createCreditCardTransaction(txid, valor, cartaoData, parcelas = 1
     // Para crédito: 3DS é opcional (pode tentar sem se o cartão não suportar)
     // Para débito: 3DS é obrigatório
     // DataOnly: autenticação frictionless para Mastercard/Visa
+    // IMPORTANTE: Conforme documentação MPI Rede, os seguintes campos são OBRIGATÓRIOS:
+    // - userAgent, ipAddress, device (com subcampos), billing (com subcampos)
     if (threeDSecure && typeof threeDSecure === 'object') {
+      // Valida campos obrigatórios do MPI Rede
+      if (!threeDSecure.userAgent) {
+        throw new Error('threeDSecure.userAgent é obrigatório para MPI Rede (até 255 caracteres)');
+      }
+      if (!threeDSecure.ipAddress) {
+        throw new Error('threeDSecure.ipAddress é obrigatório para MPI Rede (IPv4, até 11 caracteres)');
+      }
+      if (!threeDSecure.device || typeof threeDSecure.device !== 'object') {
+        throw new Error('threeDSecure.device é obrigatório para MPI Rede (objeto com colorDepth, deviceType3ds, javaEnabled, language, screenHeight, screenWidth, timeZoneOffset)');
+      }
+      if (!threeDSecure.billing || typeof threeDSecure.billing !== 'object') {
+        throw new Error('threeDSecure.billing é obrigatório para MPI Rede (objeto com address, city, postalcode, state, country, emailAddress, phoneNumber)');
+      }
+
       requestBody.threeDSecure = {
-        embedded: threeDSecure.embedded !== false, // Default: true (frictionless)
+        embedded: threeDSecure.embedded !== false, // Default: true (MPI Rede)
         onFailure: threeDSecure.onFailure || 'continue', // 'decline' ou 'continue' - para crédito usa 'continue'
-        ...threeDSecure // Permite outros campos como eci, cavv, xid, etc.
+        userAgent: threeDSecure.userAgent, // OBRIGATÓRIO
+        ipAddress: threeDSecure.ipAddress, // OBRIGATÓRIO (IPv4)
+        device: {
+          colorDepth: parseInt(threeDSecure.device.colorDepth) || 24, // OBRIGATÓRIO (2 numérico)
+          deviceType3ds: threeDSecure.device.deviceType3ds || 'BROWSER', // OBRIGATÓRIO (20 alfanumérico)
+          javaEnabled: threeDSecure.device.javaEnabled === true, // OBRIGATÓRIO (booleano)
+          language: threeDSecure.device.language || 'pt-BR', // OBRIGATÓRIO (10 alfanumérico, IETF BCP47)
+          screenHeight: parseInt(threeDSecure.device.screenHeight) || 1080, // OBRIGATÓRIO (6 numérico)
+          screenWidth: parseInt(threeDSecure.device.screenWidth) || 1920, // OBRIGATÓRIO (6 numérico)
+          timeZoneOffset: threeDSecure.device.timeZoneOffset || '-3' // OBRIGATÓRIO (10 alfanumérico, diferença em horas do UTC)
+        },
+        billing: {
+          address: threeDSecure.billing.address, // OBRIGATÓRIO (até 128)
+          city: threeDSecure.billing.city, // OBRIGATÓRIO (até 64)
+          postalcode: threeDSecure.billing.postalcode, // OBRIGATÓRIO (9 numérico)
+          state: threeDSecure.billing.state, // OBRIGATÓRIO (até 64)
+          country: threeDSecure.billing.country || 'Brasil', // OBRIGATÓRIO (até 64)
+          emailAddress: threeDSecure.billing.emailAddress, // OBRIGATÓRIO (até 128)
+          phoneNumber: threeDSecure.billing.phoneNumber // OBRIGATÓRIO (até 32 numérico)
+        },
+        ...threeDSecure // Permite outros campos como challengePreference, eci, cavv, xid, etc.
       };
 
       // URLs de callback são obrigatórias quando usa 3DS/DataOnly
@@ -699,6 +735,18 @@ async function createCreditCardTransaction(txid, valor, cartaoData, parcelas = 1
 
       console.log('🔒 Transação com autenticação 3DS/DataOnly ativada');
       console.log(`📋 URL de callback 3DS: ${callbackUrl}`);
+      
+      // AVISO: Conforme documentação e-Rede:
+      // "Não é possível fazer simulações de Iframe com 3DS em sandbox"
+      // Solução: Usar pop-up (window.open) que funciona tanto em sandbox quanto em produção
+      // O frontend deve abrir a URL em pop-up ao invés de iframe
+      if (ENVIRONMENT === 'sandbox') {
+        console.warn('⚠️  AMBIENTE SANDBOX: Iframe 3DS não é suportado em sandbox conforme documentação e-Rede');
+        console.warn('   ✅ Usando pop-up para autenticação 3DS (funciona em sandbox e produção)');
+        console.warn('   Para testar 3DS completo, use valores de amount específicos (207, 208, 209)');
+      } else {
+        console.log('ℹ️  Usando pop-up para autenticação 3DS (unificado para sandbox e produção)');
+      }
     }
 
     const authHeaders = await getAuthHeaders();
@@ -977,11 +1025,47 @@ async function createDebitCardTransaction(txid, valor, cartaoData, bandeira = nu
     }
 
     // Adiciona dados de autenticação 3DS (obrigatório para débito)
+    // IMPORTANTE: Conforme documentação MPI Rede, os seguintes campos são OBRIGATÓRIOS:
+    // - userAgent, ipAddress, device (com subcampos), billing (com subcampos)
     if (threeDSecure && typeof threeDSecure === 'object') {
+      // Valida campos obrigatórios do MPI Rede
+      if (!threeDSecure.userAgent) {
+        throw new Error('threeDSecure.userAgent é obrigatório para MPI Rede (até 255 caracteres)');
+      }
+      if (!threeDSecure.ipAddress) {
+        throw new Error('threeDSecure.ipAddress é obrigatório para MPI Rede (IPv4, até 11 caracteres)');
+      }
+      if (!threeDSecure.device || typeof threeDSecure.device !== 'object') {
+        throw new Error('threeDSecure.device é obrigatório para MPI Rede (objeto com colorDepth, deviceType3ds, javaEnabled, language, screenHeight, screenWidth, timeZoneOffset)');
+      }
+      if (!threeDSecure.billing || typeof threeDSecure.billing !== 'object') {
+        throw new Error('threeDSecure.billing é obrigatório para MPI Rede (objeto com address, city, postalcode, state, country, emailAddress, phoneNumber)');
+      }
+
       requestBody.threeDSecure = {
-        embedded: threeDSecure.embedded !== false, // Default: true (frictionless)
+        embedded: threeDSecure.embedded !== false, // Default: true (MPI Rede)
         onFailure: threeDSecure.onFailure || 'decline', // 'decline' para débito (obrigatório)
-        ...threeDSecure // Permite outros campos como eci, cavv, xid, etc.
+        userAgent: threeDSecure.userAgent, // OBRIGATÓRIO
+        ipAddress: threeDSecure.ipAddress, // OBRIGATÓRIO (IPv4)
+        device: {
+          colorDepth: parseInt(threeDSecure.device.colorDepth) || 24, // OBRIGATÓRIO (2 numérico)
+          deviceType3ds: threeDSecure.device.deviceType3ds || 'BROWSER', // OBRIGATÓRIO (20 alfanumérico)
+          javaEnabled: threeDSecure.device.javaEnabled === true, // OBRIGATÓRIO (booleano)
+          language: threeDSecure.device.language || 'pt-BR', // OBRIGATÓRIO (10 alfanumérico, IETF BCP47)
+          screenHeight: parseInt(threeDSecure.device.screenHeight) || 1080, // OBRIGATÓRIO (6 numérico)
+          screenWidth: parseInt(threeDSecure.device.screenWidth) || 1920, // OBRIGATÓRIO (6 numérico)
+          timeZoneOffset: threeDSecure.device.timeZoneOffset || '-3' // OBRIGATÓRIO (10 alfanumérico, diferença em horas do UTC)
+        },
+        billing: {
+          address: threeDSecure.billing.address, // OBRIGATÓRIO (até 128)
+          city: threeDSecure.billing.city, // OBRIGATÓRIO (até 64)
+          postalcode: threeDSecure.billing.postalcode, // OBRIGATÓRIO (9 numérico)
+          state: threeDSecure.billing.state, // OBRIGATÓRIO (até 64)
+          country: threeDSecure.billing.country || 'Brasil', // OBRIGATÓRIO (até 64)
+          emailAddress: threeDSecure.billing.emailAddress, // OBRIGATÓRIO (até 128)
+          phoneNumber: threeDSecure.billing.phoneNumber // OBRIGATÓRIO (até 32 numérico)
+        },
+        ...threeDSecure // Permite outros campos como challengePreference, eci, cavv, xid, etc.
       };
 
       // URLs de callback são obrigatórias quando usa 3DS/DataOnly
@@ -1019,6 +1103,18 @@ async function createDebitCardTransaction(txid, valor, cartaoData, bandeira = nu
 
       console.log('🔒 Transação DÉBITO com autenticação 3DS ativada');
       console.log(`📋 URL de callback 3DS: ${callbackUrl}`);
+      
+      // AVISO: Conforme documentação e-Rede:
+      // "Não é possível fazer simulações de Iframe com 3DS em sandbox"
+      // Solução: Usar pop-up (window.open) que funciona tanto em sandbox quanto em produção
+      // O frontend deve abrir a URL em pop-up ao invés de iframe
+      if (ENVIRONMENT === 'sandbox') {
+        console.warn('⚠️  AMBIENTE SANDBOX: Iframe 3DS não é suportado em sandbox conforme documentação e-Rede');
+        console.warn('   ✅ Usando pop-up para autenticação 3DS (funciona em sandbox e produção)');
+        console.warn('   Para testar 3DS completo, use valores de amount específicos (207, 208, 209)');
+      } else {
+        console.log('ℹ️  Usando pop-up para autenticação 3DS (unificado para sandbox e produção)');
+      }
     }
 
     const authHeaders = await getAuthHeaders();
