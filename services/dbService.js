@@ -94,12 +94,26 @@ async function saveCobranca(cobranca) {
     const tipoPagamentoParaLog = tipoPagamento || (cobranca && cobranca.tipoPagamento) || 'desconhecido';
     const providerParaLog = provider || (cobranca && cobranca.provider) || 'desconhecido';
     const valorParaLog = valor !== undefined ? valor : (cobranca && cobranca.valor) || 'desconhecido';
+    const statusParaLog = status || (cobranca && cobranca.status) || 'desconhecido';
     console.error('   Dados da cobrança:', JSON.stringify({ 
       txid: txidParaLog, 
       tipoPagamento: tipoPagamentoParaLog, 
       provider: providerParaLog, 
-      valor: valorParaLog 
+      valor: valorParaLog,
+      status: statusParaLog
     }, null, 2));
+    
+    // Log adicional para erros de banco de dados
+    if (error.code) {
+      console.error(`   Código do erro SQL: ${error.code}`);
+    }
+    if (error.detail) {
+      console.error(`   Detalhes do erro SQL: ${error.detail}`);
+    }
+    if (error.constraint) {
+      console.error(`   Constraint violada: ${error.constraint}`);
+    }
+    
     throw error; // Lança o erro em vez de retornar null
   }
 }

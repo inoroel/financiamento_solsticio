@@ -447,6 +447,16 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
         });
       }
 
+      console.log(`📋 Cobrança criada:`, {
+        txid: cobranca.txid,
+        rede_tid: cobranca.rede_tid,
+        status: cobranca.status,
+        valor: cobranca.valor,
+        bandeira: cobranca.bandeira,
+        returnCode: cobranca.returnCode,
+        returnMessage: cobranca.returnMessage
+      });
+
       dadosPagamento = {
         tipo: 'CREDITO',
         parcelas: parcelasValidadas,
@@ -607,6 +617,13 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
     const statusInicial = tipoPagamento === 'PIX' || tipoPagamento === 'CRIPTO'
       ? 'AGUARDANDO'
       : (cobranca.status === 'AUTORIZADA' || cobranca.status === 'CAPTURADA' ? 'CONFIRMADA' : 'AGUARDANDO');
+    
+    console.log(`📊 Status inicial determinado:`, {
+      tipoPagamento,
+      cobrancaStatus: cobranca.status,
+      statusInicial,
+      returnCode: cobranca.returnCode
+    });
 
     // Determina provider baseado no tipo de pagamento
     const provider = tipoPagamento === 'CRIPTO' ? 'STELLAR' : 'REDE';
@@ -614,25 +631,39 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
     // CRÍTICO: Salva a cobrança ANTES de retornar sucesso
     // Se falhar, retorna erro 500 - não podemos continuar sem a cobrança salva
     console.log(`\n💾 Tentando salvar cobrança no banco: txid=${cobranca.txid || txid}`);
-    let cobrancaSalva;
-    try {
-      cobrancaSalva = await saveCobranca({
+    
+    const dadosCobranca = {
       txid: cobranca.txid || txid,
-        valor: tipoPagamento === 'CRIPTO' ? (cobranca.valor || valorValidado || 0) : (cobranca.valor || valorValidado), // Para CRIPTO, pode ser 0 se não fornecido
+      valor: tipoPagamento === 'CRIPTO' ? (cobranca.valor || valorValidado || 0) : (cobranca.valor || valorValidado), // Para CRIPTO, pode ser 0 se não fornecido
       status: statusInicial,
       campanhaId: cid,
       tipoPagamento: tipoPagamento,
-        provider: provider,
-        chavePix: null, // A chave PIX é configurada no portal e-Rede e usada automaticamente pela API
+      provider: provider,
+      chavePix: null, // A chave PIX é configurada no portal e-Rede e usada automaticamente pela API
       brCode: tipoPagamento === 'PIX' ? cobranca.brCode : null,
-        expiracao: tipoPagamento === 'PIX' ? (cobranca.expiracao || 3600) : (tipoPagamento === 'CRIPTO' ? 2592000 : 3600), // 30 dias para CRIPTO, 1 hora para outros
+      expiracao: tipoPagamento === 'PIX' ? (cobranca.expiracao || 3600) : (tipoPagamento === 'CRIPTO' ? 2592000 : 3600), // 30 dias para CRIPTO, 1 hora para outros
       redeTid: cobranca.rede_tid || null,
-        providerTid: cobranca.provider_tid || cobranca.rede_tid || null,
-        cryptoCurrency: tipoPagamento === 'CRIPTO' ? (cobranca.currency || currencyUpper) : null,
-        cryptoAddress: tipoPagamento === 'CRIPTO' ? (cobranca.recipient_address || null) : null,
+      providerTid: cobranca.provider_tid || cobranca.rede_tid || null,
+      cryptoCurrency: tipoPagamento === 'CRIPTO' ? (cobranca.currency || currencyUpper) : null,
+      cryptoAddress: tipoPagamento === 'CRIPTO' ? (cobranca.recipient_address || null) : null,
       dadosPagamento: dadosPagamento,
       dadosDoadorTemp
+    };
+    
+    console.log(`📦 Dados da cobrança a serem salvos:`, {
+      txid: dadosCobranca.txid,
+      valor: dadosCobranca.valor,
+      status: dadosCobranca.status,
+      tipoPagamento: dadosCobranca.tipoPagamento,
+      provider: dadosCobranca.provider,
+      redeTid: dadosCobranca.redeTid,
+      providerTid: dadosCobranca.providerTid,
+      campanhaId: dadosCobranca.campanhaId
     });
+    
+    let cobrancaSalva;
+    try {
+      cobrancaSalva = await saveCobranca(dadosCobranca);
       console.log(`✅ saveCobranca retornou:`, cobrancaSalva ? `sucesso para txid=${cobrancaSalva.txid}` : 'null');
     } catch (error) {
       console.error(`❌ ERRO CRÍTICO ao salvar cobrança: ${error.message}`);
