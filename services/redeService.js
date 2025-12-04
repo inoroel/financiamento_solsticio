@@ -693,7 +693,7 @@ async function createCreditCardTransaction(txid, valor, cartaoData, parcelas = 1
             // A diferença é calculada como: UTC - Local = offset
             // Para UTC-3 (Brasil), o offset é 3 (3 horas de diferença)
             const offset = threeDSecure.device.timeZoneOffset;
-            let finalOffset: string;
+            let finalOffset;
             
             if (offset !== undefined && offset !== null) {
               // Se for número, converte para string e usa valor absoluto
@@ -1118,7 +1118,7 @@ async function createDebitCardTransaction(txid, valor, cartaoData, bandeira = nu
             // A diferença é calculada como: UTC - Local = offset
             // Para UTC-3 (Brasil), o offset é 3 (3 horas de diferença)
             const offset = threeDSecure.device.timeZoneOffset;
-            let finalOffset: string;
+            let finalOffset;
             
             if (offset !== undefined && offset !== null) {
               // Se for número, converte para string e usa valor absoluto
