@@ -3,8 +3,12 @@ const axios = require('axios');
 const { v4: uuidv4 } = require('uuid');
 require('dotenv').config();
 
-const PV = process.env.REDE_PV;
-const TOKEN = process.env.REDE_TOKEN;
+// Credenciais OAuth 2.0 da e-Rede
+// PV = clientId (obtido no portal e-Rede)
+// TOKEN = clientSecret (Chave de Integração, obtida no portal e-Rede)
+// O access_token é obtido dinamicamente via OAuth 2.0 a cada 24 minutos
+const PV = process.env.REDE_PV; // clientId
+const TOKEN = process.env.REDE_TOKEN; // clientSecret (Chave de Integração)
 const ENVIRONMENT = process.env.REDE_ENVIRONMENT || 'sandbox';
 
 // URLs da API e-Rede
@@ -55,13 +59,17 @@ async function getAccessToken() {
   }
 
   if (!PV || !TOKEN) {
-    throw new Error('REDE_PV e REDE_TOKEN devem estar configurados');
+    throw new Error('REDE_PV (clientId) e REDE_TOKEN (clientSecret) devem estar configurados');
   }
 
   console.log('🔐 Obtendo novo access_token via OAuth 2.0...');
   
   try {
-    // Conforme documentação: Basic Auth com clientId:clientSecret (PV:TOKEN)
+    // Conforme documentação OAuth 2.0:
+    // - clientId = PV (Ponto de Venda)
+    // - clientSecret = TOKEN (Chave de Integração)
+    // - Usamos Basic Auth apenas para obter o access_token
+    // - O access_token obtido é usado nas requisições da API (Bearer token)
     const authHeader = `Basic ${Buffer.from(`${PV}:${TOKEN}`).toString('base64')}`;
     
     const response = await axios.post(
@@ -106,46 +114,37 @@ async function getAccessToken() {
 
 /**
  * Cria headers de autenticação para a API e-Rede
- * Tenta usar OAuth 2.0 (Bearer token) primeiro, com fallback para Basic Auth se necessário
- * @param {boolean} useOAuth - Se true, usa OAuth 2.0. Se false ou erro, usa Basic Auth
+ * SEMPRE usa OAuth 2.0 (Bearer token) - Basic Auth não é mais aceito em produção
+ * 
+ * IMPORTANTE: 
+ * - REDE_PV = clientId (obtido no portal e-Rede)
+ * - REDE_TOKEN = clientSecret (Chave de Integração, obtida no portal e-Rede)
+ * - access_token = obtido dinamicamente via OAuth 2.0 a cada 24 minutos
+ * 
  * @returns {Promise<Object>} Headers de autenticação
  */
-async function getAuthHeaders(useOAuth = true) {
+async function getAuthHeaders() {
   if (!PV || !TOKEN) {
-    throw new Error('REDE_PV e REDE_TOKEN devem estar configurados');
+    throw new Error('REDE_PV (clientId) e REDE_TOKEN (clientSecret) devem estar configurados');
   }
 
   // Log de diagnóstico (sem expor credenciais completas)
   console.log(`🔐 Usando ambiente: ${ENVIRONMENT}`);
   console.log(`🔐 API Base URL: ${API_BASE_URL}`);
-  console.log(`🔐 PV configurado: ${PV ? 'Sim (primeiros 4 chars: ' + PV.substring(0, 4) + '...)' : 'Não'}`);
-  console.log(`🔐 TOKEN configurado: ${TOKEN ? 'Sim (primeiros 4 chars: ' + TOKEN.substring(0, 4) + '...)' : 'Não'}`);
+  console.log(`🔐 PV (clientId) configurado: ${PV ? 'Sim (primeiros 4 chars: ' + PV.substring(0, 4) + '...)' : 'Não'}`);
+  console.log(`🔐 TOKEN (clientSecret) configurado: ${TOKEN ? 'Sim (primeiros 4 chars: ' + TOKEN.substring(0, 4) + '...)' : 'Não'}`);
 
-  let authHeader;
+  // SEMPRE usa OAuth 2.0 - Basic Auth não é mais aceito em produção
+  // O access_token é obtido dinamicamente via getAccessToken()
+  const accessToken = await getAccessToken();
+  const authHeader = `Bearer ${accessToken}`;
   
-  if (useOAuth) {
-    try {
-      const accessToken = await getAccessToken();
-      authHeader = `Bearer ${accessToken}`;
-      console.log('🔐 Usando autenticação OAuth 2.0 (Bearer token)');
-    } catch (error) {
-      console.warn('⚠️  Falha ao obter access_token, usando Basic Auth como fallback:', error.message);
-      // Fallback para Basic Auth (método legado)
-      authHeader = `Basic ${Buffer.from(`${PV}:${TOKEN}`).toString('base64')}`;
-      console.log('🔐 Usando autenticação Basic Auth (fallback)');
-    }
-  } else {
-    // Força Basic Auth (para casos específicos)
-    authHeader = `Basic ${Buffer.from(`${PV}:${TOKEN}`).toString('base64')}`;
-    console.log('🔐 Usando autenticação Basic Auth (forçado)');
-  }
+  console.log('🔐 Usando autenticação OAuth 2.0 (Bearer token)');
 
   return {
     'Authorization': authHeader,
     'Content-Type': 'application/json',
     'Accept': 'application/json'
-    // Removido User-Agent customizado que pode estar causando bloqueio
-    // Removido Accept-Language que não é necessário
   };
 }
 
@@ -188,7 +187,7 @@ async function tokenizeCard(cardData, brandName = 'visa') {
       kind: cardData.kind || 'credit' // credit ou debit
     };
 
-    const authHeaders = await getAuthHeaders(true);
+    const authHeaders = await getAuthHeaders();
     const response = await axios.post(
       TOKENIZATION_API_URL,
       requestBody,
@@ -284,34 +283,25 @@ async function createPixCharge(txid, valor, solicitacaoPagador = "Doação para 
     const endpoint = '/v2/transactions';
     const correlationId = generateCorrelationId();
 
-    // ⚠️ CRÍTICO: reference para PIX deve ter ATÉ 16 caracteres (documentação e-Rede)
-    // Se o txid tiver mais de 16 caracteres, usa apenas os últimos 16
-    // Isso mantém unicidade enquanto respeita o limite da API
-    let reference = txid;
-    if (txid.length > 16) {
-      // Usa os últimos 16 caracteres do txid (mantém unicidade com timestamp)
-      reference = txid.slice(-16);
-      console.log(`⚠️  TXID (${txid.length} chars) maior que 16 caracteres. Usando reference: ${reference} (últimos 16 chars)`);
-    }
-    
-    // Valida que o reference está dentro do limite
-    if (reference.length > 16) {
-      throw new Error(`Reference para PIX deve ter no máximo 16 caracteres. TXID: ${txid} (${txid.length} chars)`);
+    // Valida que o reference está dentro do limite (até 50 caracteres conforme documentação e-Rede)
+    // Documentação: reference - Até 50, Alfanumérico, Sim, Código da transação gerado pelo estabelecimento
+    if (txid.length > 50) {
+      throw new Error(`Reference para PIX deve ter no máximo 50 caracteres. TXID: ${txid} (${txid.length} chars)`);
     }
 
     // Estrutura da requisição para PIX conforme documentação e-Rede
     // Documentação: Manual p.6437-6451
-    // IMPORTANTE: reference deve ter até 16 caracteres alfanuméricos
+    // IMPORTANTE: reference deve ter até 50 caracteres alfanuméricos
     const requestBody = {
-      kind: 'Pix',
-      reference: reference, // ✅ Máximo 16 caracteres conforme documentação
+      kind: 'pix',
+      reference: txid, // ✅ Até 50 caracteres conforme documentação oficial
       amount: String(Math.round(valorValidado * 100)), // Valor em centavos (string conforme documentação)
       qrCode: {
         'Date timeExpiration': dataExpiracaoFormatada // Formato: YYYY-MM-DDThh:mm:ss
       }
     };
     
-    console.log(`📋 Reference usado na requisição: ${reference} (${reference.length} caracteres)`);
+    console.log(`📋 Reference usado na requisição: ${txid} (${txid.length} caracteres, max: 50)`);
 
     // Adiciona mensagem se fornecida
     if (mensagemSanitizada) {
@@ -321,7 +311,7 @@ async function createPixCharge(txid, valor, solicitacaoPagador = "Doação para 
     // Log detalhado do body antes de enviar (para diagnóstico)
     console.log(`\n📋 Body da requisição PIX:`);
     console.log(`   - kind: ${requestBody.kind}`);
-    console.log(`   - reference: ${requestBody.reference} (${requestBody.reference.length} chars, max: 16)`);
+    console.log(`   - reference: ${requestBody.reference} (${requestBody.reference.length} chars, max: 50)`);
     console.log(`   - amount: ${requestBody.amount} (centavos, tipo: ${typeof requestBody.amount})`);
     console.log(`   - qrCode.Date timeExpiration: ${requestBody.qrCode['Date timeExpiration']}`);
     if (requestBody.description) {
@@ -329,7 +319,7 @@ async function createPixCharge(txid, valor, solicitacaoPagador = "Doação para 
     }
 
     // Obtém headers de autenticação (OAuth 2.0 com fallback para Basic Auth)
-    const authHeaders = await getAuthHeaders(true); // true = tenta OAuth primeiro
+    const authHeaders = await getAuthHeaders(); // true = tenta OAuth primeiro
     const headers = {
       ...authHeaders,
       'X-Request-Id': correlationId
@@ -564,7 +554,7 @@ async function createCreditCardTransaction(txid, valor, cartaoData, parcelas = 1
       console.log('🔒 Transação com autenticação 3DS/DataOnly ativada');
     }
 
-    const authHeaders = await getAuthHeaders(true);
+    const authHeaders = await getAuthHeaders();
     const response = await axios.post(
       `${API_BASE_URL}${endpoint}`,
       requestBody,
@@ -714,7 +704,7 @@ async function createDebitCardTransaction(txid, valor, cartaoData, bandeira = nu
       console.log('🔒 Transação DÉBITO com autenticação 3DS ativada');
     }
 
-    const authHeaders = await getAuthHeaders(true);
+    const authHeaders = await getAuthHeaders();
     const response = await axios.post(
       `${API_BASE_URL}${endpoint}`,
       requestBody,
@@ -768,7 +758,7 @@ async function consultTransaction(tid) {
     const endpoint = `/v2/transactions/${encodeURIComponent(tid)}`;
     const correlationId = generateCorrelationId();
 
-    const authHeaders = await getAuthHeaders(true);
+    const authHeaders = await getAuthHeaders();
     const response = await axios.get(
       `${API_BASE_URL}${endpoint}`,
       {
@@ -857,7 +847,7 @@ async function cancelTransaction(tid, valor = null, callbackUrl = null) {
       ];
     }
 
-    const authHeaders = await getAuthHeaders(true);
+    const authHeaders = await getAuthHeaders();
     const response = await axios.post(
       `${API_BASE_URL}${endpoint}`,
       requestBody,
@@ -943,7 +933,7 @@ async function authorizeZeroDollar(cardData, txid, kind = 'credit') {
       cardholderName: cardData.cardholderName || 'CARDHOLDER'
     };
 
-    const authHeaders = await getAuthHeaders(true);
+    const authHeaders = await getAuthHeaders();
     const response = await axios.post(
       `${API_BASE_URL}${endpoint}`,
       requestBody,

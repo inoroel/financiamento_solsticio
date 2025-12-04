@@ -10,16 +10,15 @@
    🔐 Usando autenticação OAuth 2.0 (Bearer token)
    ```
 
-2. **Reference corrigido:**
+2. **Reference válido:**
    ```
-   ⚠️  TXID (26 chars) maior que 16 caracteres. Usando reference: ampanha010927732 (últimos 16 chars)
-   📋 Reference usado na requisição: ampanha010927732 (16 caracteres)
+   📋 Reference usado na requisição: solsticiocampanha010927732 (26 caracteres, max: 50) ✅
    ```
 
 3. **Body correto:**
    ```
    - kind: pix ✅
-   - reference: ampanha010927732 (16 chars, max: 16) ✅
+   - reference: solsticiocampanha010927732 (26 chars, max: 50) ✅
    - amount: 1 (centavos, tipo: string) ✅
    - qrCode.Date timeExpiration: 2025-12-04T16:08:48 ✅
    ```
@@ -44,7 +43,7 @@
 
 Após todas as correções implementadas:
 - ✅ OAuth 2.0 implementado e funcionando
-- ✅ Reference limitado a 16 caracteres
+- ✅ Reference válido (até 50 caracteres)
 - ✅ Body no formato exato da documentação
 - ✅ Headers corretos
 - ✅ URL correta
