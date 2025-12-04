@@ -469,6 +469,14 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
 
         // device: deve vir do frontend, mas fornece valores padrão se não disponível
         if (!threeDSecureData.device || typeof threeDSecureData.device !== 'object') {
+          // Calcula timeZoneOffset dinamicamente (diferença em horas do UTC)
+          // IMPORTANTE: A documentação mostra exemplos com valor SEM sinal negativo (ex: "3" para UTC-3)
+          // Usa valor absoluto (sem sinal negativo)
+          const timezoneOffset = Math.abs(Math.round(new Date().getTimezoneOffset() / -60));
+          // Se calculado como 0, usa 3 como fallback (para Brazil UTC-3)
+          const finalOffset = timezoneOffset === 0 ? 3 : timezoneOffset;
+          const timeZoneOffsetFormatted = String(finalOffset); // Converte para string conforme documentação
+          
           threeDSecureData.device = {
             colorDepth: 24,
             deviceType3ds: 'BROWSER',
@@ -476,8 +484,41 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
             language: req.headers['accept-language']?.split(',')[0]?.split('-')[0] || 'pt',
             screenHeight: 1080,
             screenWidth: 1920,
-            timeZoneOffset: '-3' // UTC-3 (Brasil)
+            timeZoneOffset: timeZoneOffsetFormatted // Formato: string com número SEM sinal negativo (ex: "3")
           };
+        } else {
+          // Garante que timeZoneOffset está no formato correto (string numérica SEM sinal negativo)
+          if (threeDSecureData.device.timeZoneOffset !== undefined) {
+            // Se for número, converte para string e usa valor absoluto
+            if (typeof threeDSecureData.device.timeZoneOffset === 'number') {
+              const absOffset = Math.abs(threeDSecureData.device.timeZoneOffset);
+              // Se for 0, usa 3 como fallback (para Brazil UTC-3)
+              const finalOffset = absOffset === 0 ? 3 : absOffset;
+              threeDSecureData.device.timeZoneOffset = String(finalOffset);
+            }
+            // Se for string, valida formato e remove sinal negativo se presente
+            else if (typeof threeDSecureData.device.timeZoneOffset === 'string') {
+              // Remove espaços e sinal negativo
+              const offset = threeDSecureData.device.timeZoneOffset.trim().replace(/^-/, '');
+              if (/^\d+$/.test(offset)) {
+                const numOffset = parseInt(offset, 10);
+                // Se for 0, usa 3 como fallback (para Brazil UTC-3)
+                const finalOffset = numOffset === 0 ? 3 : numOffset;
+                threeDSecureData.device.timeZoneOffset = String(finalOffset);
+              } else {
+                // Formato inválido, calcula dinamicamente
+                const timezoneOffset = Math.abs(Math.round(new Date().getTimezoneOffset() / -60));
+                const finalOffset = timezoneOffset === 0 ? 3 : timezoneOffset;
+                threeDSecureData.device.timeZoneOffset = String(finalOffset);
+                console.warn(`⚠️  timeZoneOffset inválido recebido: "${threeDSecureData.device.timeZoneOffset}". Usando valor calculado: ${threeDSecureData.device.timeZoneOffset}`);
+              }
+            }
+          } else {
+            // Se não fornecido, calcula dinamicamente
+            const timezoneOffset = Math.abs(Math.round(new Date().getTimezoneOffset() / -60));
+            const finalOffset = timezoneOffset === 0 ? 3 : timezoneOffset;
+            threeDSecureData.device.timeZoneOffset = String(finalOffset);
+          }
         }
 
         // billing: deve vir do frontend com dados do comprador
@@ -507,10 +548,20 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
       );
 
       if (!cobranca) {
+        console.error(`❌ createCreditCardTransaction retornou null para txid: ${txid}`);
+        console.error(`   Isso significa que a transação falhou na e-Rede antes de ser salva no banco.`);
+        console.error(`   Verifique os logs anteriores para identificar o erro específico.`);
         return res.status(500).json({
-          error: 'Não foi possível processar o pagamento com cartão de crédito.'
+          error: 'Não foi possível processar o pagamento com cartão de crédito.',
+          txid: txid
         });
       }
+      
+      console.log(`✅ createCreditCardTransaction retornou sucesso para txid: ${txid}`);
+      console.log(`   - rede_tid: ${cobranca.rede_tid || 'null'}`);
+      console.log(`   - status: ${cobranca.status || 'null'}`);
+      console.log(`   - returnCode: ${cobranca.returnCode || 'null'}`);
+      console.log(`   - authorizationCode: ${cobranca.authorizationCode || 'null'}`);
 
       console.log(`📋 Cobrança criada:`, {
         txid: cobranca.txid,
