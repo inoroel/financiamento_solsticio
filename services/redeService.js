@@ -674,19 +674,15 @@ async function createCreditCardTransaction(txid, valor, cartaoData, parcelas = 1
         throw new Error('threeDSecure.billing é obrigatório para MPI Rede (objeto com address, city, postalcode, state, country, emailAddress, phoneNumber)');
       }
 
-      requestBody.threeDSecure = {
-        embedded: threeDSecure.embedded !== false, // Default: true (MPI Rede)
-        onFailure: threeDSecure.onFailure || 'continue', // 'decline' ou 'continue' - para crédito usa 'continue'
-        userAgent: threeDSecure.userAgent, // OBRIGATÓRIO
-        ipAddress: threeDSecure.ipAddress, // OBRIGATÓRIO (IPv4)
-        device: {
-          colorDepth: parseInt(threeDSecure.device.colorDepth) || 24, // OBRIGATÓRIO (2 numérico)
-          deviceType3ds: threeDSecure.device.deviceType3ds || 'BROWSER', // OBRIGATÓRIO (20 alfanumérico)
-          javaEnabled: threeDSecure.device.javaEnabled === true, // OBRIGATÓRIO (booleano)
-          language: threeDSecure.device.language || 'pt-BR', // OBRIGATÓRIO (10 alfanumérico, IETF BCP47)
-          screenHeight: parseInt(threeDSecure.device.screenHeight) || 1080, // OBRIGATÓRIO (6 numérico)
-          screenWidth: parseInt(threeDSecure.device.screenWidth) || 1920, // OBRIGATÓRIO (6 numérico)
-          timeZoneOffset: (() => {
+      // Prepara device com timeZoneOffset validado
+      const deviceData = {
+        colorDepth: parseInt(threeDSecure.device.colorDepth) || 24, // OBRIGATÓRIO (2 numérico)
+        deviceType3ds: threeDSecure.device.deviceType3ds || 'BROWSER', // OBRIGATÓRIO (20 alfanumérico)
+        javaEnabled: threeDSecure.device.javaEnabled === true, // OBRIGATÓRIO (booleano)
+        language: threeDSecure.device.language || 'pt-BR', // OBRIGATÓRIO (10 alfanumérico, IETF BCP47)
+        screenHeight: parseInt(threeDSecure.device.screenHeight) || 1080, // OBRIGATÓRIO (6 numérico)
+        screenWidth: parseInt(threeDSecure.device.screenWidth) || 1920, // OBRIGATÓRIO (6 numérico)
+        timeZoneOffset: (() => {
             // Valida e formata timeZoneOffset
             // Formato esperado: string numérica SEM sinal negativo (ex: "3" para UTC-3)
             // NOTA: A documentação mostra exemplos com número positivo (3) mesmo para UTC-3
@@ -742,9 +738,26 @@ async function createCreditCardTransaction(txid, valor, cartaoData, parcelas = 1
             }
             
             console.log(`🌍 timeZoneOffset calculado: ${finalOffset} (original: ${offset}, tipo: ${typeof offset})`);
-            return finalOffset;
-          })() // OBRIGATÓRIO (10 alfanumérico, diferença em horas do UTC, SEM sinal negativo)
-        },
+            // IMPORTANTE: A documentação mostra exemplos com número (3), não string
+            // Sempre envia como número (não string)
+            const numOffset = parseInt(finalOffset, 10);
+            if (!isNaN(numOffset) && numOffset >= 0 && numOffset <= 14) {
+              return numOffset; // Envia como número
+            }
+            // Fallback seguro: retorna 3 (UTC-3 Brasil) se cálculo falhar
+            console.warn(`⚠️  timeZoneOffset inválido após cálculo, usando fallback: 3`);
+            return 3;
+          })() // OBRIGATÓRIO (número, diferença em horas do UTC, SEM sinal negativo, range: 0-14)
+      };
+      
+      console.log('📋 Device data preparado:', JSON.stringify(deviceData, null, 2));
+      
+      requestBody.threeDSecure = {
+        embedded: threeDSecure.embedded !== false, // Default: true (MPI Rede)
+        onFailure: threeDSecure.onFailure || 'decline', // 'decline' para débito (obrigatório)
+        userAgent: threeDSecure.userAgent, // OBRIGATÓRIO
+        ipAddress: threeDSecure.ipAddress, // OBRIGATÓRIO (IPv4)
+        device: deviceData,
         billing: {
           address: threeDSecure.billing.address, // OBRIGATÓRIO (até 128)
           city: threeDSecure.billing.city, // OBRIGATÓRIO (até 64)
@@ -807,6 +820,15 @@ async function createCreditCardTransaction(txid, valor, cartaoData, parcelas = 1
     }
 
     const authHeaders = await getAuthHeaders();
+    
+    // Log do requestBody completo antes de enviar (para debug)
+    if (requestBody.threeDSecure && requestBody.threeDSecure.device) {
+      console.log('🔍 DEBUG timeZoneOffset antes de enviar:', {
+        valor: requestBody.threeDSecure.device.timeZoneOffset,
+        tipo: typeof requestBody.threeDSecure.device.timeZoneOffset,
+        stringified: JSON.stringify(requestBody.threeDSecure.device.timeZoneOffset)
+      });
+    }
     
     // Tenta criar a transação
     let response;
@@ -1167,9 +1189,26 @@ async function createDebitCardTransaction(txid, valor, cartaoData, bandeira = nu
             }
             
             console.log(`🌍 timeZoneOffset calculado: ${finalOffset} (original: ${offset}, tipo: ${typeof offset})`);
-            return finalOffset;
-          })() // OBRIGATÓRIO (10 alfanumérico, diferença em horas do UTC, SEM sinal negativo)
-        },
+            // IMPORTANTE: A documentação mostra exemplos com número (3), não string
+            // Sempre envia como número (não string)
+            const numOffset = parseInt(finalOffset, 10);
+            if (!isNaN(numOffset) && numOffset >= 0 && numOffset <= 14) {
+              return numOffset; // Envia como número
+            }
+            // Fallback seguro: retorna 3 (UTC-3 Brasil) se cálculo falhar
+            console.warn(`⚠️  timeZoneOffset inválido após cálculo, usando fallback: 3`);
+            return 3;
+          })() // OBRIGATÓRIO (número, diferença em horas do UTC, SEM sinal negativo, range: 0-14)
+      };
+      
+      console.log('📋 Device data preparado:', JSON.stringify(deviceData, null, 2));
+      
+      requestBody.threeDSecure = {
+        embedded: threeDSecure.embedded !== false, // Default: true (MPI Rede)
+        onFailure: threeDSecure.onFailure || 'decline', // 'decline' para débito (obrigatório)
+        userAgent: threeDSecure.userAgent, // OBRIGATÓRIO
+        ipAddress: threeDSecure.ipAddress, // OBRIGATÓRIO (IPv4)
+        device: deviceData,
         billing: {
           address: threeDSecure.billing.address, // OBRIGATÓRIO (até 128)
           city: threeDSecure.billing.city, // OBRIGATÓRIO (até 64)
