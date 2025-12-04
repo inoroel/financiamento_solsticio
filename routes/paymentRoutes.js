@@ -648,8 +648,9 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
       // device: deve vir do frontend, mas fornece valores padrão se não disponível
       if (!threeDSecureData.device || typeof threeDSecureData.device !== 'object') {
         // Calcula timeZoneOffset dinamicamente (diferença em horas do UTC)
-        // Formato: número inteiro (ex: -3 para UTC-3, 3 para UTC+3)
-        const timezoneOffset = new Date().getTimezoneOffset() / -60; // getTimezoneOffset retorna minutos, convertemos para horas e invertemos
+        // IMPORTANTE: A documentação mostra exemplos com valor SEM sinal negativo (ex: "3" para UTC-3)
+        // Usa valor absoluto (sem sinal negativo)
+        const timezoneOffset = Math.abs(Math.round(new Date().getTimezoneOffset() / -60));
         const timeZoneOffsetFormatted = String(timezoneOffset); // Converte para string conforme documentação
         
         threeDSecureData.device = {
@@ -659,29 +660,32 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
           language: req.headers['accept-language']?.split(',')[0]?.split('-')[0] || 'pt',
           screenHeight: 1080,
           screenWidth: 1920,
-          timeZoneOffset: timeZoneOffsetFormatted // Formato: string com número (ex: "-3" ou "3")
+          timeZoneOffset: timeZoneOffsetFormatted // Formato: string com número SEM sinal negativo (ex: "3")
         };
       } else {
-        // Garante que timeZoneOffset está no formato correto (string numérica)
+        // Garante que timeZoneOffset está no formato correto (string numérica SEM sinal negativo)
         if (threeDSecureData.device.timeZoneOffset !== undefined) {
-          // Se for número, converte para string
+          // Se for número, converte para string e usa valor absoluto
           if (typeof threeDSecureData.device.timeZoneOffset === 'number') {
-            threeDSecureData.device.timeZoneOffset = String(threeDSecureData.device.timeZoneOffset);
+            threeDSecureData.device.timeZoneOffset = String(Math.abs(threeDSecureData.device.timeZoneOffset));
           }
-          // Se for string, valida formato (deve ser número com ou sem sinal)
+          // Se for string, valida formato e remove sinal negativo se presente
           else if (typeof threeDSecureData.device.timeZoneOffset === 'string') {
-            // Remove espaços e valida formato numérico
-            const offset = threeDSecureData.device.timeZoneOffset.trim();
-            if (!/^-?\d+$/.test(offset)) {
+            // Remove espaços e sinal negativo
+            const offset = threeDSecureData.device.timeZoneOffset.trim().replace(/^-/, '');
+            if (/^\d+$/.test(offset)) {
+              // Formato válido, usa valor sem sinal negativo
+              threeDSecureData.device.timeZoneOffset = offset;
+            } else {
               // Formato inválido, calcula dinamicamente
-              const timezoneOffset = new Date().getTimezoneOffset() / -60;
+              const timezoneOffset = Math.abs(Math.round(new Date().getTimezoneOffset() / -60));
               threeDSecureData.device.timeZoneOffset = String(timezoneOffset);
               console.warn(`⚠️  timeZoneOffset inválido recebido: "${threeDSecureData.device.timeZoneOffset}". Usando valor calculado: ${threeDSecureData.device.timeZoneOffset}`);
             }
           }
         } else {
           // Se não fornecido, calcula dinamicamente
-          const timezoneOffset = new Date().getTimezoneOffset() / -60;
+          const timezoneOffset = Math.abs(Math.round(new Date().getTimezoneOffset() / -60));
           threeDSecureData.device.timeZoneOffset = String(timezoneOffset);
         }
       }

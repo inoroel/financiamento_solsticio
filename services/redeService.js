@@ -688,36 +688,62 @@ async function createCreditCardTransaction(txid, valor, cartaoData, parcelas = 1
           screenWidth: parseInt(threeDSecure.device.screenWidth) || 1920, // OBRIGATÓRIO (6 numérico)
           timeZoneOffset: (() => {
             // Valida e formata timeZoneOffset
-            // Formato esperado: string numérica (ex: "-3" ou "3")
-            // NOTA: A documentação aceita string ou número, mas string é mais seguro
+            // Formato esperado: string numérica SEM sinal negativo (ex: "3" para UTC-3)
+            // NOTA: A documentação mostra exemplos com número positivo (3) mesmo para UTC-3
+            // A diferença é calculada como: UTC - Local = offset
+            // Para UTC-3 (Brasil), o offset é 3 (3 horas de diferença)
             const offset = threeDSecure.device.timeZoneOffset;
+            let finalOffset: string;
+            
             if (offset !== undefined && offset !== null) {
-              // Se for número, converte para string
+              // Se for número, converte para string e usa valor absoluto
               if (typeof offset === 'number') {
                 // Valida que está no range válido (-12 a +14)
                 if (offset >= -12 && offset <= 14) {
-                  return String(offset);
+                  // Usa valor absoluto (sem sinal negativo)
+                  finalOffset = String(Math.abs(offset));
+                } else {
+                  // Range inválido, calcula dinamicamente
+                  const timezoneOffset = Math.round(new Date().getTimezoneOffset() / -60);
+                  finalOffset = String(Math.abs(Math.max(-12, Math.min(14, timezoneOffset))));
                 }
               }
               // Se for string, valida formato
-              if (typeof offset === 'string') {
+              else if (typeof offset === 'string') {
                 const trimmed = offset.trim();
-                // Valida formato: número opcionalmente com sinal negativo
-                if (/^-?\d+$/.test(trimmed)) {
-                  const numOffset = parseInt(trimmed, 10);
+                // Remove sinal negativo se presente
+                const cleanOffset = trimmed.replace(/^-/, '');
+                // Valida formato: apenas dígitos
+                if (/^\d+$/.test(cleanOffset)) {
+                  const numOffset = parseInt(cleanOffset, 10);
                   // Valida range
-                  if (numOffset >= -12 && numOffset <= 14) {
-                    return trimmed;
+                  if (numOffset >= 0 && numOffset <= 14) {
+                    finalOffset = cleanOffset;
+                  } else {
+                    // Range inválido, calcula dinamicamente
+                    const timezoneOffset = Math.round(new Date().getTimezoneOffset() / -60);
+                    finalOffset = String(Math.abs(Math.max(-12, Math.min(14, timezoneOffset))));
                   }
+                } else {
+                  // Formato inválido, calcula dinamicamente
+                  const timezoneOffset = Math.round(new Date().getTimezoneOffset() / -60);
+                  finalOffset = String(Math.abs(Math.max(-12, Math.min(14, timezoneOffset))));
                 }
+              } else {
+                // Tipo inválido, calcula dinamicamente
+                const timezoneOffset = Math.round(new Date().getTimezoneOffset() / -60);
+                finalOffset = String(Math.abs(Math.max(-12, Math.min(14, timezoneOffset))));
               }
+            } else {
+              // Não fornecido, calcula dinamicamente do servidor
+              const timezoneOffset = Math.round(new Date().getTimezoneOffset() / -60);
+              // Usa valor absoluto (sem sinal negativo)
+              finalOffset = String(Math.abs(Math.max(-12, Math.min(14, timezoneOffset))));
             }
-            // Fallback: calcula dinamicamente do servidor
-            const timezoneOffset = Math.round(new Date().getTimezoneOffset() / -60);
-            // Garante que está no range válido
-            const validOffset = Math.max(-12, Math.min(14, timezoneOffset));
-            return String(validOffset);
-          })() // OBRIGATÓRIO (10 alfanumérico, diferença em horas do UTC, range: -12 a +14)
+            
+            console.log(`🌍 timeZoneOffset calculado: ${finalOffset} (original: ${offset}, tipo: ${typeof offset})`);
+            return finalOffset;
+          })() // OBRIGATÓRIO (10 alfanumérico, diferença em horas do UTC, SEM sinal negativo)
         },
         billing: {
           address: threeDSecure.billing.address, // OBRIGATÓRIO (até 128)
@@ -1087,36 +1113,62 @@ async function createDebitCardTransaction(txid, valor, cartaoData, bandeira = nu
           screenWidth: parseInt(threeDSecure.device.screenWidth) || 1920, // OBRIGATÓRIO (6 numérico)
           timeZoneOffset: (() => {
             // Valida e formata timeZoneOffset
-            // Formato esperado: string numérica (ex: "-3" ou "3")
-            // NOTA: A documentação aceita string ou número, mas string é mais seguro
+            // Formato esperado: string numérica SEM sinal negativo (ex: "3" para UTC-3)
+            // NOTA: A documentação mostra exemplos com número positivo (3) mesmo para UTC-3
+            // A diferença é calculada como: UTC - Local = offset
+            // Para UTC-3 (Brasil), o offset é 3 (3 horas de diferença)
             const offset = threeDSecure.device.timeZoneOffset;
+            let finalOffset: string;
+            
             if (offset !== undefined && offset !== null) {
-              // Se for número, converte para string
+              // Se for número, converte para string e usa valor absoluto
               if (typeof offset === 'number') {
                 // Valida que está no range válido (-12 a +14)
                 if (offset >= -12 && offset <= 14) {
-                  return String(offset);
+                  // Usa valor absoluto (sem sinal negativo)
+                  finalOffset = String(Math.abs(offset));
+                } else {
+                  // Range inválido, calcula dinamicamente
+                  const timezoneOffset = Math.round(new Date().getTimezoneOffset() / -60);
+                  finalOffset = String(Math.abs(Math.max(-12, Math.min(14, timezoneOffset))));
                 }
               }
               // Se for string, valida formato
-              if (typeof offset === 'string') {
+              else if (typeof offset === 'string') {
                 const trimmed = offset.trim();
-                // Valida formato: número opcionalmente com sinal negativo
-                if (/^-?\d+$/.test(trimmed)) {
-                  const numOffset = parseInt(trimmed, 10);
+                // Remove sinal negativo se presente
+                const cleanOffset = trimmed.replace(/^-/, '');
+                // Valida formato: apenas dígitos
+                if (/^\d+$/.test(cleanOffset)) {
+                  const numOffset = parseInt(cleanOffset, 10);
                   // Valida range
-                  if (numOffset >= -12 && numOffset <= 14) {
-                    return trimmed;
+                  if (numOffset >= 0 && numOffset <= 14) {
+                    finalOffset = cleanOffset;
+                  } else {
+                    // Range inválido, calcula dinamicamente
+                    const timezoneOffset = Math.round(new Date().getTimezoneOffset() / -60);
+                    finalOffset = String(Math.abs(Math.max(-12, Math.min(14, timezoneOffset))));
                   }
+                } else {
+                  // Formato inválido, calcula dinamicamente
+                  const timezoneOffset = Math.round(new Date().getTimezoneOffset() / -60);
+                  finalOffset = String(Math.abs(Math.max(-12, Math.min(14, timezoneOffset))));
                 }
+              } else {
+                // Tipo inválido, calcula dinamicamente
+                const timezoneOffset = Math.round(new Date().getTimezoneOffset() / -60);
+                finalOffset = String(Math.abs(Math.max(-12, Math.min(14, timezoneOffset))));
               }
+            } else {
+              // Não fornecido, calcula dinamicamente do servidor
+              const timezoneOffset = Math.round(new Date().getTimezoneOffset() / -60);
+              // Usa valor absoluto (sem sinal negativo)
+              finalOffset = String(Math.abs(Math.max(-12, Math.min(14, timezoneOffset))));
             }
-            // Fallback: calcula dinamicamente do servidor
-            const timezoneOffset = Math.round(new Date().getTimezoneOffset() / -60);
-            // Garante que está no range válido
-            const validOffset = Math.max(-12, Math.min(14, timezoneOffset));
-            return String(validOffset);
-          })() // OBRIGATÓRIO (10 alfanumérico, diferença em horas do UTC, range: -12 a +14)
+            
+            console.log(`🌍 timeZoneOffset calculado: ${finalOffset} (original: ${offset}, tipo: ${typeof offset})`);
+            return finalOffset;
+          })() // OBRIGATÓRIO (10 alfanumérico, diferença em horas do UTC, SEM sinal negativo)
         },
         billing: {
           address: threeDSecure.billing.address, // OBRIGATÓRIO (até 128)
