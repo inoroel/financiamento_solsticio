@@ -807,8 +807,7 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
       authorizationCode: cobranca.authorizationCode,
       returnCode: cobranca.returnCode,
       foiAutorizado,
-      statusInicial,
-      cobrancaCompleta: JSON.stringify(cobranca, null, 2) // DEBUG: mostra objeto completo
+      statusInicial
     });
 
     // Determina provider baseado no tipo de pagamento
@@ -896,17 +895,6 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
     // Não precisamos esperar pelo webhook para cartões que são autorizados na hora
     // Verifica se foi realmente autorizado através do authorizationCode e returnCode
     const foiRealmenteAutorizado = foiAutorizado && (tipoPagamento === 'CREDITO' || tipoPagamento === 'DEBITO');
-    
-    console.log(`🔍 DEBUG gravação transação:`, {
-      tipoPagamento,
-      foiAutorizado,
-      foiRealmenteAutorizado,
-      cobrancaAuthorizationCode: cobranca?.authorizationCode,
-      cobrancaReturnCode: cobranca?.returnCode,
-      cobrancaStatus: cobranca?.status,
-      requires3DS
-    });
-    
     if (foiRealmenteAutorizado) {
       console.log(`\n💰 Transação ${tipoPagamento} foi AUTORIZADA imediatamente. Criando entrada na tabela transacoes...`);
       
@@ -1823,17 +1811,20 @@ router.post('/3ds/callback', async (req, res) => {
       console.log(`❌ Autenticação 3DS falhou. 3DS ReturnCode: ${threeDSecureReturnCode}`);
       
       // Atualiza status da cobrança para NEGADA
-      await saveCobranca(
-        cobranca.txid,
-        cobranca.tipo_pagamento,
-        cobranca.provider,
-        cobranca.valor,
-        'NEGADA',
-        cobranca.crypto_currency,
-        cobranca.crypto_address,
-        cobranca.dados_pagamento,
-        cobranca.dados_doador_temp
-      );
+      await saveCobranca({
+        txid: cobranca.txid,
+        tipoPagamento: cobranca.tipo_pagamento,
+        provider: cobranca.provider,
+        valor: cobranca.valor,
+        status: 'NEGADA',
+        cryptoCurrency: cobranca.crypto_currency,
+        cryptoAddress: cobranca.crypto_address,
+        dadosPagamento: cobranca.dados_pagamento,
+        dadosDoadorTemp: cobranca.dados_doador_temp,
+        redeTid: cobranca.rede_tid,
+        providerTid: cobranca.provider_tid,
+        campanhaId: cobranca.campanha_id
+      });
 
       return res.status(200).json({ received: true, authenticated: false });
     }
@@ -1860,17 +1851,20 @@ router.post('/3ds/callback', async (req, res) => {
       console.log(`❌ Transação não foi autorizada. ReturnCode: ${transactionData.returnCode}`);
       
       // Atualiza status da cobrança para NEGADA
-      await saveCobranca(
-        cobranca.txid,
-        cobranca.tipo_pagamento,
-        cobranca.provider,
-        cobranca.valor,
-        'NEGADA',
-        cobranca.crypto_currency,
-        cobranca.crypto_address,
-        cobranca.dados_pagamento,
-        cobranca.dados_doador_temp
-      );
+      await saveCobranca({
+        txid: cobranca.txid,
+        tipoPagamento: cobranca.tipo_pagamento,
+        provider: cobranca.provider,
+        valor: cobranca.valor,
+        status: 'NEGADA',
+        cryptoCurrency: cobranca.crypto_currency,
+        cryptoAddress: cobranca.crypto_address,
+        dadosPagamento: cobranca.dados_pagamento,
+        dadosDoadorTemp: cobranca.dados_doador_temp,
+        redeTid: cobranca.rede_tid,
+        providerTid: cobranca.provider_tid,
+        campanhaId: cobranca.campanha_id
+      });
 
       return res.status(200).json({ received: true, authorized: false });
     }
