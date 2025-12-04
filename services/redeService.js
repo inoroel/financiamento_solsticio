@@ -313,7 +313,7 @@ async function createPixCharge(txid, valor, solicitacaoPagador = "Doação para 
     console.log(`   - kind: ${requestBody.kind}`);
     console.log(`   - reference: ${requestBody.reference} (${requestBody.reference.length} chars, max: 50)`);
     console.log(`   - amount: ${requestBody.amount} (centavos, tipo: ${typeof requestBody.amount})`);
-    console.log(`   - qrCode.Date timeExpiration: ${requestBody.qrCode['Date timeExpiration']}`);
+    console.log(`   - qrCode.dateTimeExpiration: ${requestBody.qrCode['dateTimeExpiration']}`);
     if (requestBody.description) {
       console.log(`   - description: ${requestBody.description.substring(0, 50)}...`);
     }
@@ -347,13 +347,28 @@ async function createPixCharge(txid, valor, solicitacaoPagador = "Doação para 
     );
 
     console.log('✅ COBRANÇA PIX e-Rede CRIADA COM SUCESSO!');
+    console.log('📦 Resposta completa da e-Rede:', JSON.stringify(response.data, null, 2));
 
     // A e-Rede retorna o QR Code e Transaction ID (tid)
     // Documentação: Manual p.6500-6504
+    // A resposta pode vir em diferentes formatos:
+    // - response.data.qrCodeResponse.qrCodeData (formato padrão)
+    // - response.data.qrCode (formato alternativo)
+    // - response.data.qrcode (formato alternativo)
     const qrCodeData = response.data.qrCodeResponse?.qrCodeData 
       || response.data.qrCode 
       || response.data.qrcode 
       || null;
+    
+    console.log('🔍 QR Code extraído:', qrCodeData ? `${qrCodeData.substring(0, 50)}...` : 'null');
+    
+    if (!qrCodeData) {
+      console.warn('⚠️  ATENÇÃO: QR Code não encontrado na resposta da e-Rede!');
+      console.warn('📋 Estrutura da resposta:', Object.keys(response.data));
+      if (response.data.qrCodeResponse) {
+        console.warn('📋 qrCodeResponse keys:', Object.keys(response.data.qrCodeResponse));
+      }
+    }
     
     return {
       status: response.data.qrCodeResponse?.status === 'Pending' || response.data.returnCode === '00' ? 'ATIVA' : 'ERRO',
@@ -362,7 +377,7 @@ async function createPixCharge(txid, valor, solicitacaoPagador = "Doação para 
       brCode: qrCodeData,
       expiracao: expiracaoSegundos,
       valor: valorValidado,
-      criadoEm: response.data.qrCodeResponse?.['Date time'] || response.data.dateTime || new Date().toISOString(),
+      criadoEm: response.data.qrCodeResponse?.['Date time'] || response.data.qrCodeResponse?.['dateTime'] || response.data.dateTime || new Date().toISOString(),
       returnCode: response.data.qrCodeResponse?.returnCode || response.data.returnCode,
       returnMessage: response.data.qrCodeResponse?.returnMessage || response.data.returnMessage
     };

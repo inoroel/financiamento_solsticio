@@ -677,6 +677,8 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
     if (tipoPagamento === 'PIX') {
       response.brCode = cobranca.brCode;
       response.expiracao = cobranca.expiracao;
+      console.log('📋 PIX Response - brCode:', cobranca.brCode ? `${cobranca.brCode.substring(0, 50)}...` : 'null');
+      console.log('📋 PIX Response - expiracao:', cobranca.expiracao);
     } else if (tipoPagamento === 'CRIPTO') {
       response.recipient_address = cobranca.recipient_address;
       response.memo = cobranca.memo;

@@ -610,9 +610,17 @@
                         `Status: ${data.status || 'ATIVA'}`
                     );
                     
+                    // Debug: log da resposta completa
+                    console.log('📦 Resposta completa da API:', data);
+                    console.log('🔍 brCode recebido:', data.brCode ? `${data.brCode.substring(0, 50)}...` : 'null/undefined');
+                    
                     // Mostra QR Code
                     if (data.brCode) {
+                        console.log('✅ Exibindo QR Code...');
                         showQRCode(data.brCode, data.txid);
+                    } else {
+                        console.warn('⚠️  brCode não encontrado na resposta!');
+                        console.warn('📋 Chaves disponíveis:', Object.keys(data));
                     }
                 } else {
                     showResult(createResult, 'error', 
@@ -722,9 +730,22 @@
 
         // Função para gerar e mostrar QR Code
         function showQRCode(brCode, txid) {
+            console.log('🎨 showQRCode chamado com brCode:', brCode ? `${brCode.substring(0, 50)}...` : 'null');
+            
             const qrcodeContainer = document.getElementById('qrcodeContainer');
             const qrcodeDiv = document.getElementById('qrcode');
             const qrcodeText = document.getElementById('qrcodeText');
+
+            if (!qrcodeContainer || !qrcodeDiv || !qrcodeText) {
+                console.error('❌ Elementos do QR Code não encontrados no DOM!');
+                return;
+            }
+
+            if (!brCode || typeof brCode !== 'string') {
+                console.error('❌ brCode inválido:', brCode);
+                qrcodeDiv.innerHTML = '<p style="color: red;">Erro: Código PIX inválido</p>';
+                return;
+            }
 
             qrcodeContainer.style.display = 'block';
             qrcodeDiv.innerHTML = '';
@@ -739,12 +760,15 @@
                 }
             }, function (error) {
                 if (error) {
-                    qrcodeDiv.innerHTML = '<p style="color: red;">Erro ao gerar QR Code</p>';
+                    console.error('❌ Erro ao gerar QR Code:', error);
+                    qrcodeDiv.innerHTML = '<p style="color: red;">Erro ao gerar QR Code: ' + error.message + '</p>';
+                } else {
+                    console.log('✅ QR Code gerado com sucesso!');
                 }
             });
 
             // Mostra o código para copiar
-            qrcodeText.innerHTML = `<strong>Código PIX (Copiar e Colar):</strong><br>${brCode}`;
+            qrcodeText.innerHTML = `<strong>Código PIX (Copiar e Colar):</strong><br><code style="word-break: break-all;">${brCode}</code>`;
         }
 
         // Auto-preenche TXID após criar cobrança
