@@ -531,27 +531,51 @@ async function createCreditCardTransaction(txid, valor, cartaoData, parcelas = 1
     };
 
     // Prioriza networkToken (tokenização de bandeira) se disponível
-    // tokenizationId deve ser usado como cardToken no nível raiz
-    // Quando usa cardToken, ainda precisa enviar expirationMonth e expirationYear
+    // Conforme documentação: https://developer.userede.com.br/e-rede
+    // Para Visa/Mastercard: usar tokenCode + tokenCryptogram OU apenas cardToken
+    // Para outras bandeiras: usar apenas cardToken
     if (cartaoData.networkToken) {
-      // tokenizationId é usado como cardToken no nível raiz (não dentro de card)
-      requestBody.cardToken = cartaoData.networkToken;
+      const bandeiraLower = (bandeira || '').toLowerCase();
       
-      // Quando usa cardToken, ainda precisa enviar expirationMonth e expirationYear
-      if (cartaoData.expirationMonth && cartaoData.expirationYear) {
-        requestBody.expirationMonth = parseInt(cartaoData.expirationMonth);
-        requestBody.expirationYear = parseInt(cartaoData.expirationYear);
-      } else {
-        throw new Error('expirationMonth e expirationYear são obrigatórios quando usa cardToken');
-      }
-      
-      if (cartaoData.cryptogram) {
+      // Para Visa e Mastercard: prioriza tokenCode + tokenCryptogram se disponível
+      if ((bandeiraLower === 'visa' || bandeiraLower === 'mastercard') && 
+          cartaoData.tokenCode && cartaoData.cryptogram) {
+        // Usa tokenCode + tokenCryptogram (preferencial para Visa/Mastercard)
+        requestBody.cardNumber = cartaoData.tokenCode; // tokenCode é o número do cartão tokenizado
         requestBody.tokenCryptogram = cartaoData.cryptogram;
+        
+        // Quando usa tokenCode + tokenCryptogram, ainda precisa enviar expirationMonth e expirationYear
+        if (cartaoData.expirationMonth && cartaoData.expirationYear) {
+          requestBody.expirationMonth = parseInt(cartaoData.expirationMonth);
+          requestBody.expirationYear = parseInt(cartaoData.expirationYear);
+        } else {
+          throw new Error('expirationMonth e expirationYear são obrigatórios quando usa tokenCode + tokenCryptogram');
+        }
+        
+        // Remove objeto card vazio quando usa tokenCode diretamente
+        delete requestBody.card;
+        console.log(`🔐 Usando tokenCode + tokenCryptogram para ${bandeiraLower.toUpperCase()}`);
+      } else {
+        // Usa cardToken (tokenizationId) - funciona para todas as bandeiras
+        requestBody.cardToken = cartaoData.networkToken;
+        
+        // Quando usa cardToken, ainda precisa enviar expirationMonth e expirationYear
+        if (cartaoData.expirationMonth && cartaoData.expirationYear) {
+          requestBody.expirationMonth = parseInt(cartaoData.expirationMonth);
+          requestBody.expirationYear = parseInt(cartaoData.expirationYear);
+        } else {
+          throw new Error('expirationMonth e expirationYear são obrigatórios quando usa cardToken');
+        }
+        
+        // Para Visa/Mastercard, adiciona tokenCryptogram se disponível
+        if (cartaoData.cryptogram && (bandeiraLower === 'visa' || bandeiraLower === 'mastercard')) {
+          requestBody.tokenCryptogram = cartaoData.cryptogram;
+        }
+        
+        // Remove objeto card vazio quando usa cardToken
+        delete requestBody.card;
+        console.log(`🔐 Usando cardToken (tokenizationId) para ${bandeiraLower || 'cartão tokenizado'}`);
       }
-      
-      // Remove objeto card vazio quando usa cardToken
-      delete requestBody.card;
-      console.log('🔐 Usando cardToken (tokenização de bandeira - tokenizationId)');
     } else if (cartaoData.token) {
       requestBody.card.token = cartaoData.token;
       console.log('🔐 Usando token padrão e-Rede');
@@ -640,23 +664,38 @@ async function createCreditCardTransaction(txid, valor, cartaoData, parcelas = 1
 
       // URLs de callback são obrigatórias quando usa 3DS/DataOnly
       // Mesmo com embedded: true, precisamos enviar URLs de sucesso e falha
-      let baseUrl = process.env.BASE_URL;
+      // IMPORTANTE: URLs devem ter no máximo 87 caracteres conforme documentação e-Rede
+      // Documentação: https://developer.userede.com.br/e-rede
+      let baseUrl = process.env.BASE_URL || process.env.CUSTOM_DOMAIN;
+      
+      // Se não tiver domínio customizado, usa fallback curto
       if (!baseUrl) {
-        if (process.env.VERCEL_URL) {
-          baseUrl = `https://${process.env.VERCEL_URL}`;
-        } else {
-          baseUrl = 'https://api.solsticio.com.br'; // Fallback
-        }
+        baseUrl = 'https://api.solsticio.com.br';
+      }
+      
+      // Garante que baseUrl não tenha trailing slash
+      baseUrl = baseUrl.replace(/\/$/, '');
+      
+      // URLs devem ser curtas (máximo 87 caracteres conforme documentação)
+      const successUrl = `${baseUrl}/3ds/success`;
+      const failureUrl = `${baseUrl}/3ds/failure`;
+      
+      // Valida tamanho das URLs (máximo 87 caracteres)
+      if (successUrl.length > 87 || failureUrl.length > 87) {
+        console.error(`❌ URLs de callback muito longas! Máximo permitido: 87 caracteres`);
+        console.error(`   Success URL: ${successUrl.length} caracteres - ${successUrl}`);
+        console.error(`   Failure URL: ${failureUrl.length} caracteres - ${failureUrl}`);
+        throw new Error(`URLs de callback 3DS excedem o limite de 87 caracteres. Configure BASE_URL ou CUSTOM_DOMAIN com um domínio mais curto.`);
       }
       
       requestBody.urls = [
         {
           kind: 'threeDSecureSuccess',
-          url: `${baseUrl}/api/webhook/3ds/success`
+          url: successUrl
         },
         {
           kind: 'threeDSecureFailure',
-          url: `${baseUrl}/api/webhook/3ds/failure`
+          url: failureUrl
         }
       ];
 
@@ -758,27 +797,51 @@ async function createDebitCardTransaction(txid, valor, cartaoData, bandeira = nu
     };
 
     // Prioriza networkToken (tokenização de bandeira) se disponível
-    // tokenizationId deve ser usado como cardToken no nível raiz
-    // Quando usa cardToken, ainda precisa enviar expirationMonth e expirationYear
+    // Conforme documentação: https://developer.userede.com.br/e-rede
+    // Para Visa/Mastercard: usar tokenCode + tokenCryptogram OU apenas cardToken
+    // Para outras bandeiras: usar apenas cardToken
     if (cartaoData.networkToken) {
-      // tokenizationId é usado como cardToken no nível raiz (não dentro de card)
-      requestBody.cardToken = cartaoData.networkToken;
+      const bandeiraLower = (bandeira || '').toLowerCase();
       
-      // Quando usa cardToken, ainda precisa enviar expirationMonth e expirationYear
-      if (cartaoData.expirationMonth && cartaoData.expirationYear) {
-        requestBody.expirationMonth = parseInt(cartaoData.expirationMonth);
-        requestBody.expirationYear = parseInt(cartaoData.expirationYear);
-      } else {
-        throw new Error('expirationMonth e expirationYear são obrigatórios quando usa cardToken');
-      }
-      
-      if (cartaoData.cryptogram) {
+      // Para Visa e Mastercard: prioriza tokenCode + tokenCryptogram se disponível
+      if ((bandeiraLower === 'visa' || bandeiraLower === 'mastercard') && 
+          cartaoData.tokenCode && cartaoData.cryptogram) {
+        // Usa tokenCode + tokenCryptogram (preferencial para Visa/Mastercard)
+        requestBody.cardNumber = cartaoData.tokenCode; // tokenCode é o número do cartão tokenizado
         requestBody.tokenCryptogram = cartaoData.cryptogram;
+        
+        // Quando usa tokenCode + tokenCryptogram, ainda precisa enviar expirationMonth e expirationYear
+        if (cartaoData.expirationMonth && cartaoData.expirationYear) {
+          requestBody.expirationMonth = parseInt(cartaoData.expirationMonth);
+          requestBody.expirationYear = parseInt(cartaoData.expirationYear);
+        } else {
+          throw new Error('expirationMonth e expirationYear são obrigatórios quando usa tokenCode + tokenCryptogram');
+        }
+        
+        // Remove objeto card vazio quando usa tokenCode diretamente
+        delete requestBody.card;
+        console.log(`🔐 Usando tokenCode + tokenCryptogram para ${bandeiraLower.toUpperCase()}`);
+      } else {
+        // Usa cardToken (tokenizationId) - funciona para todas as bandeiras
+        requestBody.cardToken = cartaoData.networkToken;
+        
+        // Quando usa cardToken, ainda precisa enviar expirationMonth e expirationYear
+        if (cartaoData.expirationMonth && cartaoData.expirationYear) {
+          requestBody.expirationMonth = parseInt(cartaoData.expirationMonth);
+          requestBody.expirationYear = parseInt(cartaoData.expirationYear);
+        } else {
+          throw new Error('expirationMonth e expirationYear são obrigatórios quando usa cardToken');
+        }
+        
+        // Para Visa/Mastercard, adiciona tokenCryptogram se disponível
+        if (cartaoData.cryptogram && (bandeiraLower === 'visa' || bandeiraLower === 'mastercard')) {
+          requestBody.tokenCryptogram = cartaoData.cryptogram;
+        }
+        
+        // Remove objeto card vazio quando usa cardToken
+        delete requestBody.card;
+        console.log(`🔐 Usando cardToken (tokenizationId) para ${bandeiraLower || 'cartão tokenizado'}`);
       }
-      
-      // Remove objeto card vazio quando usa cardToken
-      delete requestBody.card;
-      console.log('🔐 Usando cardToken (tokenização de bandeira - tokenizationId)');
     } else if (cartaoData.token) {
       requestBody.card.token = cartaoData.token;
       console.log('🔐 Usando token padrão e-Rede');
@@ -866,23 +929,38 @@ async function createDebitCardTransaction(txid, valor, cartaoData, bandeira = nu
 
       // URLs de callback são obrigatórias quando usa 3DS/DataOnly
       // Mesmo com embedded: true, precisamos enviar URLs de sucesso e falha
-      let baseUrl = process.env.BASE_URL;
+      // IMPORTANTE: URLs devem ter no máximo 87 caracteres conforme documentação e-Rede
+      // Documentação: https://developer.userede.com.br/e-rede
+      let baseUrl = process.env.BASE_URL || process.env.CUSTOM_DOMAIN;
+      
+      // Se não tiver domínio customizado, usa fallback curto
       if (!baseUrl) {
-        if (process.env.VERCEL_URL) {
-          baseUrl = `https://${process.env.VERCEL_URL}`;
-        } else {
-          baseUrl = 'https://api.solsticio.com.br'; // Fallback
-        }
+        baseUrl = 'https://api.solsticio.com.br';
+      }
+      
+      // Garante que baseUrl não tenha trailing slash
+      baseUrl = baseUrl.replace(/\/$/, '');
+      
+      // URLs devem ser curtas (máximo 87 caracteres conforme documentação)
+      const successUrl = `${baseUrl}/3ds/success`;
+      const failureUrl = `${baseUrl}/3ds/failure`;
+      
+      // Valida tamanho das URLs (máximo 87 caracteres)
+      if (successUrl.length > 87 || failureUrl.length > 87) {
+        console.error(`❌ URLs de callback muito longas! Máximo permitido: 87 caracteres`);
+        console.error(`   Success URL: ${successUrl.length} caracteres - ${successUrl}`);
+        console.error(`   Failure URL: ${failureUrl.length} caracteres - ${failureUrl}`);
+        throw new Error(`URLs de callback 3DS excedem o limite de 87 caracteres. Configure BASE_URL ou CUSTOM_DOMAIN com um domínio mais curto.`);
       }
       
       requestBody.urls = [
         {
           kind: 'threeDSecureSuccess',
-          url: `${baseUrl}/api/webhook/3ds/success`
+          url: successUrl
         },
         {
           kind: 'threeDSecureFailure',
-          url: `${baseUrl}/api/webhook/3ds/failure`
+          url: failureUrl
         }
       ];
 

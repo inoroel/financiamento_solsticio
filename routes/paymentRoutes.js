@@ -370,10 +370,11 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
         console.log('ℹ️  Zero Dollar não necessário (transação normal, sem armazenar cartão)');
       }
 
-      // Tokenização de Bandeira: OBRIGATÓRIA para Visa e Elo
+      // Tokenização de Bandeira: OBRIGATÓRIA apenas para Visa
+      // Conforme documentação: https://developer.userede.com.br/e-rede
       const bandeiraLower = (cartaoProcessado.bandeira || '').toLowerCase();
-      if (bandeiraLower === 'visa' || bandeiraLower === 'elo') {
-        console.log(`🔐 Tokenizando cartão ${bandeiraLower.toUpperCase()} (obrigatório)...`);
+      if (bandeiraLower === 'visa') {
+        console.log(`🔐 Tokenizando cartão ${bandeiraLower.toUpperCase()} (obrigatório para Visa)...`);
         
         // Se já temos um token de rede, não precisa tokenizar novamente
         if (!cartaoProcessado.networkToken && cartaoProcessado.cardNumber) {
@@ -492,10 +493,11 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
         console.log('ℹ️  Zero Dollar não necessário (transação normal, sem armazenar cartão)');
       }
 
-      // Tokenização de Bandeira: OBRIGATÓRIA para Visa e Elo
+      // Tokenização de Bandeira: OBRIGATÓRIA apenas para Visa
+      // Conforme documentação: https://developer.userede.com.br/e-rede
       const bandeiraLower = (cartaoProcessado.bandeira || '').toLowerCase();
-      if (bandeiraLower === 'visa' || bandeiraLower === 'elo') {
-        console.log(`🔐 Tokenizando cartão ${bandeiraLower.toUpperCase()} (obrigatório)...`);
+      if (bandeiraLower === 'visa') {
+        console.log(`🔐 Tokenizando cartão ${bandeiraLower.toUpperCase()} (obrigatório para Visa)...`);
         
         if (!cartaoProcessado.networkToken && cartaoProcessado.cardNumber) {
           const tokenizationResult = await tokenizeCard(
