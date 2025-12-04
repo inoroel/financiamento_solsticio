@@ -38,6 +38,18 @@ function isOriginAllowed(origin) {
     return true;
   }
 
+  // SEMPRE permite origens da e-Rede (sandbox e produção) para callbacks 3DS
+  // Essas são requisições POST vindas da e-Rede após autenticação 3DS
+  const redeOrigins = [
+    'https://sandbox-erede.useredecloud.com.br',
+    'https://api.userede.com.br',
+    'https://erede.useredecloud.com.br'
+  ];
+  
+  if (redeOrigins.some(redeOrigin => origin.startsWith(redeOrigin))) {
+    return true;
+  }
+
   // Se ALLOWED_ORIGINS está configurado, usa APENAS a lista (não permite localhost automaticamente)
   if (process.env.ALLOWED_ORIGINS) {
     const allowedOrigins = process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim());
