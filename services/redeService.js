@@ -297,7 +297,7 @@ async function createPixCharge(txid, valor, solicitacaoPagador = "Doação para 
       reference: txid, // ✅ Até 50 caracteres conforme documentação oficial
       amount: String(Math.round(valorValidado * 100)), // Valor em centavos (string conforme documentação)
       qrCode: {
-        'Date timeExpiration': dataExpiracaoFormatada // Formato: YYYY-MM-DDThh:mm:ss
+        'dateTimeExpiration': dataExpiracaoFormatada // Formato: YYYY-MM-DDThh:mm:ss
       }
     };
     
