@@ -465,10 +465,32 @@ async function createCreditCardTransaction(txid, valor, cartaoData, parcelas = 1
       amount: Math.round(valorValidado * 100), // Valor em centavos
       reference: txid,
       installments: parcelas,
-      card: {
-        token: cartaoData.token
-      }
+      card: {}
     };
+
+    // Prioriza networkToken (tokenização de bandeira) se disponível
+    // Se não tiver, usa token padrão da e-Rede
+    // Se não tiver nenhum, usa cardNumber diretamente (não recomendado, mas permitido)
+    if (cartaoData.networkToken) {
+      requestBody.card.token = cartaoData.networkToken;
+      if (cartaoData.cryptogram) {
+        requestBody.tokenCryptogram = cartaoData.cryptogram;
+      }
+      console.log('🔐 Usando network token (tokenização de bandeira)');
+    } else if (cartaoData.token) {
+      requestBody.card.token = cartaoData.token;
+      console.log('🔐 Usando token padrão e-Rede');
+    } else if (cartaoData.cardNumber) {
+      // Fallback: usar cardNumber diretamente (não recomendado, mas permitido pela API)
+      requestBody.cardNumber = cartaoData.cardNumber;
+      requestBody.expirationMonth = cartaoData.expirationMonth;
+      requestBody.expirationYear = cartaoData.expirationYear;
+      requestBody.securityCode = cartaoData.securityCode;
+      requestBody.cardholderName = cartaoData.cardholderName;
+      console.warn('⚠️  Usando cardNumber diretamente (não recomendado - tokenize o cartão antes)');
+    } else {
+      throw new Error('Token do cartão ou dados do cartão são obrigatórios');
+    }
 
     // Adiciona bandeira se fornecida
     if (bandeira) {
@@ -594,10 +616,32 @@ async function createDebitCardTransaction(txid, valor, cartaoData, bandeira = nu
       kind: 'debit',
       amount: Math.round(valorValidado * 100), // Valor em centavos
       reference: txid,
-      card: {
-        token: cartaoData.token
-      }
+      card: {}
     };
+
+    // Prioriza networkToken (tokenização de bandeira) se disponível
+    // Se não tiver, usa token padrão da e-Rede
+    // Se não tiver nenhum, usa cardNumber diretamente (não recomendado, mas permitido)
+    if (cartaoData.networkToken) {
+      requestBody.card.token = cartaoData.networkToken;
+      if (cartaoData.cryptogram) {
+        requestBody.tokenCryptogram = cartaoData.cryptogram;
+      }
+      console.log('🔐 Usando network token (tokenização de bandeira)');
+    } else if (cartaoData.token) {
+      requestBody.card.token = cartaoData.token;
+      console.log('🔐 Usando token padrão e-Rede');
+    } else if (cartaoData.cardNumber) {
+      // Fallback: usar cardNumber diretamente (não recomendado, mas permitido pela API)
+      requestBody.cardNumber = cartaoData.cardNumber;
+      requestBody.expirationMonth = cartaoData.expirationMonth;
+      requestBody.expirationYear = cartaoData.expirationYear;
+      requestBody.securityCode = cartaoData.securityCode;
+      requestBody.cardholderName = cartaoData.cardholderName;
+      console.warn('⚠️  Usando cardNumber diretamente (não recomendado - tokenize o cartão antes)');
+    } else {
+      throw new Error('Token do cartão ou dados do cartão são obrigatórios');
+    }
 
     // Adiciona bandeira se fornecida
     if (bandeira) {

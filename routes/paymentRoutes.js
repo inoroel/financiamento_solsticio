@@ -70,12 +70,19 @@ async function processarDadosCartao(cartaoData) {
     return null;
   }
 
-  // Se já tem token, retorna direto
+  // Se já tem token, retorna direto (mas preserva cardNumber se disponível para Zero Dollar)
   if (cartaoData.token && typeof cartaoData.token === 'string') {
-  return {
-    token: cartaoData.token,
+    return {
+      token: cartaoData.token,
       bandeira: cartaoData.bandeira || null,
-      jaTokenizado: true
+      jaTokenizado: true,
+      // Preserva dados do cartão se disponíveis (para Zero Dollar quando necessário)
+      cardNumber: cartaoData.cardNumber || null,
+      expirationMonth: cartaoData.expirationMonth || null,
+      expirationYear: cartaoData.expirationYear || null,
+      securityCode: cartaoData.securityCode || null,
+      cardholderName: cartaoData.cardholderName || null,
+      email: cartaoData.email || null
     };
   }
 
@@ -104,29 +111,19 @@ async function processarDadosCartao(cartaoData) {
     }
   }
 
-  // Tokeniza automaticamente (obrigatório para Visa/Mastercard)
-  const { tokenizeCard } = require('../services/redeService');
-  const tokenResult = await tokenizeCard({
+  // NOTA: Tokenização de bandeira será feita depois, se necessário (Visa/Elo)
+  // Por enquanto, apenas retorna os dados do cartão para processamento posterior
+  return {
     cardNumber: cartaoData.cardNumber.replace(/\s/g, ''),
     cardholderName: cartaoData.cardholderName.trim(),
     expirationMonth: parseInt(cartaoData.expirationMonth),
     expirationYear: parseInt(cartaoData.expirationYear),
     securityCode: cartaoData.securityCode,
     email: cartaoData.email.trim(),
-    storageCard: '0', // Não armazenar
-    kind: cartaoData.kind || 'credit'
-  }, bandeira.toLowerCase());
-
-  if (!tokenResult || !tokenResult.success) {
-    throw new Error('Falha ao tokenizar cartão. Verifique os dados do cartão.');
-  }
-
-  return {
-    token: tokenResult.networkToken || tokenResult.tokenizationId,
-    bandeira: tokenResult.brand || bandeira.toLowerCase(),
-    cryptogram: tokenResult.cryptogram,
+    bandeira: bandeira.toLowerCase(),
     jaTokenizado: false,
-    tokenizadoAgora: true
+    tokenizadoAgora: false
+    // Tokenização de bandeira será feita depois, se necessário
   };
 }
 
@@ -321,40 +318,107 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
     } else if (tipoPagamento === 'CREDITO') {
       const parcelasValidadas = validateParcelas(parcelas || 1);
 
-      // ⚠️ OBRIGATÓRIO: Zero Dollar Authorization (validação e-Rede)
-      // Valida o cartão antes da transação real
-      console.log('🔒 Executando Zero Dollar Authorization (obrigatório)...');
-      const zeroDollarTxid = `zerodollar${txid.slice(-15)}`;
-      const zeroDollarAuth = await authorizeZeroDollar(
-        cartaoProcessado.token,
-        zeroDollarTxid,
-        cartaoProcessado.bandeira
-      );
+      // Zero Dollar: OBRIGATÓRIO apenas quando vamos armazenar cartão (storageCard: 1 ou 2)
+      // Para transações normais, é apenas recomendado (não obrigatório)
+      const vaiArmazenarCartao = req.body.recurrenceData?.storageCard === '1' || 
+                                  req.body.recurrenceData?.storageCard === '2' ||
+                                  req.body.storageCard === '1' || 
+                                  req.body.storageCard === '2';
+      
+      if (vaiArmazenarCartao) {
+        console.log('🔒 Executando Zero Dollar Authorization (obrigatório para armazenar cartão)...');
+        const zeroDollarTxid = `zerodollar${txid.slice(-15)}`;
+        
+        // Zero Dollar precisa do cardNumber original, não do token
+        if (!cartaoProcessado.cardNumber || !cartaoProcessado.securityCode) {
+          return res.status(400).json({
+            error: 'Para armazenar cartão, é necessário fornecer número do cartão e CVV para validação Zero Dollar.'
+          });
+        }
+        
+        const zeroDollarAuth = await authorizeZeroDollar(
+          {
+            cardNumber: cartaoProcessado.cardNumber,
+            expirationMonth: cartaoProcessado.expirationMonth,
+            expirationYear: cartaoProcessado.expirationYear,
+            securityCode: cartaoProcessado.securityCode,
+            cardholderName: cartaoProcessado.cardholderName
+          },
+          zeroDollarTxid,
+          'credit'
+        );
 
-      if (!zeroDollarAuth || zeroDollarAuth.status !== 'APROVADO') {
-        return res.status(400).json({
-          error: 'Cartão não passou na validação Zero Dollar.',
-          details: zeroDollarAuth?.returnMessage || 'Cartão inválido ou bloqueado'
-        });
+        if (!zeroDollarAuth || zeroDollarAuth.aprovado !== true) {
+          return res.status(400).json({
+            error: 'Cartão não passou na validação Zero Dollar.',
+            details: zeroDollarAuth?.returnMessage || 'Cartão inválido ou bloqueado'
+          });
+        }
+
+        console.log('✅ Zero Dollar Authorization aprovada. Prosseguindo com transação...');
+      } else {
+        console.log('ℹ️  Zero Dollar não necessário (transação normal, sem armazenar cartão)');
       }
 
-      console.log('✅ Zero Dollar Authorization aprovada. Prosseguindo com transação...');
-
-      // 3DS/DataOnly automático para Visa e Mastercard
-      let threeDSecureData = null;
+      // Tokenização de Bandeira: OBRIGATÓRIA para Visa e Elo
       const bandeiraLower = (cartaoProcessado.bandeira || '').toLowerCase();
-      if (bandeiraLower === 'visa' || bandeiraLower === 'mastercard') {
-        // Aplica 3DS/DataOnly automaticamente (frictionless)
-        threeDSecureData = {
-          embedded: true, // Frictionless (sem challenge para o usuário)
-          onFailure: 'continue' // Continua mesmo se 3DS falhar
-        };
-        console.log(`🔒 Aplicando 3DS/DataOnly automático para ${bandeiraLower.toUpperCase()}`);
+      if (bandeiraLower === 'visa' || bandeiraLower === 'elo') {
+        console.log(`🔐 Tokenizando cartão ${bandeiraLower.toUpperCase()} (obrigatório)...`);
+        
+        // Se já temos um token de rede, não precisa tokenizar novamente
+        if (!cartaoProcessado.networkToken && cartaoProcessado.cardNumber) {
+          const tokenizationResult = await tokenizeCard(
+            {
+              cardNumber: cartaoProcessado.cardNumber,
+              cardholderName: cartaoProcessado.cardholderName,
+              expirationMonth: cartaoProcessado.expirationMonth,
+              expirationYear: cartaoProcessado.expirationYear,
+              securityCode: cartaoProcessado.securityCode,
+              email: cartaoProcessado.email || req.body.doador?.email || 'doacao@solsticio.com.br',
+              kind: 'credit',
+              storageCard: vaiArmazenarCartao ? '1' : '0'
+            },
+            bandeiraLower
+          );
+
+          if (tokenizationResult && tokenizationResult.networkToken) {
+            cartaoProcessado.networkToken = tokenizationResult.networkToken;
+            cartaoProcessado.cryptogram = tokenizationResult.cryptogram;
+            console.log(`✅ Tokenização de bandeira concluída para ${bandeiraLower.toUpperCase()}`);
+          } else {
+            console.warn(`⚠️  Tokenização de bandeira falhou para ${bandeiraLower.toUpperCase()}, continuando com token padrão`);
+          }
+        }
       }
 
-      // Se dados de 3DS foram fornecidos manualmente, usa eles
+      // 3DS/DataOnly: DataOnly para Visa/Mastercard (melhor aprovação, sem liability shift)
+      // 3DS normal para Elo (com liability shift)
+      let threeDSecureData = null;
+      if (bandeiraLower === 'visa' || bandeiraLower === 'mastercard') {
+        // DataOnly: melhor aprovação, sem challenge, sem liability shift
+        threeDSecureData = {
+          embedded: true,
+          onFailure: 'continue', // Continua mesmo se falhar (crédito é opcional)
+          challengePreference: 'DATA_ONLY' // ✅ DataOnly para melhor aprovação
+        };
+        console.log(`🔒 Aplicando DataOnly automático para ${bandeiraLower.toUpperCase()}`);
+      } else if (bandeiraLower === 'elo') {
+        // 3DS normal para Elo (com liability shift)
+        threeDSecureData = {
+          embedded: true,
+          onFailure: 'continue' // Continua mesmo se falhar (crédito é opcional)
+        };
+        console.log(`🔒 Aplicando 3DS automático para ${bandeiraLower.toUpperCase()}`);
+      }
+
+      // Se dados de 3DS foram fornecidos manualmente, usa eles (mas mantém challengePreference se DataOnly)
       if (req.body.threeDSecure) {
-        threeDSecureData = { ...threeDSecureData, ...req.body.threeDSecure };
+        threeDSecureData = { 
+          ...threeDSecureData, 
+          ...req.body.threeDSecure,
+          // Mantém challengePreference se já estava configurado para DataOnly
+          challengePreference: req.body.threeDSecure.challengePreference || threeDSecureData?.challengePreference
+        };
       }
 
       cobranca = await createCreditCardTransaction(
@@ -378,35 +442,94 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
         bandeira: cobranca.bandeira
       };
     } else if (tipoPagamento === 'DEBITO') {
-      // ⚠️ OBRIGATÓRIO: Zero Dollar Authorization (validação e-Rede)
-      // Valida o cartão antes da transação real
-      console.log('🔒 Executando Zero Dollar Authorization (obrigatório)...');
-      const zeroDollarTxid = `zerodollar${txid.slice(-15)}`;
-      const zeroDollarAuth = await authorizeZeroDollar(
-        cartaoProcessado.token,
-        zeroDollarTxid,
-        cartaoProcessado.bandeira
-      );
+      // Zero Dollar: OBRIGATÓRIO apenas quando vamos armazenar cartão
+      const vaiArmazenarCartao = req.body.recurrenceData?.storageCard === '1' || 
+                                  req.body.recurrenceData?.storageCard === '2' ||
+                                  req.body.storageCard === '1' || 
+                                  req.body.storageCard === '2';
+      
+      if (vaiArmazenarCartao) {
+        console.log('🔒 Executando Zero Dollar Authorization (obrigatório para armazenar cartão)...');
+        const zeroDollarTxid = `zerodollar${txid.slice(-15)}`;
+        
+        if (!cartaoProcessado.cardNumber || !cartaoProcessado.securityCode) {
+          return res.status(400).json({
+            error: 'Para armazenar cartão, é necessário fornecer número do cartão e CVV para validação Zero Dollar.'
+          });
+        }
+        
+        const zeroDollarAuth = await authorizeZeroDollar(
+          {
+            cardNumber: cartaoProcessado.cardNumber,
+            expirationMonth: cartaoProcessado.expirationMonth,
+            expirationYear: cartaoProcessado.expirationYear,
+            securityCode: cartaoProcessado.securityCode,
+            cardholderName: cartaoProcessado.cardholderName
+          },
+          zeroDollarTxid,
+          'debit'
+        );
 
-      if (!zeroDollarAuth || zeroDollarAuth.status !== 'APROVADO') {
-        return res.status(400).json({
-          error: 'Cartão não passou na validação Zero Dollar.',
-          details: zeroDollarAuth?.returnMessage || 'Cartão inválido ou bloqueado'
-        });
+        if (!zeroDollarAuth || zeroDollarAuth.aprovado !== true) {
+          return res.status(400).json({
+            error: 'Cartão não passou na validação Zero Dollar.',
+            details: zeroDollarAuth?.returnMessage || 'Cartão inválido ou bloqueado'
+          });
+        }
+
+        console.log('✅ Zero Dollar Authorization aprovada. Prosseguindo com transação...');
+      } else {
+        console.log('ℹ️  Zero Dollar não necessário (transação normal, sem armazenar cartão)');
       }
 
-      console.log('✅ Zero Dollar Authorization aprovada. Prosseguindo com transação...');
+      // Tokenização de Bandeira: OBRIGATÓRIA para Visa e Elo
+      const bandeiraLower = (cartaoProcessado.bandeira || '').toLowerCase();
+      if (bandeiraLower === 'visa' || bandeiraLower === 'elo') {
+        console.log(`🔐 Tokenizando cartão ${bandeiraLower.toUpperCase()} (obrigatório)...`);
+        
+        if (!cartaoProcessado.networkToken && cartaoProcessado.cardNumber) {
+          const tokenizationResult = await tokenizeCard(
+            {
+              cardNumber: cartaoProcessado.cardNumber,
+              cardholderName: cartaoProcessado.cardholderName,
+              expirationMonth: cartaoProcessado.expirationMonth,
+              expirationYear: cartaoProcessado.expirationYear,
+              securityCode: cartaoProcessado.securityCode,
+              email: cartaoProcessado.email || req.body.doador?.email || 'doacao@solsticio.com.br',
+              kind: 'debit',
+              storageCard: vaiArmazenarCartao ? '1' : '0'
+            },
+            bandeiraLower
+          );
 
-      // 3DS é obrigatório para débito
+          if (tokenizationResult && tokenizationResult.networkToken) {
+            cartaoProcessado.networkToken = tokenizationResult.networkToken;
+            cartaoProcessado.cryptogram = tokenizationResult.cryptogram;
+            console.log(`✅ Tokenização de bandeira concluída para ${bandeiraLower.toUpperCase()}`);
+          } else {
+            console.warn(`⚠️  Tokenização de bandeira falhou para ${bandeiraLower.toUpperCase()}, continuando com token padrão`);
+          }
+        }
+      }
+
+      // 3DS é OBRIGATÓRIO para débito (conforme documentação e-Rede)
+      // onFailure deve ser 'decline' (não pode continuar sem autenticação)
       let threeDSecureData = {
-        embedded: true, // Frictionless
-        onFailure: 'decline' // Rejeita se 3DS falhar (obrigatório para débito)
+        embedded: true, // Frictionless quando possível
+        onFailure: 'decline' // ✅ OBRIGATÓRIO: Rejeita se 3DS falhar (débito exige autenticação)
       };
 
-      // Se dados de 3DS foram fornecidos manualmente, usa eles
+      // Se dados de 3DS foram fornecidos manualmente, usa eles (mas mantém onFailure: 'decline')
       if (req.body.threeDSecure) {
-        threeDSecureData = { ...threeDSecureData, ...req.body.threeDSecure };
+        threeDSecureData = { 
+          ...threeDSecureData, 
+          ...req.body.threeDSecure,
+          // Força onFailure: 'decline' para débito (obrigatório)
+          onFailure: 'decline'
+        };
       }
+      
+      console.log(`🔒 3DS obrigatório configurado para débito (onFailure: decline)`);
 
       cobranca = await createDebitCardTransaction(
         txid,
