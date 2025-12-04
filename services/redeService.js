@@ -201,11 +201,20 @@ async function tokenizeCard(cardData, brandName = 'visa') {
     );
 
     console.log('✅ TOKENIZAÇÃO DE BANDEIRA CONCLUÍDA COM SUCESSO!');
+    console.log('📋 Resposta da tokenização:', JSON.stringify(response.data, null, 2));
 
     // Retorna o token da bandeira (Network Token) e cryptogram
+    // A resposta pode ter 'token' ou 'tokenizationId' dependendo da API
+    const networkToken = response.data.token || response.data.networkToken || response.data.tokenizationId;
+    
+    if (!networkToken) {
+      console.warn('⚠️  Tokenização retornou sucesso mas sem token. Resposta:', JSON.stringify(response.data, null, 2));
+      return null;
+    }
+    
     return {
       success: true,
-      networkToken: response.data.token || response.data.networkToken,
+      networkToken: networkToken,
       cryptogram: response.data.cryptogram || null,
       expirationMonth: response.data.expirationMonth || cardData.expirationMonth,
       expirationYear: response.data.expirationYear || cardData.expirationYear,
@@ -534,20 +543,46 @@ async function createCreditCardTransaction(txid, valor, cartaoData, parcelas = 1
       requestBody.card.token = cartaoData.token;
       console.log('🔐 Usando token padrão e-Rede');
     } else if (cartaoData.cardNumber) {
-      // Fallback: usar cardNumber diretamente dentro de card (conforme documentação e-Rede)
-      requestBody.card.cardNumber = cartaoData.cardNumber;
-      requestBody.card.expirationMonth = String(cartaoData.expirationMonth).padStart(2, '0');
-      requestBody.card.expirationYear = String(cartaoData.expirationYear);
-      requestBody.card.securityCode = cartaoData.securityCode;
-      requestBody.cardholderName = cartaoData.cardholderName;
+      // Fallback: usar cardNumber diretamente no nível raiz (conforme documentação e-Rede)
+      // Quando não há token, os campos do cartão vão no nível raiz, não dentro de card
+      
+      // Valida que temos todos os dados necessários
+      if (!cartaoData.expirationMonth || !cartaoData.expirationYear || !cartaoData.securityCode) {
+        throw new Error('Dados do cartão incompletos: expirationMonth, expirationYear e securityCode são obrigatórios quando usa cardNumber diretamente');
+      }
+      
+      requestBody.cardNumber = cartaoData.cardNumber;
+      requestBody.expirationMonth = parseInt(cartaoData.expirationMonth); // Número, não string
+      requestBody.expirationYear = parseInt(cartaoData.expirationYear); // Número, não string
+      requestBody.securityCode = cartaoData.securityCode;
+      requestBody.cardholderName = cartaoData.cardholderName || 'CARDHOLDER';
+      
+      // Valida que os valores convertidos são válidos
+      if (isNaN(requestBody.expirationMonth) || requestBody.expirationMonth < 1 || requestBody.expirationMonth > 12) {
+        throw new Error(`expirationMonth inválido: ${cartaoData.expirationMonth}`);
+      }
+      if (isNaN(requestBody.expirationYear) || requestBody.expirationYear < 2000) {
+        throw new Error(`expirationYear inválido: ${cartaoData.expirationYear}`);
+      }
+      
+      // Não precisa do objeto card vazio quando usa cardNumber diretamente
+      delete requestBody.card;
       console.warn('⚠️  Usando cardNumber diretamente (não recomendado - tokenize o cartão antes)');
+      console.log(`📋 Dados do cartão: cardNumber=${cartaoData.cardNumber.substring(0, 4)}****, expirationMonth=${requestBody.expirationMonth}, expirationYear=${requestBody.expirationYear}`);
     } else {
       throw new Error('Token do cartão ou dados do cartão são obrigatórios');
     }
 
     // Adiciona bandeira se fornecida
+    // Quando usa token: brand vai dentro de card
+    // Quando usa cardNumber diretamente: brand vai no nível raiz (opcional, mas recomendado)
     if (bandeira) {
-      requestBody.card.brand = bandeira;
+      if (requestBody.card) {
+        requestBody.card.brand = bandeira;
+      } else {
+        // Usando cardNumber diretamente - brand no nível raiz
+        requestBody.brand = bandeira;
+      }
     }
 
     // Adiciona dados de recorrência/COF (Card-on-File) - Manual p.202-208
@@ -695,20 +730,46 @@ async function createDebitCardTransaction(txid, valor, cartaoData, bandeira = nu
       requestBody.card.token = cartaoData.token;
       console.log('🔐 Usando token padrão e-Rede');
     } else if (cartaoData.cardNumber) {
-      // Fallback: usar cardNumber diretamente dentro de card (conforme documentação e-Rede)
-      requestBody.card.cardNumber = cartaoData.cardNumber;
-      requestBody.card.expirationMonth = String(cartaoData.expirationMonth).padStart(2, '0');
-      requestBody.card.expirationYear = String(cartaoData.expirationYear);
-      requestBody.card.securityCode = cartaoData.securityCode;
-      requestBody.cardholderName = cartaoData.cardholderName;
+      // Fallback: usar cardNumber diretamente no nível raiz (conforme documentação e-Rede)
+      // Quando não há token, os campos do cartão vão no nível raiz, não dentro de card
+      
+      // Valida que temos todos os dados necessários
+      if (!cartaoData.expirationMonth || !cartaoData.expirationYear || !cartaoData.securityCode) {
+        throw new Error('Dados do cartão incompletos: expirationMonth, expirationYear e securityCode são obrigatórios quando usa cardNumber diretamente');
+      }
+      
+      requestBody.cardNumber = cartaoData.cardNumber;
+      requestBody.expirationMonth = parseInt(cartaoData.expirationMonth); // Número, não string
+      requestBody.expirationYear = parseInt(cartaoData.expirationYear); // Número, não string
+      requestBody.securityCode = cartaoData.securityCode;
+      requestBody.cardholderName = cartaoData.cardholderName || 'CARDHOLDER';
+      
+      // Valida que os valores convertidos são válidos
+      if (isNaN(requestBody.expirationMonth) || requestBody.expirationMonth < 1 || requestBody.expirationMonth > 12) {
+        throw new Error(`expirationMonth inválido: ${cartaoData.expirationMonth}`);
+      }
+      if (isNaN(requestBody.expirationYear) || requestBody.expirationYear < 2000) {
+        throw new Error(`expirationYear inválido: ${cartaoData.expirationYear}`);
+      }
+      
+      // Não precisa do objeto card vazio quando usa cardNumber diretamente
+      delete requestBody.card;
       console.warn('⚠️  Usando cardNumber diretamente (não recomendado - tokenize o cartão antes)');
+      console.log(`📋 Dados do cartão: cardNumber=${cartaoData.cardNumber.substring(0, 4)}****, expirationMonth=${requestBody.expirationMonth}, expirationYear=${requestBody.expirationYear}`);
     } else {
       throw new Error('Token do cartão ou dados do cartão são obrigatórios');
     }
 
     // Adiciona bandeira se fornecida
+    // Quando usa token: brand vai dentro de card
+    // Quando usa cardNumber diretamente: brand vai no nível raiz (opcional, mas recomendado)
     if (bandeira) {
-      requestBody.card.brand = bandeira;
+      if (requestBody.card) {
+        requestBody.card.brand = bandeira;
+      } else {
+        // Usando cardNumber diretamente - brand no nível raiz
+        requestBody.brand = bandeira;
+      }
     }
 
     // Adiciona dados de recorrência/COF (Card-on-File) - Manual p.202-208
