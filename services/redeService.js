@@ -653,12 +653,14 @@ async function createCreditCardTransaction(txid, valor, cartaoData, parcelas = 1
       console.log('🔄 Transação com dados de recorrência/COF configurados');
     }
 
-    // Adiciona dados de autenticação 3DS/DataOnly (obrigatório para MasterCard)
+    // Adiciona dados de autenticação 3DS/DataOnly
+    // Para crédito: 3DS é opcional (pode tentar sem se o cartão não suportar)
+    // Para débito: 3DS é obrigatório
     // DataOnly: autenticação frictionless para Mastercard/Visa
     if (threeDSecure && typeof threeDSecure === 'object') {
       requestBody.threeDSecure = {
         embedded: threeDSecure.embedded !== false, // Default: true (frictionless)
-        onFailure: threeDSecure.onFailure || 'decline', // 'decline' ou 'continue'
+        onFailure: threeDSecure.onFailure || 'continue', // 'decline' ou 'continue' - para crédito usa 'continue'
         ...threeDSecure // Permite outros campos como eci, cavv, xid, etc.
       };
 
@@ -704,16 +706,56 @@ async function createCreditCardTransaction(txid, valor, cartaoData, parcelas = 1
     }
 
     const authHeaders = await getAuthHeaders();
-    const response = await axios.post(
-      `${API_BASE_URL}${endpoint}`,
-      requestBody,
-      {
-        headers: {
-          ...authHeaders,
-          'X-Request-Id': correlationId
+    
+    // Tenta criar a transação
+    let response;
+    try {
+      response = await axios.post(
+        `${API_BASE_URL}${endpoint}`,
+        requestBody,
+        {
+          headers: {
+            ...authHeaders,
+            'X-Request-Id': correlationId
+          }
         }
+      );
+    } catch (firstError) {
+      // Se retornar erro 204 (portador não registrado no 3DS) e for crédito,
+      // tenta novamente sem 3DS/DataOnly (3DS é opcional para crédito)
+      if (firstError.response && 
+          firstError.response.data && 
+          firstError.response.data.returnCode === '204' &&
+          requestBody.threeDSecure) {
+        console.warn('⚠️  Erro 204: Portador não registrado no programa de autenticação 3DS');
+        console.log('🔄 Tentando novamente sem 3DS/DataOnly (3DS é opcional para crédito)...');
+        
+        // Remove 3DS/DataOnly e URLs de callback
+        delete requestBody.threeDSecure;
+        delete requestBody.urls;
+        
+        // Tenta novamente sem 3DS
+        try {
+          response = await axios.post(
+            `${API_BASE_URL}${endpoint}`,
+            requestBody,
+            {
+              headers: {
+                ...authHeaders,
+                'X-Request-Id': generateCorrelationId() // Novo correlation ID
+              }
+            }
+          );
+          console.log('✅ Transação criada com sucesso sem 3DS/DataOnly');
+        } catch (retryError) {
+          // Se ainda falhar, retorna o erro original
+          throw firstError;
+        }
+      } else {
+        // Se não for erro 204 ou não tiver 3DS, propaga o erro
+        throw firstError;
       }
-    );
+    }
 
     console.log('✅ TRANSAÇÃO DE CRÉDITO e-Rede CRIADA COM SUCESSO!');
 
