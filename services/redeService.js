@@ -303,7 +303,7 @@ async function createPixCharge(txid, valor, solicitacaoPagador = "Doação para 
     // Documentação: Manual p.6437-6451
     // IMPORTANTE: reference deve ter até 16 caracteres alfanuméricos
     const requestBody = {
-      kind: 'pix',
+      kind: 'Pix',
       reference: reference, // ✅ Máximo 16 caracteres conforme documentação
       amount: String(Math.round(valorValidado * 100)), // Valor em centavos (string conforme documentação)
       qrCode: {
