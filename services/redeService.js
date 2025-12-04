@@ -1160,6 +1160,13 @@ async function createDebitCardTransaction(txid, valor, cartaoData, bandeira = nu
           finalOffset = Math.abs(Math.max(-12, Math.min(14, timezoneOffset)));
         }
         
+        // IMPORTANTE: Se o offset calculado for 0, pode ser que o servidor esteja em UTC
+        // Mas a API pode não aceitar 0, então usamos um valor padrão mínimo (3 para Brasil)
+        if (finalOffset === 0) {
+          console.warn(`⚠️  timeZoneOffset calculado como 0 (servidor em UTC). Usando fallback: 3 (Brasil UTC-3)`);
+          finalOffset = 3; // Fallback para Brasil (UTC-3)
+        }
+        
         console.log(`🌍 timeZoneOffset calculado: ${finalOffset} (número, original: ${offset}, tipo original: ${typeof offset})`);
         return finalOffset;
       })();
@@ -1247,6 +1254,17 @@ async function createDebitCardTransaction(txid, valor, cartaoData, bandeira = nu
     }
 
     const authHeaders = await getAuthHeaders();
+    
+    // Log do requestBody completo antes de enviar (para debug DÉBITO)
+    if (requestBody.threeDSecure && requestBody.threeDSecure.device) {
+      console.log('🔍 DEBUG timeZoneOffset antes de enviar (DÉBITO):', {
+        valor: requestBody.threeDSecure.device.timeZoneOffset,
+        tipo: typeof requestBody.threeDSecure.device.timeZoneOffset,
+        stringified: JSON.stringify(requestBody.threeDSecure.device.timeZoneOffset),
+        deviceCompleto: JSON.stringify(requestBody.threeDSecure.device, null, 2)
+      });
+    }
+    
     const response = await axios.post(
       `${API_BASE_URL}${endpoint}`,
       requestBody,
