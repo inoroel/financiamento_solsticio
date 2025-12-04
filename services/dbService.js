@@ -349,22 +349,24 @@ async function processConfirmedTransaction(webhookData, doadorData = null) {
     console.log(`   - dados_doador_temp na cobrança: ${dadosDoadorTemp ? 'SIM' : 'NÃO'}`);
     console.log(`   - dadosDoadorFinal: ${dadosDoadorFinal ? JSON.stringify(dadosDoadorFinal) : 'null'}`);
     
-    // 3. Cria o doador APENAS APÓS confirmação do pagamento (se dados fornecidos)
+    // 3. Cria ou busca o doador APENAS APÓS confirmação do pagamento (se dados fornecidos)
     // IMPORTANTE: Esta é a única função que salva dados do doador no banco
     // Os dados só são persistidos quando o webhook confirma o pagamento
+    // IMPORTANTE: Verifica se o doador já existe antes de criar (evita duplicatas)
     let doadorId = null;
     if (dadosDoadorFinal) {
       const { nome, whatsapp, anonimo } = dadosDoadorFinal;
       
       try {
         if (anonimo === true || anonimo === undefined || anonimo === null) {
-          // Doador anônimo
+          // Doador anônimo - sempre cria novo (não há como identificar se é o mesmo)
           const doadorResult = await sql`
             INSERT INTO doadores (anonimo)
             VALUES (true)
             RETURNING id
           `;
           doadorId = doadorResult.rows[0].id;
+          console.log(`✅ Doador anônimo criado: ID=${doadorId}`);
         } else {
           // Doador identificado (anonimo === false) - deve ter nome E whatsapp (já validado na criação)
           const temNome = nome && nome.trim().length > 0;
@@ -380,19 +382,37 @@ async function processConfirmedTransaction(webhookData, doadorData = null) {
             `;
             doadorId = doadorResult.rows[0].id;
           } else {
-            const doadorResult = await sql`
-              INSERT INTO doadores (nome, whatsapp, anonimo)
-              VALUES (${nome}, ${whatsapp}, false)
-              RETURNING id, nome, whatsapp, anonimo
+            // IMPORTANTE: Verifica se já existe um doador com o mesmo nome e whatsapp
+            // Isso evita criar doadores duplicados quando o webhook é processado múltiplas vezes
+            const existingDoador = await sql`
+              SELECT id, nome, whatsapp, anonimo 
+              FROM doadores 
+              WHERE nome = ${nome} 
+                AND whatsapp = ${whatsapp} 
+                AND anonimo = false
+              LIMIT 1
             `;
-            doadorId = doadorResult.rows[0].id;
-            console.log(`✅ Doador criado: ID=${doadorId}, nome="${nome}", whatsapp="${whatsapp}"`);
+            
+            if (existingDoador.rows && existingDoador.rows.length > 0) {
+              // Doador já existe, usa o ID existente
+              doadorId = existingDoador.rows[0].id;
+              console.log(`ℹ️  Doador já existe: ID=${doadorId}, nome="${nome}", whatsapp="${whatsapp}" (reutilizando)`);
+            } else {
+              // Doador não existe, cria novo
+              const doadorResult = await sql`
+                INSERT INTO doadores (nome, whatsapp, anonimo)
+                VALUES (${nome}, ${whatsapp}, false)
+                RETURNING id, nome, whatsapp, anonimo
+              `;
+              doadorId = doadorResult.rows[0].id;
+              console.log(`✅ Doador criado: ID=${doadorId}, nome="${nome}", whatsapp="${whatsapp}"`);
+            }
           }
         }
       } catch (error) {
-        console.error('❌ Erro ao criar doador:', error.message);
+        console.error('❌ Erro ao criar/buscar doador:', error.message);
         console.error('   Stack:', error.stack);
-        // Continua mesmo se falhar ao criar doador (pode ser duplicado, etc)
+        // Continua mesmo se falhar ao criar doador (pode ser erro de constraint, etc)
       }
     } else {
       console.log(`ℹ️  Nenhum dado do doador disponível para txid: ${txid}`);
