@@ -399,9 +399,14 @@ async function processConfirmedTransaction(webhookData, doadorData = null) {
     }
     
     // 4. Cria o registro de transação confirmada
-    const txidFinal = txid || cobranca.rows[0].txid;
+    // IMPORTANTE: Sempre usa o txid da cobrança encontrada no banco, não o txid do webhook
+    // O txid do webhook pode ser o rede_tid (provider_tid), que não existe na tabela cobrancas
+    // O cobranca_txid deve ser o txid interno da cobrança (ex: "solsticiocampanha01...")
+    const txidFinal = cobranca.rows[0].txid; // SEMPRE usa o txid da cobrança encontrada
     const finalProvider = provider || cobranca.rows[0].provider || 'REDE';
     const finalProviderTidForTransaction = provider_tid || rede_tid || null;
+    
+    console.log(`🔍 Usando txid da cobrança: ${txidFinal} (txid do webhook era: ${txid || 'não fornecido'})`);
     
     // Validação do valor - garante que seja numérico e positivo
     // IMPORTANTE: Usa o valor do webhook (valor confirmado), não o valor da cobrança
