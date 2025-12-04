@@ -32,10 +32,11 @@ let accessTokenCache = {
 };
 
 // URL da API de Tokenização de Bandeira (Network Tokenization)
+// Documentação: POST /token-service/oauth/v2/tokenization
 const TOKENIZATION_API_URL = process.env.REDE_TOKENIZATION_API_URL || (
   ENVIRONMENT === 'production'
-    ? 'https://api.userede.com.br/redelabs/token-service/v1/tokenization'
-    : 'https://rl7-sandbox-api.useredecloud.com.br/v1/tokenization'
+    ? 'https://api.userede.com.br/redelabs/token-service/oauth/v2/tokenization'
+    : 'https://rl7-sandbox-api.useredecloud.com.br/token-service/oauth/v2/tokenization'
 );
 
 /**
@@ -487,8 +488,18 @@ async function createCreditCardTransaction(txid, valor, cartaoData, parcelas = 1
       throw new Error('Valor inválido');
     }
 
-    if (!cartaoData || !cartaoData.token) {
-      throw new Error('Dados do cartão inválidos: token é obrigatório');
+    // Valida que temos token OU dados do cartão completos
+    if (!cartaoData) {
+      throw new Error('Dados do cartão inválidos');
+    }
+    
+    // Aceita token OU cardNumber + securityCode (conforme documentação e-Rede)
+    const temToken = cartaoData.token || cartaoData.networkToken;
+    const temDadosCartao = cartaoData.cardNumber && cartaoData.securityCode && 
+                           cartaoData.expirationMonth && cartaoData.expirationYear;
+    
+    if (!temToken && !temDadosCartao) {
+      throw new Error('Dados do cartão inválidos: forneça um token ou dados completos do cartão (número, CVV, validade)');
     }
 
     if (parcelas < 1 || parcelas > 12) {
@@ -523,11 +534,11 @@ async function createCreditCardTransaction(txid, valor, cartaoData, parcelas = 1
       requestBody.card.token = cartaoData.token;
       console.log('🔐 Usando token padrão e-Rede');
     } else if (cartaoData.cardNumber) {
-      // Fallback: usar cardNumber diretamente (não recomendado, mas permitido pela API)
-      requestBody.cardNumber = cartaoData.cardNumber;
-      requestBody.expirationMonth = cartaoData.expirationMonth;
-      requestBody.expirationYear = cartaoData.expirationYear;
-      requestBody.securityCode = cartaoData.securityCode;
+      // Fallback: usar cardNumber diretamente dentro de card (conforme documentação e-Rede)
+      requestBody.card.cardNumber = cartaoData.cardNumber;
+      requestBody.card.expirationMonth = String(cartaoData.expirationMonth).padStart(2, '0');
+      requestBody.card.expirationYear = String(cartaoData.expirationYear);
+      requestBody.card.securityCode = cartaoData.securityCode;
       requestBody.cardholderName = cartaoData.cardholderName;
       console.warn('⚠️  Usando cardNumber diretamente (não recomendado - tokenize o cartão antes)');
     } else {
@@ -637,8 +648,18 @@ async function createDebitCardTransaction(txid, valor, cartaoData, bandeira = nu
       throw new Error('Valor inválido');
     }
 
-    if (!cartaoData || !cartaoData.token) {
-      throw new Error('Dados do cartão inválidos: token é obrigatório');
+    // Valida que temos token OU dados do cartão completos
+    if (!cartaoData) {
+      throw new Error('Dados do cartão inválidos');
+    }
+    
+    // Aceita token OU cardNumber + securityCode (conforme documentação e-Rede)
+    const temToken = cartaoData.token || cartaoData.networkToken;
+    const temDadosCartao = cartaoData.cardNumber && cartaoData.securityCode && 
+                           cartaoData.expirationMonth && cartaoData.expirationYear;
+    
+    if (!temToken && !temDadosCartao) {
+      throw new Error('Dados do cartão inválidos: forneça um token ou dados completos do cartão (número, CVV, validade)');
     }
 
     // Valida bandeira para débito (apenas Mastercard, Visa, Elo)
@@ -674,11 +695,11 @@ async function createDebitCardTransaction(txid, valor, cartaoData, bandeira = nu
       requestBody.card.token = cartaoData.token;
       console.log('🔐 Usando token padrão e-Rede');
     } else if (cartaoData.cardNumber) {
-      // Fallback: usar cardNumber diretamente (não recomendado, mas permitido pela API)
-      requestBody.cardNumber = cartaoData.cardNumber;
-      requestBody.expirationMonth = cartaoData.expirationMonth;
-      requestBody.expirationYear = cartaoData.expirationYear;
-      requestBody.securityCode = cartaoData.securityCode;
+      // Fallback: usar cardNumber diretamente dentro de card (conforme documentação e-Rede)
+      requestBody.card.cardNumber = cartaoData.cardNumber;
+      requestBody.card.expirationMonth = String(cartaoData.expirationMonth).padStart(2, '0');
+      requestBody.card.expirationYear = String(cartaoData.expirationYear);
+      requestBody.card.securityCode = cartaoData.securityCode;
       requestBody.cardholderName = cartaoData.cardholderName;
       console.warn('⚠️  Usando cardNumber diretamente (não recomendado - tokenize o cartão antes)');
     } else {
