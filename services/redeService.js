@@ -531,14 +531,27 @@ async function createCreditCardTransaction(txid, valor, cartaoData, parcelas = 1
     };
 
     // Prioriza networkToken (tokenização de bandeira) se disponível
-    // Se não tiver, usa token padrão da e-Rede
-    // Se não tiver nenhum, usa cardNumber diretamente (não recomendado, mas permitido)
+    // tokenizationId deve ser usado como cardToken no nível raiz
+    // Quando usa cardToken, ainda precisa enviar expirationMonth e expirationYear
     if (cartaoData.networkToken) {
-      requestBody.card.token = cartaoData.networkToken;
+      // tokenizationId é usado como cardToken no nível raiz (não dentro de card)
+      requestBody.cardToken = cartaoData.networkToken;
+      
+      // Quando usa cardToken, ainda precisa enviar expirationMonth e expirationYear
+      if (cartaoData.expirationMonth && cartaoData.expirationYear) {
+        requestBody.expirationMonth = parseInt(cartaoData.expirationMonth);
+        requestBody.expirationYear = parseInt(cartaoData.expirationYear);
+      } else {
+        throw new Error('expirationMonth e expirationYear são obrigatórios quando usa cardToken');
+      }
+      
       if (cartaoData.cryptogram) {
         requestBody.tokenCryptogram = cartaoData.cryptogram;
       }
-      console.log('🔐 Usando network token (tokenização de bandeira)');
+      
+      // Remove objeto card vazio quando usa cardToken
+      delete requestBody.card;
+      console.log('🔐 Usando cardToken (tokenização de bandeira - tokenizationId)');
     } else if (cartaoData.token) {
       requestBody.card.token = cartaoData.token;
       console.log('🔐 Usando token padrão e-Rede');
@@ -574,10 +587,14 @@ async function createCreditCardTransaction(txid, valor, cartaoData, parcelas = 1
     }
 
     // Adiciona bandeira se fornecida
-    // Quando usa token: brand vai dentro de card
+    // Quando usa cardToken: brand vai no nível raiz (opcional)
+    // Quando usa card.token: brand vai dentro de card
     // Quando usa cardNumber diretamente: brand vai no nível raiz (opcional, mas recomendado)
     if (bandeira) {
-      if (requestBody.card) {
+      if (requestBody.cardToken) {
+        // Usando cardToken - brand no nível raiz
+        requestBody.brand = bandeira;
+      } else if (requestBody.card) {
         requestBody.card.brand = bandeira;
       } else {
         // Usando cardNumber diretamente - brand no nível raiz
@@ -718,14 +735,27 @@ async function createDebitCardTransaction(txid, valor, cartaoData, bandeira = nu
     };
 
     // Prioriza networkToken (tokenização de bandeira) se disponível
-    // Se não tiver, usa token padrão da e-Rede
-    // Se não tiver nenhum, usa cardNumber diretamente (não recomendado, mas permitido)
+    // tokenizationId deve ser usado como cardToken no nível raiz
+    // Quando usa cardToken, ainda precisa enviar expirationMonth e expirationYear
     if (cartaoData.networkToken) {
-      requestBody.card.token = cartaoData.networkToken;
+      // tokenizationId é usado como cardToken no nível raiz (não dentro de card)
+      requestBody.cardToken = cartaoData.networkToken;
+      
+      // Quando usa cardToken, ainda precisa enviar expirationMonth e expirationYear
+      if (cartaoData.expirationMonth && cartaoData.expirationYear) {
+        requestBody.expirationMonth = parseInt(cartaoData.expirationMonth);
+        requestBody.expirationYear = parseInt(cartaoData.expirationYear);
+      } else {
+        throw new Error('expirationMonth e expirationYear são obrigatórios quando usa cardToken');
+      }
+      
       if (cartaoData.cryptogram) {
         requestBody.tokenCryptogram = cartaoData.cryptogram;
       }
-      console.log('🔐 Usando network token (tokenização de bandeira)');
+      
+      // Remove objeto card vazio quando usa cardToken
+      delete requestBody.card;
+      console.log('🔐 Usando cardToken (tokenização de bandeira - tokenizationId)');
     } else if (cartaoData.token) {
       requestBody.card.token = cartaoData.token;
       console.log('🔐 Usando token padrão e-Rede');
@@ -761,10 +791,14 @@ async function createDebitCardTransaction(txid, valor, cartaoData, bandeira = nu
     }
 
     // Adiciona bandeira se fornecida
-    // Quando usa token: brand vai dentro de card
+    // Quando usa cardToken: brand vai no nível raiz (opcional)
+    // Quando usa card.token: brand vai dentro de card
     // Quando usa cardNumber diretamente: brand vai no nível raiz (opcional, mas recomendado)
     if (bandeira) {
-      if (requestBody.card) {
+      if (requestBody.cardToken) {
+        // Usando cardToken - brand no nível raiz
+        requestBody.brand = bandeira;
+      } else if (requestBody.card) {
         requestBody.card.brand = bandeira;
       } else {
         // Usando cardNumber diretamente - brand no nível raiz
