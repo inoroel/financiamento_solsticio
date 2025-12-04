@@ -284,20 +284,48 @@ async function createPixCharge(txid, valor, solicitacaoPagador = "Doação para 
     const endpoint = '/v2/transactions';
     const correlationId = generateCorrelationId();
 
+    // ⚠️ CRÍTICO: reference para PIX deve ter ATÉ 16 caracteres (documentação e-Rede)
+    // Se o txid tiver mais de 16 caracteres, usa apenas os últimos 16
+    // Isso mantém unicidade enquanto respeita o limite da API
+    let reference = txid;
+    if (txid.length > 16) {
+      // Usa os últimos 16 caracteres do txid (mantém unicidade com timestamp)
+      reference = txid.slice(-16);
+      console.log(`⚠️  TXID (${txid.length} chars) maior que 16 caracteres. Usando reference: ${reference} (últimos 16 chars)`);
+    }
+    
+    // Valida que o reference está dentro do limite
+    if (reference.length > 16) {
+      throw new Error(`Reference para PIX deve ter no máximo 16 caracteres. TXID: ${txid} (${txid.length} chars)`);
+    }
+
     // Estrutura da requisição para PIX conforme documentação e-Rede
     // Documentação: Manual p.6437-6451
+    // IMPORTANTE: reference deve ter até 16 caracteres alfanuméricos
     const requestBody = {
       kind: 'pix',
-      reference: txid,
+      reference: reference, // ✅ Máximo 16 caracteres conforme documentação
       amount: String(Math.round(valorValidado * 100)), // Valor em centavos (string conforme documentação)
       qrCode: {
         'Date timeExpiration': dataExpiracaoFormatada // Formato: YYYY-MM-DDThh:mm:ss
       }
     };
+    
+    console.log(`📋 Reference usado na requisição: ${reference} (${reference.length} caracteres)`);
 
     // Adiciona mensagem se fornecida
     if (mensagemSanitizada) {
       requestBody.description = mensagemSanitizada;
+    }
+
+    // Log detalhado do body antes de enviar (para diagnóstico)
+    console.log(`\n📋 Body da requisição PIX:`);
+    console.log(`   - kind: ${requestBody.kind}`);
+    console.log(`   - reference: ${requestBody.reference} (${requestBody.reference.length} chars, max: 16)`);
+    console.log(`   - amount: ${requestBody.amount} (centavos, tipo: ${typeof requestBody.amount})`);
+    console.log(`   - qrCode.Date timeExpiration: ${requestBody.qrCode['Date timeExpiration']}`);
+    if (requestBody.description) {
+      console.log(`   - description: ${requestBody.description.substring(0, 50)}...`);
     }
 
     // Obtém headers de autenticação (OAuth 2.0 com fallback para Basic Auth)
@@ -307,8 +335,9 @@ async function createPixCharge(txid, valor, solicitacaoPagador = "Doação para 
       'X-Request-Id': correlationId
     };
 
-    console.log(`📤 Enviando requisição para: ${API_BASE_URL}${endpoint}`);
+    console.log(`\n📤 Enviando requisição PIX para: ${API_BASE_URL}${endpoint}`);
     console.log(`📤 Correlation ID: ${correlationId}`);
+    console.log(`📤 Headers: Authorization=${authHeaders.Authorization.substring(0, 20)}..., Content-Type=${authHeaders['Content-Type']}, X-Request-Id=${correlationId}`);
     
     // Log adicional para diagnóstico de IP (se disponível)
     // Nota: Na Vercel, o IP de origem pode variar, mas isso ajuda no diagnóstico
@@ -347,7 +376,6 @@ async function createPixCharge(txid, valor, solicitacaoPagador = "Doação para 
       returnCode: response.data.qrCodeResponse?.returnCode || response.data.returnCode,
       returnMessage: response.data.qrCodeResponse?.returnMessage || response.data.returnMessage
     };
-
   } catch (error) {
     console.error('❌ ERRO AO CRIAR COBRANÇA PIX e-Rede ---');
     let errorDetails = {
