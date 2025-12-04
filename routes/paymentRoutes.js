@@ -1855,8 +1855,11 @@ router.post('/3ds/callback', async (req, res) => {
 
     // Verifica autenticação 3DS
     // threeDSecure.returnCode indica o resultado da autenticação 3DS
-    // Valores comuns: '00' (sucesso), outros códigos indicam falha
-    const threeDSAuthenticated = threeDSecureReturnCode === '00' || threeDSecureReturnCode === 'Y';
+    // Códigos de sucesso: '00', 'Y', '200' (Cardholder successfully authenticated)
+    // Código '200' é usado pela e-Rede para indicar autenticação bem-sucedida
+    const threeDSAuthenticated = threeDSecureReturnCode === '00' || 
+                                  threeDSecureReturnCode === 'Y' || 
+                                  threeDSecureReturnCode === '200';
     
     if (!threeDSAuthenticated) {
       console.log(`❌ Autenticação 3DS falhou. 3DS ReturnCode: ${threeDSecureReturnCode}`);
