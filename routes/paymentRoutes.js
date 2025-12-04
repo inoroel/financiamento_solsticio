@@ -675,10 +675,17 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
     };
 
     if (tipoPagamento === 'PIX') {
-      response.brCode = cobranca.brCode;
+      // Garante que brCode não seja null ou vazio
+      if (cobranca.brCode && typeof cobranca.brCode === 'string' && cobranca.brCode.trim().length > 0) {
+        response.brCode = cobranca.brCode;
+      } else {
+        console.error('❌ brCode inválido ou vazio na cobrança:', cobranca.brCode);
+        response.brCode = null;
+      }
       response.expiracao = cobranca.expiracao;
-      console.log('📋 PIX Response - brCode:', cobranca.brCode ? `${cobranca.brCode.substring(0, 50)}...` : 'null');
+      console.log('📋 PIX Response - brCode:', response.brCode ? `${response.brCode.substring(0, 50)}...` : 'null/undefined/vazio');
       console.log('📋 PIX Response - expiracao:', cobranca.expiracao);
+      console.log('📋 PIX Response - brCode length:', response.brCode ? response.brCode.length : 0);
     } else if (tipoPagamento === 'CRIPTO') {
       response.recipient_address = cobranca.recipient_address;
       response.memo = cobranca.memo;

@@ -141,17 +141,26 @@ function extractWebhookData(webhookBody) {
       // Exemplo: { events: ['PV.UPDATE_TRANSACTION_PIX'], data: { id: '...' } }
       const isPixEvent = webhookBody.events.some(e => e.includes('PIX'));
 
+      // Tenta extrair valor do webhook se disponível
+      // O valor pode vir em data.amount (em centavos) ou data.valor
+      let valor = null;
+      if (webhookBody.data.amount) {
+        valor = parseFloat(webhookBody.data.amount) / 100; // Converte de centavos
+      } else if (webhookBody.data.valor) {
+        valor = parseFloat(webhookBody.data.valor);
+      }
+
       return {
-        rede_tid: webhookBody.data.id, // ID da transação no objeto data
-        provider_tid: webhookBody.data.id,
+        rede_tid: webhookBody.data.id || webhookBody.data.tid || webhookBody.data.txId, // ID da transação no objeto data
+        provider_tid: webhookBody.data.id || webhookBody.data.tid || webhookBody.data.txId,
         provider: 'REDE',
-        txid: webhookBody.data.id, // Usa ID como referência se não houver outra
+        txid: webhookBody.data.reference || webhookBody.data.id || webhookBody.data.tid || webhookBody.data.txId, // Usa reference se disponível
         tipo_pagamento: isPixEvent ? 'PIX' : 'DESCONHECIDO',
-        valor: null, // Valor geralmente não vem no payload de evento simples
+        valor: valor, // Valor extraído do webhook ou null (será buscado da cobrança depois)
         status: 'CONFIRMADA', // Assume confirmada se recebeu evento de update/sucesso
-        horario: new Date().toISOString(),
-        returnCode: '00',
-        returnMessage: 'Webhook Event Received',
+        horario: webhookBody.data.dateTime || webhookBody.data.horario || new Date().toISOString(),
+        returnCode: webhookBody.data.returnCode || '00',
+        returnMessage: webhookBody.data.returnMessage || 'Webhook Event Received',
         authorizationCode: null,
         bandeira: null,
         parcelas: 1,
@@ -310,6 +319,18 @@ async function processWebhook(webhookBody, signature = null, clientIp = null, do
         }
       }
       dadosDoadorFinal = dadosDoadorTemp;
+    }
+
+    // 6.5. Se o valor não veio no webhook, usa o valor da cobrança
+    // Isso é comum em webhooks de eventos PIX que não trazem o valor completo
+    if (!webhookData.valor || webhookData.valor === null) {
+      if (cobranca && cobranca.valor) {
+        console.log(`ℹ️  Valor não encontrado no webhook, usando valor da cobrança: ${cobranca.valor}`);
+        webhookData.valor = parseFloat(cobranca.valor);
+      } else {
+        console.error(`❌ Valor não encontrado nem no webhook nem na cobrança (txid: ${webhookData.rede_tid})`);
+        throw new Error('Valor não encontrado no webhook nem na cobrança');
+      }
     }
 
     // 7. Processa a transação confirmada usando controle de transação
