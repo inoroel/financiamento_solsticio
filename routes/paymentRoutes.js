@@ -771,20 +771,40 @@ router.post('/webhook/pagamento', webhookLimiter, async (req, res) => {
     const result = await processWebhook(webhookBody, signature, clientIp, doadorData);
 
     if (!result || !result.success) {
-      const isSecurityError = result?.error?.includes('assinatura') ||
-        result?.error?.includes('IP') ||
-        result?.error?.includes('inválido');
+      const errorMessage = result?.error || 'Erro ao processar webhook';
+      
+      // Erros de segurança: retorna 401 para bloquear
+      const isSecurityError = errorMessage.includes('assinatura') ||
+        errorMessage.includes('IP') ||
+        (errorMessage.includes('inválido') && !errorMessage.includes('TID não encontrado'));
 
       if (isSecurityError) {
         return res.status(401).json({
           success: false,
-          error: result?.error || 'Erro de validação de segurança'
+          error: errorMessage
         });
       }
 
+      // TID não encontrado ou cobrança inexistente: retorna 200 OK para parar retentativas
+      // Isso evita que a e-Rede continue tentando reenviar webhooks para transações que não existem
+      const isTidNotFound = errorMessage.includes('TID não encontrado') ||
+        errorMessage.includes('Cobrança inexistente') ||
+        errorMessage.includes('cobrança inexistente') ||
+        errorMessage.includes('Dados do webhook inválidos ou TID não encontrado');
+
+      if (isTidNotFound) {
+        console.log(`ℹ️  Webhook ignorado (TID não encontrado): retornando 200 OK para parar retentativas`);
+        return res.status(200).json({
+          success: false,
+          message: 'Webhook recebido mas TID não encontrado (ignorado)',
+          ignored: true
+        });
+      }
+
+      // Outros erros: retorna 400 (mas pode causar retentativas)
       return res.status(400).json({
         success: false,
-        error: result?.error || 'Erro ao processar webhook'
+        error: errorMessage
       });
     }
 

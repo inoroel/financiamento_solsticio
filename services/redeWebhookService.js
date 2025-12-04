@@ -258,7 +258,8 @@ async function processWebhook(webhookBody, signature = null, clientIp = null, do
     // 3. Extrai dados do webhook
     const webhookData = extractWebhookData(webhookBody);
     if (!webhookData || !webhookData.rede_tid) {
-      throw new Error('Dados do webhook inválidos ou TID não encontrado');
+      // TID não encontrado no próprio webhook (formato inválido)
+      throw new Error('Dados do webhook inválidos: TID não encontrado no payload');
     }
 
     // 4. Verifica se a cobrança existe no banco (por rede_tid ou txid)
@@ -274,8 +275,13 @@ async function processWebhook(webhookBody, signature = null, clientIp = null, do
     }
 
     if (!cobranca) {
+      // TID existe no webhook mas cobrança não existe no banco
+      // Isso pode acontecer se:
+      // - Webhook de teste/desenvolvimento
+      // - Cobrança foi deletada
+      // - Webhook de outra aplicação/env
       console.warn(`⚠️  Webhook e-Rede recebido para cobrança inexistente: ${webhookData.rede_tid || webhookData.txid}`);
-      // Pode ser uma cobrança criada externamente, mas vamos processar mesmo assim
+      throw new Error(`Cobrança inexistente: TID ${webhookData.rede_tid || webhookData.txid} não encontrado no banco de dados`);
     }
 
     // 5. Verifica se já foi processado (idempotência)
