@@ -352,7 +352,8 @@ async function createPixCharge(txid, valor, solicitacaoPagador = "Doação para 
     // A e-Rede retorna o QR Code e Transaction ID (tid)
     // Documentação: Manual p.6500-6504
     // A resposta pode vir em diferentes formatos:
-    // - response.data.qrCodeResponse.qrCodeData (formato padrão)
+    // - response.data.qrCodeResponse.qrCodeData (formato padrão) - código EMV para copiar/colar
+    // - response.data.qrCodeResponse.qrCodeImage (formato padrão) - imagem base64 do QR Code
     // - response.data.qrCode (formato alternativo)
     // - response.data.qrcode (formato alternativo)
     const qrCodeData = response.data.qrCodeResponse?.qrCodeData 
@@ -360,7 +361,14 @@ async function createPixCharge(txid, valor, solicitacaoPagador = "Doação para 
       || response.data.qrcode 
       || null;
     
+    // A e-Rede também retorna a imagem do QR Code em base64
+    // Isso é útil para evitar problemas com CSP (Content Security Policy) no frontend
+    const qrCodeImage = response.data.qrCodeResponse?.qrCodeImage 
+      || response.data.qrCodeImage 
+      || null;
+    
     console.log('🔍 QR Code extraído:', qrCodeData ? `${qrCodeData.substring(0, 50)}...` : 'null');
+    console.log('🖼️  QR Code Image (base64):', qrCodeImage ? `${qrCodeImage.substring(0, 50)}...` : 'null');
     
     if (!qrCodeData) {
       console.warn('⚠️  ATENÇÃO: QR Code não encontrado na resposta da e-Rede!');
@@ -375,6 +383,7 @@ async function createPixCharge(txid, valor, solicitacaoPagador = "Doação para 
       txid: txid,
       rede_tid: response.data.tid || response.data.reference,
       brCode: qrCodeData,
+      qrCodeImage: qrCodeImage, // Imagem base64 do QR Code (evita problemas com CSP)
       expiracao: expiracaoSegundos,
       valor: valorValidado,
       criadoEm: response.data.qrCodeResponse?.['Date time'] || response.data.qrCodeResponse?.['dateTime'] || response.data.dateTime || new Date().toISOString(),

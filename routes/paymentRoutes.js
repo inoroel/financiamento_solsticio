@@ -298,6 +298,16 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
         : "Doação para o Festival Solsticio";
 
       cobranca = await createPixCharge(txid, valorValidado, solicitacaoPagador);
+      
+      // Prepara dados_pagamento incluindo a imagem base64 do QR Code
+      if (cobranca && !cobranca.error && cobranca.qrCodeImage) {
+        dadosPagamento = {
+          brCode: cobranca.brCode,
+          qrCodeImage: cobranca.qrCodeImage, // Imagem base64 do QR Code (evita problemas com CSP)
+          rede_tid: cobranca.rede_tid,
+          expiracao: cobranca.expiracao
+        };
+      }
 
       if (!cobranca || cobranca.error) {
         // Se retornou erro, inclui detalhes para diagnóstico
@@ -682,8 +692,31 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
         console.error('❌ brCode inválido ou vazio na cobrança:', cobranca.brCode);
         response.brCode = null;
       }
+      
+      // Retorna também a imagem base64 do QR Code (se disponível)
+      // Isso evita problemas com CSP no frontend ao usar bibliotecas que usam eval()
+      // Pode vir de cobranca.qrCodeImage (direto) ou de dados_pagamento.qrCodeImage (salvo no banco)
+      let qrCodeImage = null;
+      if (cobranca.qrCodeImage && typeof cobranca.qrCodeImage === 'string' && cobranca.qrCodeImage.trim().length > 0) {
+        qrCodeImage = cobranca.qrCodeImage;
+      } else if (cobranca.dados_pagamento && typeof cobranca.dados_pagamento === 'object' && cobranca.dados_pagamento.qrCodeImage) {
+        qrCodeImage = cobranca.dados_pagamento.qrCodeImage;
+      } else if (typeof cobranca.dados_pagamento === 'string') {
+        try {
+          const dadosPagamentoParsed = JSON.parse(cobranca.dados_pagamento);
+          qrCodeImage = dadosPagamentoParsed?.qrCodeImage || null;
+        } catch (e) {
+          // Ignora erro de parse
+        }
+      }
+      
+      if (qrCodeImage) {
+        response.qrCodeImage = qrCodeImage;
+      }
+      
       response.expiracao = cobranca.expiracao;
       console.log('📋 PIX Response - brCode:', response.brCode ? `${response.brCode.substring(0, 50)}...` : 'null/undefined/vazio');
+      console.log('📋 PIX Response - qrCodeImage:', response.qrCodeImage ? 'disponível (base64)' : 'null/undefined');
       console.log('📋 PIX Response - expiracao:', cobranca.expiracao);
       console.log('📋 PIX Response - brCode length:', response.brCode ? response.brCode.length : 0);
     } else if (tipoPagamento === 'CRIPTO') {
