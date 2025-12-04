@@ -86,13 +86,39 @@ REDE_TOKEN=seu_token_aqui
 - Confirme se as credenciais estão corretas
 
 ### 4. **Contatar Suporte e-Rede**
-Se após 48h ainda não funcionar:
-- Informe que solicitou acesso hoje
-- Mencione que está recebendo erro 403 do CloudFront
-- Pergunte sobre:
-  - Status da ativação
-  - Se há whitelist de IPs necessária
-  - Se precisa de alguma configuração adicional
+Se após 48h ainda não funcionar, ou se receber erro 403 do CloudFront:
+
+**Mensagem sugerida para o suporte:**
+
+```
+Olá,
+
+Estou tentando usar a API e-Rede para criar cobranças PIX, mas estou recebendo erro 403 do CloudFront.
+
+Detalhes:
+- Ambiente: [PRODUÇÃO ou SANDBOX]
+- PV: [primeiros 4 caracteres do seu PV]
+- Plataforma: Vercel (IPs dinâmicos)
+- Erro: "ERROR: The request could not be satisfied - Request blocked" (CloudFront)
+
+A requisição está sendo bloqueada antes mesmo de chegar à API. Isso geralmente indica:
+1. IPs da Vercel não estão na whitelist da e-Rede
+2. API ainda não foi ativada para meu ambiente
+3. Configuração adicional necessária na conta
+
+Por favor, verifiquem:
+- Se a API está ativada para meu PV no ambiente [PRODUÇÃO/SANDBOX]
+- Se é necessário adicionar IPs da Vercel à whitelist (ou desabilitar whitelist)
+- Se há alguma configuração adicional necessária
+
+Agradeço a atenção.
+```
+
+**Informações que o suporte pode pedir:**
+- PV completo (ou primeiros 4 caracteres)
+- Ambiente (sandbox/production)
+- Correlation ID dos logs (aparece nos logs da Vercel)
+- URL da API sendo chamada (aparece nos logs)
 
 ## Logs de Diagnóstico
 
@@ -102,6 +128,21 @@ O código agora inclui logs detalhados que ajudam a identificar o problema:
 - ✅ **URL da API** sendo chamada
 - ✅ **Status das credenciais** (sem expor valores completos)
 - ✅ **Correlation ID** para rastreamento
+- ✅ **Diagnóstico específico para erro 403** (quando ocorre)
+
+**Exemplo de log quando ocorre erro 403:**
+
+```
+🔍 DIAGNÓSTICO ERRO 403 CLOUDFRONT:
+   - Ambiente: PRODUÇÃO
+   - API Base URL: https://api.userede.com.br/erede
+   - PV configurado: Sim
+   - TOKEN configurado: Sim
+   - Plataforma: Vercel (IPs dinâmicos)
+   - Ação necessária: Contatar suporte e-Rede para whitelist de IPs
+```
+
+Esses logs aparecem automaticamente quando ocorre erro 403 e ajudam a diagnosticar o problema.
 
 ## Checklist
 

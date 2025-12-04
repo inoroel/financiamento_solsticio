@@ -210,13 +210,23 @@ async function createPixCharge(txid, valor, solicitacaoPagador = "Doação para 
 
     console.log(`📤 Enviando requisição para: ${API_BASE_URL}${endpoint}`);
     console.log(`📤 Correlation ID: ${correlationId}`);
+    
+    // Log adicional para diagnóstico de IP (se disponível)
+    // Nota: Na Vercel, o IP de origem pode variar, mas isso ajuda no diagnóstico
+    if (process.env.VERCEL) {
+      console.log(`🌐 Ambiente Vercel detectado - IPs são dinâmicos`);
+    }
 
     const response = await axios.post(
       `${API_BASE_URL}${endpoint}`,
       requestBody,
       {
         headers,
-        timeout: 30000 // 30 segundos de timeout
+        timeout: 30000, // 30 segundos de timeout
+        // Adiciona configuração para melhorar compatibilidade
+        validateStatus: function (status) {
+          return status < 500; // Não lança erro para 4xx, apenas 5xx
+        }
       }
     );
 
@@ -264,9 +274,33 @@ async function createPixCharge(txid, valor, solicitacaoPagador = "Doação para 
         }
       } else if (error.response.status === 403) {
         // CloudFront bloqueando a requisição
-        const isCloudFrontError = typeof error.response.data === 'string' && error.response.data.includes('CloudFront');
+        const isCloudFrontError = typeof error.response.data === 'string' && 
+          (error.response.data.includes('CloudFront') || 
+           error.response.data.includes('ERROR: The request could not be satisfied') ||
+           error.response.data.includes('Request blocked'));
+        
         if (isCloudFrontError) {
-          errorDetails.message = 'A requisição foi bloqueada pelo CloudFront da e-Rede. Isso pode acontecer se: (1) O IP do servidor não está na whitelist da e-Rede, (2) A API está em manutenção, ou (3) Há um problema de configuração na e-Rede. Entre em contato com o suporte da e-Rede.';
+          const ambienteInfo = ENVIRONMENT === 'production' 
+            ? 'PRODUÇÃO' 
+            : 'SANDBOX';
+          
+          errorDetails.message = `A requisição foi bloqueada pelo CloudFront da e-Rede (ambiente: ${ambienteInfo}). ` +
+            `Isso geralmente acontece quando: (1) O IP do servidor (Vercel) não está na whitelist da e-Rede, ` +
+            `(2) A API ainda não foi ativada para ${ambienteInfo} (pode levar 24-48h após solicitação), ` +
+            `(3) A API está em manutenção, ou (4) Há um problema de configuração na conta e-Rede. ` +
+            `SOLUÇÃO: Entre em contato com o suporte da e-Rede informando: ` +
+            `"Recebo erro 403 do CloudFront ao tentar criar cobrança PIX via API. ` +
+            `Ambiente: ${ambienteInfo}. PV: ${PV ? PV.substring(0, 4) + '...' : 'N/A'}. ` +
+            `Preciso que os IPs da Vercel sejam adicionados à whitelist ou que a whitelist seja desabilitada."`;
+          
+          // Log adicional para diagnóstico
+          console.error(`\n🔍 DIAGNÓSTICO ERRO 403 CLOUDFRONT:`);
+          console.error(`   - Ambiente: ${ambienteInfo}`);
+          console.error(`   - API Base URL: ${API_BASE_URL}`);
+          console.error(`   - PV configurado: ${PV ? 'Sim' : 'Não'}`);
+          console.error(`   - TOKEN configurado: ${TOKEN ? 'Sim' : 'Não'}`);
+          console.error(`   - Plataforma: Vercel (IPs dinâmicos)`);
+          console.error(`   - Ação necessária: Contatar suporte e-Rede para whitelist de IPs`);
         } else {
           errorDetails.message = 'Acesso negado pela API e-Rede. Verifique as permissões da sua conta.';
         }
