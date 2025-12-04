@@ -14,6 +14,19 @@ const API_BASE_URL = process.env.REDE_API_BASE_URL || (
     : 'https://sandbox-erede.useredecloud.com.br'
 );
 
+// URLs para OAuth 2.0 (obter access_token)
+const OAUTH_TOKEN_URL = process.env.REDE_OAUTH_TOKEN_URL || (
+  ENVIRONMENT === 'production'
+    ? 'https://api.userede.com.br/redelabs/oauth2/token'
+    : 'https://rl7-sandbox-api.useredecloud.com.br/oauth2/token'
+);
+
+// Cache do access_token (válido por 24 minutos, renovamos aos 20 minutos)
+let accessTokenCache = {
+  token: null,
+  expiresAt: null
+};
+
 // URL da API de Tokenização de Bandeira (Network Tokenization)
 const TOKENIZATION_API_URL = process.env.REDE_TOKENIZATION_API_URL || (
   ENVIRONMENT === 'production'
@@ -30,10 +43,74 @@ function generateCorrelationId() {
 }
 
 /**
- * Cria headers de autenticação para a API e-Rede
- * @returns {Object} Headers de autenticação
+ * Obtém access_token via OAuth 2.0 (conforme nova documentação e-Rede)
+ * O token é válido por 24 minutos e é cacheado para evitar requisições desnecessárias
+ * @returns {Promise<string>} Access token
  */
-function getAuthHeaders() {
+async function getAccessToken() {
+  // Verifica se temos um token válido no cache
+  if (accessTokenCache.token && accessTokenCache.expiresAt && Date.now() < accessTokenCache.expiresAt) {
+    console.log('🔐 Usando access_token do cache');
+    return accessTokenCache.token;
+  }
+
+  if (!PV || !TOKEN) {
+    throw new Error('REDE_PV e REDE_TOKEN devem estar configurados');
+  }
+
+  console.log('🔐 Obtendo novo access_token via OAuth 2.0...');
+  
+  try {
+    // Conforme documentação: Basic Auth com clientId:clientSecret (PV:TOKEN)
+    const authHeader = `Basic ${Buffer.from(`${PV}:${TOKEN}`).toString('base64')}`;
+    
+    const response = await axios.post(
+      OAUTH_TOKEN_URL,
+      'grant_type=client_credentials',
+      {
+        headers: {
+          'Authorization': authHeader,
+          'Content-Type': 'application/x-www-form-urlencoded'
+        },
+        timeout: 10000 // 10 segundos para obter token
+      }
+    );
+
+    if (!response.data || !response.data.access_token) {
+      throw new Error('Resposta OAuth inválida: access_token não encontrado');
+    }
+
+    const accessToken = response.data.access_token;
+    const expiresIn = response.data.expires_in || 1440; // 24 minutos padrão (em segundos)
+    
+    // Cache o token, renovando 4 minutos antes de expirar (aos 20 minutos)
+    const expiresAt = Date.now() + (expiresIn - 240) * 1000; // -240 segundos = 4 minutos antes
+    
+    accessTokenCache = {
+      token: accessToken,
+      expiresAt: expiresAt
+    };
+
+    console.log(`✅ Access_token obtido com sucesso (válido por ${expiresIn} segundos)`);
+    return accessToken;
+
+  } catch (error) {
+    console.error('❌ Erro ao obter access_token via OAuth 2.0:', error.message);
+    if (error.response) {
+      console.error('Status:', error.response.status);
+      console.error('Data:', JSON.stringify(error.response.data, null, 2));
+    }
+    throw new Error(`Falha ao obter access_token: ${error.message}`);
+  }
+}
+
+/**
+ * Cria headers de autenticação para a API e-Rede
+ * Tenta usar OAuth 2.0 (Bearer token) primeiro, com fallback para Basic Auth se necessário
+ * @param {boolean} useOAuth - Se true, usa OAuth 2.0. Se false ou erro, usa Basic Auth
+ * @returns {Promise<Object>} Headers de autenticação
+ */
+async function getAuthHeaders(useOAuth = true) {
   if (!PV || !TOKEN) {
     throw new Error('REDE_PV e REDE_TOKEN devem estar configurados');
   }
@@ -44,12 +121,31 @@ function getAuthHeaders() {
   console.log(`🔐 PV configurado: ${PV ? 'Sim (primeiros 4 chars: ' + PV.substring(0, 4) + '...)' : 'Não'}`);
   console.log(`🔐 TOKEN configurado: ${TOKEN ? 'Sim (primeiros 4 chars: ' + TOKEN.substring(0, 4) + '...)' : 'Não'}`);
 
+  let authHeader;
+  
+  if (useOAuth) {
+    try {
+      const accessToken = await getAccessToken();
+      authHeader = `Bearer ${accessToken}`;
+      console.log('🔐 Usando autenticação OAuth 2.0 (Bearer token)');
+    } catch (error) {
+      console.warn('⚠️  Falha ao obter access_token, usando Basic Auth como fallback:', error.message);
+      // Fallback para Basic Auth (método legado)
+      authHeader = `Basic ${Buffer.from(`${PV}:${TOKEN}`).toString('base64')}`;
+      console.log('🔐 Usando autenticação Basic Auth (fallback)');
+    }
+  } else {
+    // Força Basic Auth (para casos específicos)
+    authHeader = `Basic ${Buffer.from(`${PV}:${TOKEN}`).toString('base64')}`;
+    console.log('🔐 Usando autenticação Basic Auth (forçado)');
+  }
+
   return {
-    'Authorization': `Basic ${Buffer.from(`${PV}:${TOKEN}`).toString('base64')}`,
+    'Authorization': authHeader,
     'Content-Type': 'application/json',
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    'Accept': 'application/json',
-    'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7'
+    'Accept': 'application/json'
+    // Removido User-Agent customizado que pode estar causando bloqueio
+    // Removido Accept-Language que não é necessário
   };
 }
 
@@ -92,12 +188,13 @@ async function tokenizeCard(cardData, brandName = 'visa') {
       kind: cardData.kind || 'credit' // credit ou debit
     };
 
+    const authHeaders = await getAuthHeaders(true);
     const response = await axios.post(
       TOKENIZATION_API_URL,
       requestBody,
       {
         headers: {
-          ...getAuthHeaders(),
+          ...authHeaders,
           'X-Request-Id': correlationId
         }
       }
@@ -203,8 +300,10 @@ async function createPixCharge(txid, valor, solicitacaoPagador = "Doação para 
       requestBody.description = mensagemSanitizada;
     }
 
+    // Obtém headers de autenticação (OAuth 2.0 com fallback para Basic Auth)
+    const authHeaders = await getAuthHeaders(true); // true = tenta OAuth primeiro
     const headers = {
-      ...getAuthHeaders(),
+      ...authHeaders,
       'X-Request-Id': correlationId
     };
 
@@ -415,12 +514,13 @@ async function createCreditCardTransaction(txid, valor, cartaoData, parcelas = 1
       console.log('🔒 Transação com autenticação 3DS/DataOnly ativada');
     }
 
+    const authHeaders = await getAuthHeaders(true);
     const response = await axios.post(
       `${API_BASE_URL}${endpoint}`,
       requestBody,
       {
         headers: {
-          ...getAuthHeaders(),
+          ...authHeaders,
           'X-Request-Id': correlationId
         }
       }
@@ -542,12 +642,13 @@ async function createDebitCardTransaction(txid, valor, cartaoData, bandeira = nu
       console.log('🔒 Transação DÉBITO com autenticação 3DS ativada');
     }
 
+    const authHeaders = await getAuthHeaders(true);
     const response = await axios.post(
       `${API_BASE_URL}${endpoint}`,
       requestBody,
       {
         headers: {
-          ...getAuthHeaders(),
+          ...authHeaders,
           'X-Request-Id': correlationId
         }
       }
@@ -595,11 +696,12 @@ async function consultTransaction(tid) {
     const endpoint = `/v2/transactions/${encodeURIComponent(tid)}`;
     const correlationId = generateCorrelationId();
 
+    const authHeaders = await getAuthHeaders(true);
     const response = await axios.get(
       `${API_BASE_URL}${endpoint}`,
       {
         headers: {
-          ...getAuthHeaders(),
+          ...authHeaders,
           'X-Request-Id': correlationId
         }
       }
@@ -683,12 +785,13 @@ async function cancelTransaction(tid, valor = null, callbackUrl = null) {
       ];
     }
 
+    const authHeaders = await getAuthHeaders(true);
     const response = await axios.post(
       `${API_BASE_URL}${endpoint}`,
       requestBody,
       {
         headers: {
-          ...getAuthHeaders(),
+          ...authHeaders,
           'X-Request-Id': correlationId
         }
       }
@@ -768,12 +871,13 @@ async function authorizeZeroDollar(cardData, txid, kind = 'credit') {
       cardholderName: cardData.cardholderName || 'CARDHOLDER'
     };
 
+    const authHeaders = await getAuthHeaders(true);
     const response = await axios.post(
       `${API_BASE_URL}${endpoint}`,
       requestBody,
       {
         headers: {
-          ...getAuthHeaders(),
+          ...authHeaders,
           'X-Request-Id': correlationId
         }
       }
