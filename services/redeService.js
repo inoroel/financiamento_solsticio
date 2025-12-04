@@ -686,7 +686,38 @@ async function createCreditCardTransaction(txid, valor, cartaoData, parcelas = 1
           language: threeDSecure.device.language || 'pt-BR', // OBRIGATÓRIO (10 alfanumérico, IETF BCP47)
           screenHeight: parseInt(threeDSecure.device.screenHeight) || 1080, // OBRIGATÓRIO (6 numérico)
           screenWidth: parseInt(threeDSecure.device.screenWidth) || 1920, // OBRIGATÓRIO (6 numérico)
-          timeZoneOffset: threeDSecure.device.timeZoneOffset || '-3' // OBRIGATÓRIO (10 alfanumérico, diferença em horas do UTC)
+          timeZoneOffset: (() => {
+            // Valida e formata timeZoneOffset
+            // Formato esperado: string numérica (ex: "-3" ou "3")
+            // NOTA: A documentação aceita string ou número, mas string é mais seguro
+            const offset = threeDSecure.device.timeZoneOffset;
+            if (offset !== undefined && offset !== null) {
+              // Se for número, converte para string
+              if (typeof offset === 'number') {
+                // Valida que está no range válido (-12 a +14)
+                if (offset >= -12 && offset <= 14) {
+                  return String(offset);
+                }
+              }
+              // Se for string, valida formato
+              if (typeof offset === 'string') {
+                const trimmed = offset.trim();
+                // Valida formato: número opcionalmente com sinal negativo
+                if (/^-?\d+$/.test(trimmed)) {
+                  const numOffset = parseInt(trimmed, 10);
+                  // Valida range
+                  if (numOffset >= -12 && numOffset <= 14) {
+                    return trimmed;
+                  }
+                }
+              }
+            }
+            // Fallback: calcula dinamicamente do servidor
+            const timezoneOffset = Math.round(new Date().getTimezoneOffset() / -60);
+            // Garante que está no range válido
+            const validOffset = Math.max(-12, Math.min(14, timezoneOffset));
+            return String(validOffset);
+          })() // OBRIGATÓRIO (10 alfanumérico, diferença em horas do UTC, range: -12 a +14)
         },
         billing: {
           address: threeDSecure.billing.address, // OBRIGATÓRIO (até 128)
@@ -1054,7 +1085,38 @@ async function createDebitCardTransaction(txid, valor, cartaoData, bandeira = nu
           language: threeDSecure.device.language || 'pt-BR', // OBRIGATÓRIO (10 alfanumérico, IETF BCP47)
           screenHeight: parseInt(threeDSecure.device.screenHeight) || 1080, // OBRIGATÓRIO (6 numérico)
           screenWidth: parseInt(threeDSecure.device.screenWidth) || 1920, // OBRIGATÓRIO (6 numérico)
-          timeZoneOffset: threeDSecure.device.timeZoneOffset || '-3' // OBRIGATÓRIO (10 alfanumérico, diferença em horas do UTC)
+          timeZoneOffset: (() => {
+            // Valida e formata timeZoneOffset
+            // Formato esperado: string numérica (ex: "-3" ou "3")
+            // NOTA: A documentação aceita string ou número, mas string é mais seguro
+            const offset = threeDSecure.device.timeZoneOffset;
+            if (offset !== undefined && offset !== null) {
+              // Se for número, converte para string
+              if (typeof offset === 'number') {
+                // Valida que está no range válido (-12 a +14)
+                if (offset >= -12 && offset <= 14) {
+                  return String(offset);
+                }
+              }
+              // Se for string, valida formato
+              if (typeof offset === 'string') {
+                const trimmed = offset.trim();
+                // Valida formato: número opcionalmente com sinal negativo
+                if (/^-?\d+$/.test(trimmed)) {
+                  const numOffset = parseInt(trimmed, 10);
+                  // Valida range
+                  if (numOffset >= -12 && numOffset <= 14) {
+                    return trimmed;
+                  }
+                }
+              }
+            }
+            // Fallback: calcula dinamicamente do servidor
+            const timezoneOffset = Math.round(new Date().getTimezoneOffset() / -60);
+            // Garante que está no range válido
+            const validOffset = Math.max(-12, Math.min(14, timezoneOffset));
+            return String(validOffset);
+          })() // OBRIGATÓRIO (10 alfanumérico, diferença em horas do UTC, range: -12 a +14)
         },
         billing: {
           address: threeDSecure.billing.address, // OBRIGATÓRIO (até 128)

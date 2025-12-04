@@ -647,6 +647,11 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
 
       // device: deve vir do frontend, mas fornece valores padrão se não disponível
       if (!threeDSecureData.device || typeof threeDSecureData.device !== 'object') {
+        // Calcula timeZoneOffset dinamicamente (diferença em horas do UTC)
+        // Formato: número inteiro (ex: -3 para UTC-3, 3 para UTC+3)
+        const timezoneOffset = new Date().getTimezoneOffset() / -60; // getTimezoneOffset retorna minutos, convertemos para horas e invertemos
+        const timeZoneOffsetFormatted = String(timezoneOffset); // Converte para string conforme documentação
+        
         threeDSecureData.device = {
           colorDepth: 24,
           deviceType3ds: 'BROWSER',
@@ -654,8 +659,31 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
           language: req.headers['accept-language']?.split(',')[0]?.split('-')[0] || 'pt',
           screenHeight: 1080,
           screenWidth: 1920,
-          timeZoneOffset: '-3' // UTC-3 (Brasil)
+          timeZoneOffset: timeZoneOffsetFormatted // Formato: string com número (ex: "-3" ou "3")
         };
+      } else {
+        // Garante que timeZoneOffset está no formato correto (string numérica)
+        if (threeDSecureData.device.timeZoneOffset !== undefined) {
+          // Se for número, converte para string
+          if (typeof threeDSecureData.device.timeZoneOffset === 'number') {
+            threeDSecureData.device.timeZoneOffset = String(threeDSecureData.device.timeZoneOffset);
+          }
+          // Se for string, valida formato (deve ser número com ou sem sinal)
+          else if (typeof threeDSecureData.device.timeZoneOffset === 'string') {
+            // Remove espaços e valida formato numérico
+            const offset = threeDSecureData.device.timeZoneOffset.trim();
+            if (!/^-?\d+$/.test(offset)) {
+              // Formato inválido, calcula dinamicamente
+              const timezoneOffset = new Date().getTimezoneOffset() / -60;
+              threeDSecureData.device.timeZoneOffset = String(timezoneOffset);
+              console.warn(`⚠️  timeZoneOffset inválido recebido: "${threeDSecureData.device.timeZoneOffset}". Usando valor calculado: ${threeDSecureData.device.timeZoneOffset}`);
+            }
+          }
+        } else {
+          // Se não fornecido, calcula dinamicamente
+          const timezoneOffset = new Date().getTimezoneOffset() / -60;
+          threeDSecureData.device.timeZoneOffset = String(timezoneOffset);
+        }
       }
 
       // billing: deve vir do frontend com dados do comprador
