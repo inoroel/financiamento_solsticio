@@ -222,11 +222,9 @@ async function createPixCharge(txid, valor, solicitacaoPagador = "Doação para 
       requestBody,
       {
         headers,
-        timeout: 30000, // 30 segundos de timeout
-        // Adiciona configuração para melhorar compatibilidade
-        validateStatus: function (status) {
-          return status < 500; // Não lança erro para 4xx, apenas 5xx
-        }
+        timeout: 30000 // 30 segundos de timeout
+        // NOTA: Não usamos validateStatus aqui porque queremos que 4xx (403, 401, etc) 
+        // sejam tratados como erros e lancem exceção para entrar no catch
       }
     );
 
