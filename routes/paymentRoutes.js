@@ -16,7 +16,7 @@ const {
   findPaymentByMemo,
   isSupportedCurrency
 } = require('../services/stellarService');
-const { saveCobranca, getCobranca } = require('../services/dbService');
+const { saveCobranca, getCobranca, processConfirmedTransaction } = require('../services/dbService');
 const { processWebhook } = require('../services/redeWebhookService');
 const { processWebhook: processStellarWebhook } = require('../services/stellarWebhookService');
 const { createChargeLimiter, consultChargeLimiter, webhookLimiter } = require('../middleware/security');
@@ -614,15 +614,25 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
       anonimo: doador.anonimo !== false
     } : null;
 
+    // Para cartões, verifica se foi autorizado através do objeto autorizacao
+    // O status real da autorização está em autorizacao.status, não em cobranca.status
+    let foiAutorizado = false;
+    if (tipoPagamento === 'CREDITO' || tipoPagamento === 'DEBITO') {
+      // Verifica se há authorizationCode (indica autorização imediata)
+      foiAutorizado = cobranca.authorizationCode && cobranca.returnCode === '00';
+    }
+    
     const statusInicial = tipoPagamento === 'PIX' || tipoPagamento === 'CRIPTO'
       ? 'AGUARDANDO'
-      : (cobranca.status === 'AUTORIZADA' || cobranca.status === 'CAPTURADA' ? 'CONFIRMADA' : 'AGUARDANDO');
+      : (foiAutorizado ? 'CONFIRMADA' : 'AGUARDANDO');
     
     console.log(`📊 Status inicial determinado:`, {
       tipoPagamento,
       cobrancaStatus: cobranca.status,
-      statusInicial,
-      returnCode: cobranca.returnCode
+      authorizationCode: cobranca.authorizationCode,
+      returnCode: cobranca.returnCode,
+      foiAutorizado,
+      statusInicial
     });
 
     // Determina provider baseado no tipo de pagamento
@@ -706,6 +716,58 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
       console.log(`✅ Cobrança confirmada salva e verificada no DB: ${cobrancaSalva.txid}`);
     }
 
+    // Para transações de cartão AUTORIZADAS/CONFIRMADAS imediatamente, cria a transação automaticamente
+    // Não precisamos esperar pelo webhook para cartões que são autorizados na hora
+    // Verifica se foi realmente autorizado através do authorizationCode e returnCode
+    const foiRealmenteAutorizado = foiAutorizado && (tipoPagamento === 'CREDITO' || tipoPagamento === 'DEBITO');
+    if (foiRealmenteAutorizado) {
+      console.log(`\n💰 Transação ${tipoPagamento} foi AUTORIZADA imediatamente. Criando entrada na tabela transacoes...`);
+      
+      try {
+        // Prepara dados no formato esperado pelo processConfirmedTransaction
+        const webhookData = {
+          txid: cobranca.txid || txid,
+          rede_tid: cobranca.rede_tid || null,
+          provider_tid: cobranca.provider_tid || cobranca.rede_tid || null,
+          provider: provider,
+          tipo_pagamento: tipoPagamento,
+          valor: cobranca.valor || valorValidado,
+          status: 'CONFIRMADA',
+          horario: cobranca.criadoEm || new Date().toISOString(),
+          bandeira: dadosPagamento?.bandeira || cobranca.bandeira || null,
+          parcelas: dadosPagamento?.parcelas || cobranca.parcelas || null,
+          authorizationCode: cobranca.authorizationCode || null
+        };
+
+        console.log(`📋 Dados para processConfirmedTransaction:`, {
+          txid: webhookData.txid,
+          rede_tid: webhookData.rede_tid,
+          provider_tid: webhookData.provider_tid,
+          valor: webhookData.valor,
+          status: webhookData.status,
+          bandeira: webhookData.bandeira,
+          parcelas: webhookData.parcelas
+        });
+
+        const transacaoProcessada = await processConfirmedTransaction(webhookData, dadosDoadorTemp);
+        
+        if (transacaoProcessada && transacaoProcessada.transacao) {
+          console.log(`✅ Transação criada automaticamente na tabela transacoes:`);
+          console.log(`   - ID: ${transacaoProcessada.transacao.id}`);
+          console.log(`   - Valor: ${transacaoProcessada.transacao.valor}`);
+          console.log(`   - Doador ID: ${transacaoProcessada.transacao.doador_id || 'null'}`);
+          console.log(`   - Provider TID: ${transacaoProcessada.transacao.provider_tid || 'null'}`);
+        } else {
+          console.warn(`⚠️  Não foi possível criar transação automaticamente. O webhook ainda pode criar quando chegar.`);
+          console.warn(`   Resultado:`, transacaoProcessada);
+        }
+      } catch (error) {
+        console.error(`❌ Erro ao criar transação automaticamente: ${error.message}`);
+        console.error(`   Stack: ${error.stack}`);
+        // Não bloqueia a resposta - o webhook ainda pode criar a transação quando chegar
+      }
+    }
+
     // Retorna resposta conforme tipo de pagamento
     const response = {
       success: true,
@@ -765,13 +827,17 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
       response.qr_code_address = cobranca.qr_code_address; // QR code apenas com o endereço Stellar
       response.qr_code_memo = cobranca.qr_code_memo; // QR code apenas com o memo
     } else {
+      // Para cartões, o status real da autorização é baseado no returnCode
+      // returnCode '00' = AUTORIZADA, outros = NEGADA
+      const statusAutorizacao = cobranca.returnCode === '00' ? 'AUTORIZADA' : 'NEGADA';
+      
       response.autorizacao = {
-        codigo: cobranca.authorizationCode,
-        status: cobranca.status,
-        bandeira: cobranca.bandeira
+        codigo: cobranca.authorizationCode || null,
+        status: statusAutorizacao,
+        bandeira: cobranca.bandeira || dadosPagamento?.bandeira || null
       };
       if (tipoPagamento === 'CREDITO') {
-        response.parcelas = cobranca.parcelas;
+        response.parcelas = cobranca.parcelas || dadosPagamento?.parcelas || 1;
       }
     }
 
