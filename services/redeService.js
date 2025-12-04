@@ -779,9 +779,14 @@ async function createCreditCardTransaction(txid, valor, cartaoData, parcelas = 1
       // Documentação: https://developer.userede.com.br/e-rede
       let baseUrl = process.env.BASE_URL || process.env.CUSTOM_DOMAIN;
       
-      // Se não tiver domínio customizado, usa fallback curto
+      // Se não tiver domínio customizado, tenta usar VERCEL_URL (domínio da Vercel)
       if (!baseUrl) {
-        baseUrl = 'https://api.solsticio.com.br';
+        if (process.env.VERCEL_URL) {
+          baseUrl = `https://${process.env.VERCEL_URL}`;
+        } else {
+          // Fallback para domínio conhecido
+          baseUrl = 'https://financiamentosolsticio.vercel.app';
+        }
       }
       
       // Garante que baseUrl não tenha trailing slash
@@ -1210,9 +1215,14 @@ async function createDebitCardTransaction(txid, valor, cartaoData, bandeira = nu
       // Documentação: https://developer.userede.com.br/e-rede
       let baseUrl = process.env.BASE_URL || process.env.CUSTOM_DOMAIN;
       
-      // Se não tiver domínio customizado, usa fallback curto
+      // Se não tiver domínio customizado, tenta usar VERCEL_URL (domínio da Vercel)
       if (!baseUrl) {
-        baseUrl = 'https://api.solsticio.com.br';
+        if (process.env.VERCEL_URL) {
+          baseUrl = `https://${process.env.VERCEL_URL}`;
+        } else {
+          // Fallback para domínio conhecido
+          baseUrl = 'https://financiamentosolsticio.vercel.app';
+        }
       }
       
       // Garante que baseUrl não tenha trailing slash
