@@ -1995,7 +1995,21 @@ router.post('/3ds/callback', async (req, res) => {
       authorizationCode: captureResult?.authorizationCode || callbackData.authorizationCode
     };
 
-    const dadosDoadorTemp = cobranca.dados_doador_temp ? JSON.parse(cobranca.dados_doador_temp) : null;
+    // dados_doador_temp pode vir como string (JSON) ou objeto (JSONB parse automático)
+    let dadosDoadorTemp = null;
+    if (cobranca.dados_doador_temp) {
+      if (typeof cobranca.dados_doador_temp === 'string') {
+        try {
+          dadosDoadorTemp = JSON.parse(cobranca.dados_doador_temp);
+        } catch (error) {
+          console.warn('⚠️  Erro ao fazer parse de dados_doador_temp:', error.message);
+          dadosDoadorTemp = null;
+        }
+      } else {
+        // Já é um objeto (JSONB foi parseado automaticamente)
+        dadosDoadorTemp = cobranca.dados_doador_temp;
+      }
+    }
     
     const transacaoProcessada = await processConfirmedTransaction(webhookData, dadosDoadorTemp);
 
