@@ -1930,13 +1930,35 @@ router.post('/3ds/callback', async (req, res) => {
       console.log(`ℹ️  Transação de DÉBITO - captura já foi feita automaticamente na autorização`);
       foiCapturada = true;
       // Usa os dados do callback como se fosse resultado da captura
+      // Converte date (YYYYMMDD) e time (HH:mm:ss) para ISO format
+      let dateTimeISO = new Date().toISOString(); // fallback
+      if (callbackData.date && callbackData.time) {
+        try {
+          // callbackData.date vem como "20251204" (YYYYMMDD)
+          // callbackData.time vem como "21:04:24" (HH:mm:ss)
+          const year = callbackData.date.substring(0, 4);
+          const month = callbackData.date.substring(4, 6);
+          const day = callbackData.date.substring(6, 8);
+          // Constrói data no formato ISO: YYYY-MM-DDTHH:mm:ss
+          dateTimeISO = `${year}-${month}-${day}T${callbackData.time}`;
+          // Valida se é uma data válida
+          const dateObj = new Date(dateTimeISO);
+          if (isNaN(dateObj.getTime())) {
+            console.warn(`⚠️  Data inválida do callback, usando data atual: ${dateTimeISO}`);
+            dateTimeISO = new Date().toISOString();
+          } else {
+            dateTimeISO = dateObj.toISOString();
+          }
+        } catch (error) {
+          console.warn(`⚠️  Erro ao converter data do callback: ${error.message}`);
+          dateTimeISO = new Date().toISOString();
+        }
+      }
       captureResult = {
         returnCode: returnCode,
         returnMessage: returnMessage,
         authorizationCode: callbackData.authorizationCode,
-        dateTime: callbackData.date && callbackData.time 
-          ? `${callbackData.date}T${callbackData.time}` 
-          : new Date().toISOString()
+        dateTime: dateTimeISO
       };
     } else {
       // Para CRÉDITO, faz captura manual
@@ -1950,13 +1972,35 @@ router.post('/3ds/callback', async (req, res) => {
           console.log(`ℹ️  Erro 171: Transação pode já ter sido capturada. Processando como confirmada...`);
           foiCapturada = true;
           // Usa dados do callback como fallback
+          // Converte date (YYYYMMDD) e time (HH:mm:ss) para ISO format
+          let dateTimeISO = new Date().toISOString(); // fallback
+          if (callbackData.date && callbackData.time) {
+            try {
+              // callbackData.date vem como "20251204" (YYYYMMDD)
+              // callbackData.time vem como "21:04:24" (HH:mm:ss)
+              const year = callbackData.date.substring(0, 4);
+              const month = callbackData.date.substring(4, 6);
+              const day = callbackData.date.substring(6, 8);
+              // Constrói data no formato ISO: YYYY-MM-DDTHH:mm:ss
+              dateTimeISO = `${year}-${month}-${day}T${callbackData.time}`;
+              // Valida se é uma data válida
+              const dateObj = new Date(dateTimeISO);
+              if (isNaN(dateObj.getTime())) {
+                console.warn(`⚠️  Data inválida do callback, usando data atual: ${dateTimeISO}`);
+                dateTimeISO = new Date().toISOString();
+              } else {
+                dateTimeISO = dateObj.toISOString();
+              }
+            } catch (error) {
+              console.warn(`⚠️  Erro ao converter data do callback: ${error.message}`);
+              dateTimeISO = new Date().toISOString();
+            }
+          }
           captureResult = {
             returnCode: returnCode,
             returnMessage: returnMessage,
             authorizationCode: callbackData.authorizationCode,
-            dateTime: callbackData.date && callbackData.time 
-              ? `${callbackData.date}T${callbackData.time}` 
-              : new Date().toISOString()
+            dateTime: dateTimeISO
           };
         } else {
           console.error(`❌ Falha ao capturar transação`);
@@ -1987,9 +2031,33 @@ router.post('/3ds/callback', async (req, res) => {
       tipo_pagamento: cobranca.tipo_pagamento,
       valor: cobranca.valor,
       status: 'CONFIRMADA',
-      horario: captureResult?.dateTime || (callbackData.date && callbackData.time 
-        ? `${callbackData.date}T${callbackData.time}` 
-        : new Date().toISOString()),
+      horario: (() => {
+        // Se captureResult tem dateTime, usa ele
+        if (captureResult?.dateTime) {
+          return captureResult.dateTime;
+        }
+        // Senão, tenta construir a partir do callback
+        if (callbackData.date && callbackData.time) {
+          try {
+            // callbackData.date vem como "20251204" (YYYYMMDD)
+            // callbackData.time vem como "21:04:24" (HH:mm:ss)
+            const year = callbackData.date.substring(0, 4);
+            const month = callbackData.date.substring(4, 6);
+            const day = callbackData.date.substring(6, 8);
+            // Constrói data no formato ISO: YYYY-MM-DDTHH:mm:ss
+            const dateTimeStr = `${year}-${month}-${day}T${callbackData.time}`;
+            // Valida se é uma data válida
+            const dateObj = new Date(dateTimeStr);
+            if (!isNaN(dateObj.getTime())) {
+              return dateObj.toISOString();
+            }
+          } catch (error) {
+            console.warn(`⚠️  Erro ao converter data do callback para horario: ${error.message}`);
+          }
+        }
+        // Fallback: usa data atual
+        return new Date().toISOString();
+      })(),
       bandeira: cobranca.dados_pagamento?.bandeira || null,
       parcelas: cobranca.dados_pagamento?.parcelas || null,
       authorizationCode: captureResult?.authorizationCode || callbackData.authorizationCode
