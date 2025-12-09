@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS doadores (
     nome VARCHAR(255),
     whatsapp VARCHAR(20),
     anonimo BOOLEAN NOT NULL DEFAULT true,
+    mensagem TEXT,
     criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 

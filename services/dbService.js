@@ -1,5 +1,6 @@
 // Serviço de operações no banco de dados
 const { sql } = require('../config/database');
+const { sanitizeString } = require('../utils/validation');
 
 /**
  * Salva uma cobrança no banco de dados
@@ -220,7 +221,7 @@ async function updateCobrancaStatus(txid, status) {
  */
 async function saveDoador(doadorData) {
   try {
-    const { nome, whatsapp, anonimo } = doadorData;
+    const { nome, whatsapp, anonimo, mensagem } = doadorData;
     
     // Se for anônimo, não salva dados pessoais
     if (anonimo) {
@@ -245,10 +246,15 @@ async function saveDoador(doadorData) {
       throw new Error('Doador identificado deve ter WhatsApp');
     }
     
+    // Sanitiza mensagem se fornecida
+    const mensagemSanitizada = mensagem && mensagem.trim().length > 0 
+      ? sanitizeString(mensagem.trim()) 
+      : null;
+    
     const result = await sql`
-      INSERT INTO doadores (nome, whatsapp, anonimo)
-      VALUES (${nome}, ${whatsapp}, false)
-      RETURNING id, nome, whatsapp, anonimo
+      INSERT INTO doadores (nome, whatsapp, anonimo, mensagem)
+      VALUES (${nome}, ${whatsapp}, false, ${mensagemSanitizada})
+      RETURNING id, nome, whatsapp, anonimo, mensagem
     `;
     
     console.log(`✅ Doador salvo no banco de dados (ID: ${result.rows[0].id})`);
@@ -426,10 +432,16 @@ async function processConfirmedTransaction(webhookData, doadorData = null) {
               console.log(`ℹ️  Doador já existe: ID=${doadorId}, nome="${nome}", whatsapp="${whatsapp}" (reutilizando)`);
             } else {
               // Doador não existe, cria novo
+              // Sanitiza mensagem se fornecida
+              const mensagem = dadosDoadorFinal.mensagem;
+              const mensagemSanitizada = mensagem && mensagem.trim().length > 0 
+                ? sanitizeString(mensagem.trim()) 
+                : null;
+              
               const doadorResult = await sql`
-                INSERT INTO doadores (nome, whatsapp, anonimo)
-                VALUES (${nome}, ${whatsapp}, false)
-                RETURNING id, nome, whatsapp, anonimo
+                INSERT INTO doadores (nome, whatsapp, anonimo, mensagem)
+                VALUES (${nome}, ${whatsapp}, false, ${mensagemSanitizada})
+                RETURNING id, nome, whatsapp, anonimo, mensagem
               `;
               doadorId = doadorResult.rows[0].id;
               console.log(`✅ Doador criado: ID=${doadorId}, nome="${nome}", whatsapp="${whatsapp}"`);
@@ -640,19 +652,15 @@ async function getTransacaoByProviderTid(provider_tid) {
  * Busca doadores identificados (não anônimos) com paginação
  * @param {number} limit - Número de registros por página
  * @param {number} offset - Offset para paginação
- * @returns {Object} Objeto com doadores e contagem total
+ * @returns {Array} Array de doadores com nome e criado_em
  */
 async function getDoadoresIdentificados(limit = 50, offset = 0) {
   try {
     // Busca doadores identificados com paginação
     const result = await sql`
       SELECT 
-        id,
         nome,
-        whatsapp,
-        criado_em,
-        TO_CHAR(criado_em, 'DD/MM/YYYY') AS data_formatada,
-        TO_CHAR(criado_em, 'HH24:MI:SS') AS hora_formatada
+        criado_em
       FROM doadores
       WHERE anonimo = false
       ORDER BY criado_em DESC
@@ -660,19 +668,7 @@ async function getDoadoresIdentificados(limit = 50, offset = 0) {
       OFFSET ${offset}
     `;
     
-    // Conta total de doadores identificados
-    const countResult = await sql`
-      SELECT COUNT(*) as total
-      FROM doadores
-      WHERE anonimo = false
-    `;
-    
-    const total = parseInt(countResult.rows[0].total, 10);
-    
-    return {
-      doadores: result.rows,
-      total: total
-    };
+    return result.rows;
   } catch (error) {
     console.error('❌ Erro ao buscar doadores identificados:', error.message);
     throw error;

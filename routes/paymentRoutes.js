@@ -832,7 +832,8 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
     const dadosDoadorTemp = doador ? {
       nome: doador.nome || null,
       whatsapp: doador.whatsapp || null,
-      anonimo: doador.anonimo !== false
+      anonimo: doador.anonimo !== false,
+      mensagem: doador.mensagem || null
     } : null;
 
     // Para cartões, verifica se foi autorizado através do objeto autorizacao
@@ -2117,14 +2118,14 @@ router.post('/3ds/callback', async (req, res) => {
 
 /**
  * GET /api/doadores
- * Lista doadores identificados (não anônimos) com paginação
+ * Lista doadores identificados (não anônimos)
  * Query params:
  *   - page: número da página (padrão: 1)
  *   - limit: itens por página (padrão: 50)
  */
 router.get('/doadores', async (req, res) => {
   try {
-    // Parâmetros de paginação
+    // Parâmetros de paginação (mantidos para limitar resultados, mas não retornados)
     const page = parseInt(req.query.page, 10) || 1;
     const limit = parseInt(req.query.limit, 10) || 50;
     
@@ -2148,30 +2149,12 @@ router.get('/doadores', async (req, res) => {
     const offset = (page - 1) * limit;
     
     // Busca doadores identificados
-    const { doadores, total } = await getDoadoresIdentificados(limit, offset);
+    const doadores = await getDoadoresIdentificados(limit, offset);
     
-    // Calcula total de páginas
-    const totalPages = Math.ceil(total / limit);
-    
-    // Formata resposta
-    const formattedDoadores = doadores.map(doador => ({
-      id: doador.id,
-      nome: doador.nome,
-      whatsapp: doador.whatsapp,
-      data: doador.data_formatada,
-      hora: doador.hora_formatada,
-      criado_em: doador.criado_em
-    }));
-    
+    // Retorna apenas nome e criado_em
     return res.status(200).json({
       success: true,
-      data: formattedDoadores,
-      pagination: {
-        total: total,
-        page: page,
-        limit: limit,
-        totalPages: totalPages
-      }
+      data: doadores
     });
     
   } catch (error) {
