@@ -184,6 +184,12 @@ app.get('/test-db', async (req, res) => {
   }
 });
 
+// Rota para robots.txt (evita 404 em crawlers)
+app.get('/robots.txt', (req, res) => {
+  res.type('text/plain');
+  res.send('User-agent: *\nDisallow: /\n');
+});
+
 // =================================================================
 // MIDDLEWARES DE ERRO (devem ser os últimos)
 // =================================================================

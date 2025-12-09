@@ -18,7 +18,7 @@ const {
   findPaymentByMemo,
   isSupportedCurrency
 } = require('../services/stellarService');
-const { saveCobranca, getCobranca, processConfirmedTransaction } = require('../services/dbService');
+const { saveCobranca, getCobranca, processConfirmedTransaction, getDoadoresIdentificados } = require('../services/dbService');
 const { processWebhook } = require('../services/redeWebhookService');
 const { processWebhook: processStellarWebhook } = require('../services/stellarWebhookService');
 const { createChargeLimiter, consultChargeLimiter, webhookLimiter } = require('../middleware/security');
@@ -2083,9 +2083,15 @@ router.post('/3ds/callback', async (req, res) => {
 
     if (transacaoProcessada && transacaoProcessada.transacao) {
       console.log(`✅ Transação processada e confirmada no banco de dados`);
+      console.log(`   - Transação ID: ${transacaoProcessada.transacao.id}`);
+      console.log(`   - Status da cobrança atualizado para: CONFIRMADA`);
     } else {
       console.error(`⚠️  Transação capturada mas houve erro ao processar no banco`);
+      // Mesmo com erro, retorna sucesso para e-Rede (idempotência)
     }
+
+    // IMPORTANTE: processConfirmedTransaction já atualiza o status da cobrança para CONFIRMADA
+    // O frontend que está fazendo polling vai detectar a mudança de status na próxima consulta
 
     // Retorna confirmação para e-Rede
     return res.status(200).json({ 
@@ -2105,6 +2111,77 @@ router.post('/3ds/callback', async (req, res) => {
     return res.status(200).json({ 
       received: true, 
       error: process.env.NODE_ENV === 'development' ? error.message : 'Internal error'
+    });
+  }
+});
+
+/**
+ * GET /api/doadores
+ * Lista doadores identificados (não anônimos) com paginação
+ * Query params:
+ *   - page: número da página (padrão: 1)
+ *   - limit: itens por página (padrão: 50)
+ */
+router.get('/doadores', async (req, res) => {
+  try {
+    // Parâmetros de paginação
+    const page = parseInt(req.query.page, 10) || 1;
+    const limit = parseInt(req.query.limit, 10) || 50;
+    
+    // Validação de parâmetros
+    if (page < 1) {
+      return res.status(400).json({
+        success: false,
+        error: 'Parâmetro inválido',
+        message: 'page deve ser maior que 0'
+      });
+    }
+    
+    if (limit < 1 || limit > 100) {
+      return res.status(400).json({
+        success: false,
+        error: 'Parâmetro inválido',
+        message: 'limit deve estar entre 1 e 100'
+      });
+    }
+    
+    const offset = (page - 1) * limit;
+    
+    // Busca doadores identificados
+    const { doadores, total } = await getDoadoresIdentificados(limit, offset);
+    
+    // Calcula total de páginas
+    const totalPages = Math.ceil(total / limit);
+    
+    // Formata resposta
+    const formattedDoadores = doadores.map(doador => ({
+      id: doador.id,
+      nome: doador.nome,
+      whatsapp: doador.whatsapp,
+      data: doador.data_formatada,
+      hora: doador.hora_formatada,
+      criado_em: doador.criado_em
+    }));
+    
+    return res.status(200).json({
+      success: true,
+      data: formattedDoadores,
+      pagination: {
+        total: total,
+        page: page,
+        limit: limit,
+        totalPages: totalPages
+      }
+    });
+    
+  } catch (error) {
+    console.error('❌ Erro ao listar doadores:', error.message);
+    console.error(error.stack);
+    
+    return res.status(500).json({
+      success: false,
+      error: 'Erro interno do servidor',
+      message: process.env.NODE_ENV === 'development' ? error.message : 'Erro ao buscar doadores'
     });
   }
 });

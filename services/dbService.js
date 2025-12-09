@@ -636,6 +636,49 @@ async function getTransacaoByProviderTid(provider_tid) {
   }
 }
 
+/**
+ * Busca doadores identificados (não anônimos) com paginação
+ * @param {number} limit - Número de registros por página
+ * @param {number} offset - Offset para paginação
+ * @returns {Object} Objeto com doadores e contagem total
+ */
+async function getDoadoresIdentificados(limit = 50, offset = 0) {
+  try {
+    // Busca doadores identificados com paginação
+    const result = await sql`
+      SELECT 
+        id,
+        nome,
+        whatsapp,
+        criado_em,
+        TO_CHAR(criado_em, 'DD/MM/YYYY') AS data_formatada,
+        TO_CHAR(criado_em, 'HH24:MI:SS') AS hora_formatada
+      FROM doadores
+      WHERE anonimo = false
+      ORDER BY criado_em DESC
+      LIMIT ${limit}
+      OFFSET ${offset}
+    `;
+    
+    // Conta total de doadores identificados
+    const countResult = await sql`
+      SELECT COUNT(*) as total
+      FROM doadores
+      WHERE anonimo = false
+    `;
+    
+    const total = parseInt(countResult.rows[0].total, 10);
+    
+    return {
+      doadores: result.rows,
+      total: total
+    };
+  } catch (error) {
+    console.error('❌ Erro ao buscar doadores identificados:', error.message);
+    throw error;
+  }
+}
+
 module.exports = {
   saveCobranca,
   getCobranca,
@@ -644,6 +687,7 @@ module.exports = {
   processConfirmedTransaction,
   getTransacao,
   getTransacaoByRedeTid,
-  getTransacaoByProviderTid
+  getTransacaoByProviderTid,
+  getDoadoresIdentificados
 };
 
