@@ -6,6 +6,32 @@ let sql;
 let dbType = 'vercel'; // 'vercel' ou 'local'
 let pool = null;
 
+// Ajuda a escolher e diagnosticar a URL de conexão
+function isPooled(url = '') {
+  return url.includes('pgbouncer=true');
+}
+
+function maskUrl(url = '') {
+  try {
+    const parsed = new URL(url);
+    // mascara usuário/senha e mostra host + caminho
+    return `${parsed.protocol}//****:****@${parsed.hostname}${parsed.port ? ':' + parsed.port : ''}${parsed.pathname}`;
+  } catch (e) {
+    return 'mascara indisponível';
+  }
+}
+
+function logChosenUrl(label, url) {
+  const pooled = isPooled(url);
+  console.log(`🔎 DB URL escolhida: ${label}`);
+  console.log(`   - pooled (pgbouncer=true): ${pooled ? 'SIM' : 'NÃO'}`);
+  console.log(`   - host/path: ${maskUrl(url)}`);
+  console.log(`   - tamanho: ${url ? url.length : 0}`);
+  if (!pooled) {
+    console.warn('⚠️  URL não tem pgbouncer=true (non-pooled) — pode travar em serverless.');
+  }
+}
+
 /**
  * Executa uma query com retry em caso de erro de conexão
  * @param {Function} queryFn - Função que executa a query
@@ -57,11 +83,14 @@ async function executeWithRetry(queryFn, maxRetries = 3) {
 // Localmente, usa pg se POSTGRES_URL não contém 'vercel'
 // Verifica múltiplas variações possíveis da URL da Vercel
 const postgresUrl = process.env.POSTGRES_URL || '';
+const prismaUrlRaw = process.env.POSTGRES_PRISMA_URL || process.env.POSTGRES_PRISMA_DATABASE_URL || process.env.POSTGRES_DATABASE_URL || '';
 const isVercelUrl = postgresUrl.includes('vercel') || 
                      postgresUrl.includes('vercel-storage') ||
                      postgresUrl.includes('neon.tech') ||
                      postgresUrl.includes('neon.tech/') ||
-                     postgresUrl.includes('ep-') && postgresUrl.includes('.postgres');
+                     postgresUrl.includes('ep-') && postgresUrl.includes('.postgres') ||
+                     prismaUrlRaw.includes('vercel') ||
+                     prismaUrlRaw.includes('neon.tech');
 const isVercel = process.env.VERCEL === '1' || isVercelUrl;
 const useLocalPg = !isVercel && process.env.POSTGRES_URL && !isVercelUrl;
 
@@ -137,6 +166,7 @@ if (useLocalPg) {
   const isPrismaUrlPooled = prismaUrl && prismaUrl.includes('pgbouncer=true');
   
   if (prismaUrl && isPrismaUrlPooled) {
+    logChosenUrl('POSTGRES_PRISMA_URL/POSTGRES_PRISMA_DATABASE_URL (pooled)', prismaUrl);
     // URL com pooling (pgbouncer=true) - funciona com @vercel/postgres.sql
     // IMPORTANTE: Define POSTGRES_URL ANTES de requerer o módulo
     // @vercel/postgres.sql lê POSTGRES_URL no momento do require
@@ -179,6 +209,7 @@ if (useLocalPg) {
       console.log('📦 Usando Vercel Postgres com URL pooled (POSTGRES_PRISMA_URL ou POSTGRES_PRISMA_DATABASE_URL)');
     }
   } else if (prismaUrl && !isPrismaUrlPooled) {
+    logChosenUrl('POSTGRES_PRISMA_URL/POSTGRES_PRISMA_DATABASE_URL (non-pooled)', prismaUrl);
     // prismaUrl existe mas não é pooled - usa createClient()
     try {
       const { createClient } = require('@vercel/postgres');
@@ -269,6 +300,7 @@ if (useLocalPg) {
       }
     }
   } else if (process.env.POSTGRES_URL && isPostgresUrlPooled) {
+    logChosenUrl('POSTGRES_URL (pooled)', process.env.POSTGRES_URL);
     // POSTGRES_URL existe e é pooled (tem pgbouncer=true) - pode usar sql diretamente
     const vercelPostgres = require('@vercel/postgres');
     const originalSql = vercelPostgres.sql;
@@ -294,6 +326,7 @@ if (useLocalPg) {
       console.log('📦 Usando Vercel Postgres com POSTGRES_URL pooled (pgbouncer=true)');
     }
   } else if (process.env.POSTGRES_URL) {
+    logChosenUrl('POSTGRES_URL (non-pooled)', process.env.POSTGRES_URL);
     // Se não tem POSTGRES_PRISMA_URL, usa createClient() do @vercel/postgres
     // createClient() aceita connection strings diretas (sem pooling)
     try {

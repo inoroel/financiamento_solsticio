@@ -45,7 +45,9 @@ async function saveCobranca(cobranca) {
       : (tipoPagamento === 'CRIPTO' ? 2592000 : 3600); // 30 dias para CRIPTO, 1 hora para outros
     
     // @vercel/postgres trata JSONB automaticamente quando passamos um objeto
-    const result = await sql`
+    // Aplica timeout curto para evitar travamento em ambiente serverless (Vercel ~10s)
+    const INSERT_TIMEOUT_MS = 8000;
+    const insertPromise = sql`
       INSERT INTO cobrancas (
         txid, valor, status, campanha_id, tipo_pagamento, provider, chave_pix, brcode, expiracao, 
         rede_tid, provider_tid, dados_pagamento, crypto_currency, crypto_address, dados_doador_temp
@@ -70,6 +72,10 @@ async function saveCobranca(cobranca) {
         atualizado_em = CURRENT_TIMESTAMP
       RETURNING txid, tipo_pagamento, provider, status, criado_em
     `;
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error(`Timeout: INSERT demorou mais de ${INSERT_TIMEOUT_MS}ms`)), INSERT_TIMEOUT_MS);
+    });
+    const result = await Promise.race([insertPromise, timeoutPromise]);
     
     if (result.rows && result.rows.length > 0) {
       const row = result.rows[0];

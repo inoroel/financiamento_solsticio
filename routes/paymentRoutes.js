@@ -286,37 +286,8 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
       });
     }
 
-    // Verifica se já existe uma cobrança com esse txid (com timeout curto)
-    // Se a verificação falhar ou demorar, continua mesmo assim (o INSERT tem ON CONFLICT)
-    console.log(`🔍 Verificando se cobrança já existe: txid=${txid}`);
-    const checkStartTime = Date.now();
-    
-    let existingCobranca = null;
-    try {
-      // Timeout de 2 segundos para verificação (não deve bloquear o fluxo)
-      const checkPromise = getCobranca(txid);
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Timeout na verificação')), 2000);
-      });
-      
-      existingCobranca = await Promise.race([checkPromise, timeoutPromise]);
-      const checkElapsedTime = Date.now() - checkStartTime;
-      console.log(`✅ Verificação de cobrança concluída em ${checkElapsedTime}ms`);
-    } catch (checkError) {
-      const checkElapsedTime = Date.now() - checkStartTime;
-      console.warn(`⚠️  Verificação de cobrança falhou ou demorou muito (${checkElapsedTime}ms):`, checkError.message);
-      console.warn(`   Continuando mesmo assim (o INSERT tem ON CONFLICT para lidar com duplicatas)`);
-      // Continua mesmo se houver erro na verificação (pode ser timeout)
-      existingCobranca = null;
-    }
-    
-    if (existingCobranca) {
-      console.log(`⚠️  Cobrança já existe: txid=${txid}`);
-      return res.status(409).json({
-        error: 'TXID já existe. Tente novamente.'
-      });
-    }
-    console.log(`✅ Cobrança não existe, prosseguindo com criação...`);
+    // Pula verificação prévia para evitar bloqueio; ON CONFLICT no insert garante unicidade
+    console.log(`ℹ️  Pulando verificação prévia de txid (usando ON CONFLICT no INSERT).`);
 
     // Cria a cobrança na e-Rede conforme o tipo de pagamento
     let cobranca = null;
@@ -962,8 +933,9 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
       console.error(`❌ ERRO CRÍTICO ao salvar cobrança: ${error.message}`);
       console.error(`   Stack: ${error.stack}`);
       console.error(`   TXID que tentou salvar: ${cobranca.txid || txid}`);
-      return res.status(500).json({
-        error: 'Erro ao salvar cobrança no banco de dados. Tente novamente.',
+      const isTimeout = error.message?.toLowerCase().includes('timeout');
+      return res.status(isTimeout ? 503 : 500).json({
+        error: isTimeout ? 'Banco de dados indisponível (timeout).' : 'Erro ao salvar cobrança no banco de dados. Tente novamente.',
         txid: txid,
         details: process.env.NODE_ENV === 'development' ? error.message : undefined
       });
