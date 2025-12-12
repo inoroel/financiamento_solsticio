@@ -196,30 +196,61 @@ if (useLocalPg) {
     console.log('📦 Usando Vercel Postgres');
   }
 } else {
-  // SOLUÇÃO SIMPLES: Usa @vercel/postgres diretamente
-  // A Vercel fornece POSTGRES_URL automaticamente - usa ela
+  // SOLUÇÃO SIMPLES: Verifica se URL tem pgbouncer=true
+  // Se tiver, usa sql diretamente. Se não tiver, usa createClient()
+  const postgresUrl = process.env.POSTGRES_URL || '';
+  const hasPgbouncer = postgresUrl.includes('pgbouncer=true');
+  
   const vercelPostgres = require('@vercel/postgres');
-  const originalSql = vercelPostgres.sql;
   
-  // Wrapper simples com retry
-  sql = function(strings, ...values) {
-    return executeWithRetry(() => originalSql.apply(null, arguments));
-  };
-  
-  sql.query = async (queryText) => {
-    return executeWithRetry(async () => {
-      if (typeof queryText === 'string') {
-        return originalSql([queryText]);
-      }
-      if (queryText && queryText.raw) {
-        return originalSql(queryText.strings, ...(queryText.values || []));
-      }
-      throw new Error('Formato de query inválido');
+  if (hasPgbouncer) {
+    // URL tem pgbouncer=true - usa sql diretamente
+    const originalSql = vercelPostgres.sql;
+    
+    sql = function(strings, ...values) {
+      return executeWithRetry(() => originalSql.apply(null, arguments));
+    };
+    
+    sql.query = async (queryText) => {
+      return executeWithRetry(async () => {
+        if (typeof queryText === 'string') {
+          return originalSql([queryText]);
+        }
+        if (queryText && queryText.raw) {
+          return originalSql(queryText.strings, ...(queryText.values || []));
+        }
+        throw new Error('Formato de query inválido');
+      });
+    };
+    
+    console.log('📦 Usando @vercel/postgres.sql (pooled)');
+  } else {
+    // URL não tem pgbouncer=true - usa createClient()
+    const client = vercelPostgres.createClient({
+      connectionString: postgresUrl
     });
-  };
+    const clientSql = client.sql;
+    
+    sql = function(strings, ...values) {
+      return executeWithRetry(() => clientSql.apply(client, arguments));
+    };
+    
+    sql.query = async (queryText) => {
+      return executeWithRetry(async () => {
+        if (typeof queryText === 'string') {
+          return clientSql([queryText]);
+        }
+        if (queryText && queryText.raw) {
+          return clientSql(queryText.strings, ...(queryText.values || []));
+        }
+        throw new Error('Formato de query inválido');
+      });
+    };
+    
+    console.log('📦 Usando @vercel/postgres.createClient() (direct)');
+  }
   
   dbType = 'vercel';
-  console.log('📦 Usando @vercel/postgres (simples)');
 }
 
 /**
