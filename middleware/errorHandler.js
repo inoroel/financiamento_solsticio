@@ -45,9 +45,17 @@ function errorHandler(err, req, res, next) {
   // IMPORTANTE: Adiciona headers CORS mesmo em caso de erro
   // Isso garante que o frontend receba a resposta mesmo quando há erro
   const origin = req.headers.origin;
+  
+  // Função helper para normalizar origem (remove barra final e converte para lowercase)
+  const normalizeOrigin = (orig) => {
+    if (!orig) return null;
+    return orig.trim().replace(/\/+$/, '').toLowerCase();
+  };
+  
+  const normalizedOrigin = normalizeOrigin(origin);
   const isOriginAllowed = !process.env.ALLOWED_ORIGINS 
-    ? (origin?.includes('localhost') || origin?.includes('127.0.0.1') || !origin)
-    : process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim()).includes(origin || '');
+    ? (normalizedOrigin?.includes('localhost') || normalizedOrigin?.includes('127.0.0.1') || !origin)
+    : process.env.ALLOWED_ORIGINS.split(',').map(o => normalizeOrigin(o)).filter(o => o).includes(normalizedOrigin);
   
   if (isOriginAllowed || !origin) {
     res.setHeader('Access-Control-Allow-Origin', origin || '*');
@@ -105,9 +113,17 @@ function errorHandler(err, req, res, next) {
 function notFoundHandler(req, res) {
   // Adiciona headers CORS mesmo para 404
   const origin = req.headers.origin;
+  
+  // Função helper para normalizar origem (remove barra final e converte para lowercase)
+  const normalizeOrigin = (orig) => {
+    if (!orig) return null;
+    return orig.trim().replace(/\/+$/, '').toLowerCase();
+  };
+  
+  const normalizedOrigin = normalizeOrigin(origin);
   const isOriginAllowed = !process.env.ALLOWED_ORIGINS 
-    ? (origin?.includes('localhost') || origin?.includes('127.0.0.1') || !origin)
-    : process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim()).includes(origin || '');
+    ? (normalizedOrigin?.includes('localhost') || normalizedOrigin?.includes('127.0.0.1') || !origin)
+    : process.env.ALLOWED_ORIGINS.split(',').map(o => normalizeOrigin(o)).filter(o => o).includes(normalizedOrigin);
   
   if (isOriginAllowed || !origin) {
     res.setHeader('Access-Control-Allow-Origin', origin || '*');

@@ -31,12 +31,20 @@ if (process.env.VERCEL || process.env.VERCEL_ENV) {
 // =================================================================
 // CORS - DEVE SER O PRIMEIRO MIDDLEWARE (antes de tudo)
 // =================================================================
+// Função para normalizar origem (remove barra final e converte para lowercase)
+function normalizeOrigin(origin) {
+  if (!origin) return null;
+  return origin.trim().replace(/\/+$/, '').toLowerCase();
+}
+
 // Função para verificar origem permitida
 function isOriginAllowed(origin) {
   // Permite requisições sem origin (ex: Postman, curl, mobile apps)
   if (!origin) {
     return true;
   }
+
+  const normalizedOrigin = normalizeOrigin(origin);
 
   // SEMPRE permite origens da e-Rede (sandbox e produção) para callbacks 3DS
   // Essas são requisições POST vindas da e-Rede após autenticação 3DS
@@ -46,17 +54,17 @@ function isOriginAllowed(origin) {
     'https://erede.useredecloud.com.br'
   ];
   
-  if (redeOrigins.some(redeOrigin => origin.startsWith(redeOrigin))) {
+  if (redeOrigins.some(redeOrigin => normalizedOrigin.startsWith(normalizeOrigin(redeOrigin)))) {
     return true;
   }
 
   // Se ALLOWED_ORIGINS está configurado, usa APENAS a lista (não permite localhost automaticamente)
   if (process.env.ALLOWED_ORIGINS) {
-    const allowedOrigins = process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim());
-    return allowedOrigins.includes(origin);
+    const allowedOrigins = process.env.ALLOWED_ORIGINS.split(',').map(o => normalizeOrigin(o)).filter(o => o);
+    return allowedOrigins.includes(normalizedOrigin);
   } else {
     // Se ALLOWED_ORIGINS NÃO está configurado, permite localhost para desenvolvimento/testes
-    if (origin.includes('localhost') || origin.includes('127.0.0.1')) {
+    if (normalizedOrigin.includes('localhost') || normalizedOrigin.includes('127.0.0.1')) {
       return true;
     } else if (process.env.NODE_ENV === 'production') {
       // Em produção sem ALLOWED_ORIGINS configurado, bloqueia outras origens
