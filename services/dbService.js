@@ -96,11 +96,12 @@ async function saveCobranca(cobranca) {
     console.error('❌ Erro ao salvar cobrança no banco:', error.message);
     console.error('   Stack:', error.stack);
     // Usa cobranca.txid se txid não estiver definido (pode acontecer se erro ocorrer antes da desestruturação)
-    const txidParaLog = txid || (cobranca && cobranca.txid) || 'desconhecido';
-    const tipoPagamentoParaLog = tipoPagamento || (cobranca && cobranca.tipoPagamento) || 'desconhecido';
-    const providerParaLog = provider || (cobranca && cobranca.provider) || 'desconhecido';
-    const valorParaLog = valor !== undefined ? valor : (cobranca && cobranca.valor) || 'desconhecido';
-    const statusParaLog = status || (cobranca && cobranca.status) || 'desconhecido';
+    // Acessa diretamente do objeto cobranca para evitar problemas de escopo
+    const txidParaLog = cobranca?.txid || 'desconhecido';
+    const tipoPagamentoParaLog = cobranca?.tipoPagamento || 'desconhecido';
+    const providerParaLog = cobranca?.provider || 'desconhecido';
+    const valorParaLog = cobranca?.valor !== undefined ? cobranca.valor : 'desconhecido';
+    const statusParaLog = cobranca?.status || 'desconhecido';
     console.error('   Dados da cobrança:', JSON.stringify({ 
       txid: txidParaLog, 
       tipoPagamento: tipoPagamentoParaLog, 

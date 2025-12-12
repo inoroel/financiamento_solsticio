@@ -40,6 +40,30 @@ function addPgbouncer(url = '') {
 }
 
 /**
+ * Verifica se a URL é do Prisma Accelerate
+ * @param {string} url - URL de conexão
+ * @returns {boolean} true se for URL Prisma Accelerate
+ */
+function isPrismaAccelerateUrl(url = '') {
+  if (!url) return false;
+  return url.startsWith('prisma+postgres://') || url.includes('accelerate.prisma-data.net');
+}
+
+/**
+ * Converte URL Prisma (prisma+postgres://) para formato PostgreSQL padrão
+ * @param {string} url - URL de conexão
+ * @returns {string} URL convertida
+ */
+function convertPrismaUrl(url = '') {
+  if (!url) return url;
+  // Se for URL Prisma, converte para postgres://
+  if (url.startsWith('prisma+postgres://')) {
+    return url.replace('prisma+postgres://', 'postgres://');
+  }
+  return url;
+}
+
+/**
  * Executa uma query com retry em caso de erro de conexão
  * @param {Function} queryFn - Função que executa a query
  * @param {number} maxRetries - Número máximo de tentativas (padrão: 3)
@@ -173,47 +197,101 @@ if (useLocalPg) {
   const isPrismaUrlPooled = prismaUrl && prismaUrl.includes('pgbouncer=true');
   
   if (prismaUrl && isPrismaUrlPooled) {
-    logChosenUrl('POSTGRES_PRISMA_URL/POSTGRES_PRISMA_DATABASE_URL (pooled)', prismaUrl);
-    // URL com pooling (pgbouncer=true) - funciona com @vercel/postgres.sql
-    // IMPORTANTE: Define POSTGRES_URL ANTES de requerer o módulo
-    // @vercel/postgres.sql lê POSTGRES_URL no momento do require
-    const originalPostgresUrl = process.env.POSTGRES_URL;
-    process.env.POSTGRES_URL = prismaUrl;
+    // Converte URL Prisma para formato PostgreSQL padrão se necessário
+    const convertedUrl = convertPrismaUrl(prismaUrl);
+    const isPrismaAccelerate = isPrismaAccelerateUrl(prismaUrl);
     
-    // Requer o módulo DEPOIS de definir POSTGRES_URL
-    const vercelPostgres = require('@vercel/postgres');
-    const originalSql = vercelPostgres.sql;
+    logChosenUrl('POSTGRES_PRISMA_URL/POSTGRES_PRISMA_DATABASE_URL (pooled)', convertedUrl);
     
-    // Wrapper com retry para @vercel/postgres
-    // @vercel/postgres usa template literals como função tag
-    sql = function(strings, ...values) {
-      return executeWithRetry(() => originalSql.apply(null, arguments));
-    };
-    // Para compatibilidade com sql.query() usado em initializeDatabase
-    sql.query = async (queryText) => {
-      return executeWithRetry(async () => {
-        if (typeof queryText === 'string') {
-          // @vercel/postgres não tem método direto para strings, usa template literal
-          // Mas precisamos escapar valores - para queries simples, funciona
-          return originalSql([queryText]);
+    // Se for URL Prisma Accelerate, usa pg diretamente (mais compatível)
+    if (isPrismaAccelerate) {
+      console.log('🔧 Detectada URL Prisma Accelerate - usando driver pg');
+      try {
+        const { Pool } = require('pg');
+        pool = new Pool({
+          connectionString: convertedUrl,
+          ssl: { rejectUnauthorized: false } // Prisma Accelerate requer SSL
+        });
+        
+        // Cria wrapper compatível com sql usando o pool
+        sql = function(strings, ...values) {
+          return executeWithRetry(async () => {
+            // Converte template literal para query parametrizada
+            const text = strings.reduce((acc, str, i) => {
+              return acc + str + (i < values.length ? `$${i + 1}` : '');
+            }, '');
+            const result = await pool.query(text, values);
+            return { rows: result.rows };
+          });
+        };
+        
+        sql.query = async (queryText) => {
+          return executeWithRetry(async () => {
+            if (typeof queryText === 'string') {
+              const result = await pool.query(queryText);
+              return { rows: result.rows };
+            }
+            if (queryText && queryText.raw) {
+              const text = queryText.strings.reduce((acc, str, i) => {
+                return acc + str + (i < queryText.values.length ? `$${i + 1}` : '');
+              }, '');
+              const result = await pool.query(text, queryText.values || []);
+              return { rows: result.rows };
+            }
+            throw new Error('Formato de query inválido');
+          });
+        };
+        
+        dbType = 'local'; // Usa tipo local mesmo em produção para Prisma Accelerate
+        if (process.env.NODE_ENV !== 'production') {
+          console.log('📦 Usando driver pg com URL Prisma Accelerate');
         }
-        // Se for objeto do @vercel/postgres (com .raw, .strings, .values)
-        if (queryText && queryText.raw) {
-          return originalSql(queryText.strings, ...(queryText.values || []));
-        }
-        throw new Error('Formato de query inválido');
-      });
-    };
-    
-    // Restaura POSTGRES_URL original se existia
-    if (originalPostgresUrl) {
-      process.env.POSTGRES_URL = originalPostgresUrl;
+      } catch (error) {
+        console.error('❌ Erro ao inicializar pg para Prisma Accelerate:', error.message);
+        throw error;
+      }
     } else {
-      delete process.env.POSTGRES_URL;
-    }
-    dbType = 'vercel';
-    if (process.env.NODE_ENV !== 'production') {
-      console.log('📦 Usando Vercel Postgres com URL pooled (POSTGRES_PRISMA_URL ou POSTGRES_PRISMA_DATABASE_URL)');
+      // URL com pooling (pgbouncer=true) - funciona com @vercel/postgres.sql
+      // IMPORTANTE: Define POSTGRES_URL ANTES de requerer o módulo
+      // @vercel/postgres.sql lê POSTGRES_URL no momento do require
+      const originalPostgresUrl = process.env.POSTGRES_URL;
+      process.env.POSTGRES_URL = convertedUrl;
+      
+      // Requer o módulo DEPOIS de definir POSTGRES_URL
+      const vercelPostgres = require('@vercel/postgres');
+      const originalSql = vercelPostgres.sql;
+      
+      // Wrapper com retry para @vercel/postgres
+      // @vercel/postgres usa template literals como função tag
+      sql = function(strings, ...values) {
+        return executeWithRetry(() => originalSql.apply(null, arguments));
+      };
+      // Para compatibilidade com sql.query() usado em initializeDatabase
+      sql.query = async (queryText) => {
+        return executeWithRetry(async () => {
+          if (typeof queryText === 'string') {
+            // @vercel/postgres não tem método direto para strings, usa template literal
+            // Mas precisamos escapar valores - para queries simples, funciona
+            return originalSql([queryText]);
+          }
+          // Se for objeto do @vercel/postgres (com .raw, .strings, .values)
+          if (queryText && queryText.raw) {
+            return originalSql(queryText.strings, ...(queryText.values || []));
+          }
+          throw new Error('Formato de query inválido');
+        });
+      };
+      
+      // Restaura POSTGRES_URL original se existia
+      if (originalPostgresUrl) {
+        process.env.POSTGRES_URL = originalPostgresUrl;
+      } else {
+        delete process.env.POSTGRES_URL;
+      }
+      dbType = 'vercel';
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('📦 Usando Vercel Postgres com URL pooled (POSTGRES_PRISMA_URL ou POSTGRES_PRISMA_DATABASE_URL)');
+      }
     }
   } else if (process.env.POSTGRES_URL && isPostgresUrlPooled) {
     logChosenUrl('POSTGRES_URL (pooled)', process.env.POSTGRES_URL);
@@ -243,32 +321,84 @@ if (useLocalPg) {
     }
   } else if (prismaUrl && !isPrismaUrlPooled) {
     // Tenta forçar pooling adicionando pgbouncer=true
-    const forced = addPgbouncer(prismaUrl);
+    // Converte URL Prisma para formato PostgreSQL padrão se necessário
+    const convertedUrl = convertPrismaUrl(prismaUrl);
+    const isPrismaAccelerate = isPrismaAccelerateUrl(prismaUrl);
+    const forced = addPgbouncer(convertedUrl);
     logChosenUrl('POSTGRES_PRISMA_URL/POSTGRES_PRISMA_DATABASE_URL (forçada com pgbouncer=true)', forced);
-    const originalPostgresUrl = process.env.POSTGRES_URL;
-    process.env.POSTGRES_URL = forced;
-    const vercelPostgres = require('@vercel/postgres');
-    const originalSql = vercelPostgres.sql;
-    sql = function(strings, ...values) {
-      return executeWithRetry(() => originalSql.apply(null, arguments));
-    };
-    sql.query = async (queryText) => {
-      return executeWithRetry(async () => {
-        if (typeof queryText === 'string') {
-          return originalSql([queryText]);
+    
+    // Se for URL Prisma Accelerate, usa pg diretamente (mais compatível)
+    if (isPrismaAccelerate) {
+      console.log('🔧 Detectada URL Prisma Accelerate - usando driver pg');
+      try {
+        const { Pool } = require('pg');
+        pool = new Pool({
+          connectionString: convertedUrl,
+          ssl: { rejectUnauthorized: false } // Prisma Accelerate requer SSL
+        });
+        
+        // Cria wrapper compatível com sql usando o pool
+        sql = function(strings, ...values) {
+          return executeWithRetry(async () => {
+            const text = strings.reduce((acc, str, i) => {
+              return acc + str + (i < values.length ? `$${i + 1}` : '');
+            }, '');
+            const result = await pool.query(text, values);
+            return { rows: result.rows };
+          });
+        };
+        
+        sql.query = async (queryText) => {
+          return executeWithRetry(async () => {
+            if (typeof queryText === 'string') {
+              const result = await pool.query(queryText);
+              return { rows: result.rows };
+            }
+            if (queryText && queryText.raw) {
+              const text = queryText.strings.reduce((acc, str, i) => {
+                return acc + str + (i < queryText.values.length ? `$${i + 1}` : '');
+              }, '');
+              const result = await pool.query(text, queryText.values || []);
+              return { rows: result.rows };
+            }
+            throw new Error('Formato de query inválido');
+          });
+        };
+        
+        dbType = 'local'; // Usa tipo local mesmo em produção para Prisma Accelerate
+        if (process.env.NODE_ENV !== 'production') {
+          console.log('📦 Usando driver pg com URL Prisma Accelerate (forçada)');
         }
-        if (queryText && queryText.raw) {
-          return originalSql(queryText.strings, ...(queryText.values || []));
-        }
-        throw new Error('Formato de query inválido');
-      });
-    };
-    if (originalPostgresUrl) {
-      process.env.POSTGRES_URL = originalPostgresUrl;
+      } catch (error) {
+        console.error('❌ Erro ao inicializar pg para Prisma Accelerate:', error.message);
+        throw error;
+      }
     } else {
-      delete process.env.POSTGRES_URL;
+      const originalPostgresUrl = process.env.POSTGRES_URL;
+      process.env.POSTGRES_URL = forced;
+      const vercelPostgres = require('@vercel/postgres');
+      const originalSql = vercelPostgres.sql;
+      sql = function(strings, ...values) {
+        return executeWithRetry(() => originalSql.apply(null, arguments));
+      };
+      sql.query = async (queryText) => {
+        return executeWithRetry(async () => {
+          if (typeof queryText === 'string') {
+            return originalSql([queryText]);
+          }
+          if (queryText && queryText.raw) {
+            return originalSql(queryText.strings, ...(queryText.values || []));
+          }
+          throw new Error('Formato de query inválido');
+        });
+      };
+      if (originalPostgresUrl) {
+        process.env.POSTGRES_URL = originalPostgresUrl;
+      } else {
+        delete process.env.POSTGRES_URL;
+      }
+      dbType = 'vercel';
     }
-    dbType = 'vercel';
   } else if (process.env.POSTGRES_URL) {
     const forced = addPgbouncer(process.env.POSTGRES_URL);
     logChosenUrl('POSTGRES_URL (forçada com pgbouncer=true)', forced);
