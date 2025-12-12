@@ -45,8 +45,18 @@ async function saveCobranca(cobranca) {
       : (tipoPagamento === 'CRIPTO' ? 2592000 : 3600); // 30 dias para CRIPTO, 1 hora para outros
     
     // @vercel/postgres trata JSONB automaticamente quando passamos um objeto
-    // Aplica timeout curto para evitar travamento em ambiente serverless (Vercel ~10s)
-    const INSERT_TIMEOUT_MS = 8000;
+    // Timeout ajustado para serverless (Vercel tem limite de 10s, então usamos 8s para dar margem)
+    const INSERT_TIMEOUT_MS = 8000; // 8 segundos (dentro do limite de 10s do Vercel)
+    console.log(`⏳ Executando INSERT com timeout de ${INSERT_TIMEOUT_MS}ms...`);
+    console.log(`   - brCode tamanho: ${brCode ? brCode.length : 'null'}`);
+    console.log(`   - dadosPagamento: ${dadosPagamento ? JSON.stringify(dadosPagamento).substring(0, 100) + '...' : 'null'}`);
+    console.log(`   - dadosDoadorTemp: ${dadosDoadorTemp ? JSON.stringify(dadosDoadorTemp).substring(0, 100) + '...' : 'null'}`);
+    const queryStartTime = Date.now();
+    
+    // Garante que dadosPagamento e dadosDoadorTemp são objetos válidos ou null
+    const dadosPagamentoFinal = dadosPagamento && typeof dadosPagamento === 'object' ? dadosPagamento : null;
+    const dadosDoadorTempFinal = dadosDoadorTemp && typeof dadosDoadorTemp === 'object' ? dadosDoadorTemp : null;
+    
     const insertPromise = sql`
       INSERT INTO cobrancas (
         txid, valor, status, campanha_id, tipo_pagamento, provider, chave_pix, brcode, expiracao, 
@@ -55,8 +65,8 @@ async function saveCobranca(cobranca) {
       VALUES (
         ${txid}, ${valor}, ${status}, ${campanhaId || null}, 
         ${tipoPagamento || 'PIX'}, ${finalProvider}, ${chavePix || null}, ${brCode}, ${expiracaoFinal}, 
-        ${redeTid || null}, ${finalProviderTid}, ${dadosPagamento || null}, 
-        ${cryptoCurrency || null}, ${cryptoAddress || null}, ${dadosDoadorTemp}
+        ${redeTid || null}, ${finalProviderTid}, ${dadosPagamentoFinal}, 
+        ${cryptoCurrency || null}, ${cryptoAddress || null}, ${dadosDoadorTempFinal}
       )
       ON CONFLICT (txid) DO UPDATE SET
         status = EXCLUDED.status,
@@ -73,9 +83,22 @@ async function saveCobranca(cobranca) {
       RETURNING txid, tipo_pagamento, provider, status, criado_em
     `;
     const timeoutPromise = new Promise((_, reject) => {
-      setTimeout(() => reject(new Error(`Timeout: INSERT demorou mais de ${INSERT_TIMEOUT_MS}ms`)), INSERT_TIMEOUT_MS);
+      setTimeout(() => {
+        const elapsed = Date.now() - queryStartTime;
+        reject(new Error(`Timeout: INSERT demorou mais de ${INSERT_TIMEOUT_MS}ms (elapsed: ${elapsed}ms)`));
+      }, INSERT_TIMEOUT_MS);
     });
-    const result = await Promise.race([insertPromise, timeoutPromise]);
+    
+    let result;
+    try {
+      result = await Promise.race([insertPromise, timeoutPromise]);
+      const elapsed = Date.now() - queryStartTime;
+      console.log(`✅ INSERT executado com sucesso em ${elapsed}ms`);
+    } catch (error) {
+      const elapsed = Date.now() - queryStartTime;
+      console.error(`❌ Erro no INSERT após ${elapsed}ms:`, error.message);
+      throw error;
+    }
     
     if (result.rows && result.rows.length > 0) {
       const row = result.rows[0];

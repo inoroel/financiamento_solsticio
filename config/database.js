@@ -210,7 +210,22 @@ if (useLocalPg) {
         const { Pool } = require('pg');
         pool = new Pool({
           connectionString: convertedUrl,
-          ssl: { rejectUnauthorized: false } // Prisma Accelerate requer SSL
+          ssl: { rejectUnauthorized: false }, // Prisma Accelerate requer SSL
+          max: 1, // Máximo de 1 conexão para serverless (Vercel)
+          idleTimeoutMillis: 30000, // 30 segundos
+          connectionTimeoutMillis: 5000 // 5 segundos para conectar (dentro do limite de 10s do Vercel)
+        });
+        
+        // Adiciona handler de erro no pool
+        pool.on('error', (err) => {
+          console.error('❌ Erro no pool de conexões:', err.message);
+        });
+        
+        // Testa a conexão imediatamente (não bloqueia, mas loga o resultado)
+        pool.query('SELECT NOW()').then(() => {
+          console.log('✅ Pool de conexões testado com sucesso');
+        }).catch((err) => {
+          console.error('❌ Erro ao testar pool:', err.message);
         });
         
         // Cria wrapper compatível com sql usando o pool
@@ -334,7 +349,22 @@ if (useLocalPg) {
         const { Pool } = require('pg');
         pool = new Pool({
           connectionString: convertedUrl,
-          ssl: { rejectUnauthorized: false } // Prisma Accelerate requer SSL
+          ssl: { rejectUnauthorized: false }, // Prisma Accelerate requer SSL
+          max: 1, // Máximo de 1 conexão para serverless (Vercel)
+          idleTimeoutMillis: 30000, // 30 segundos
+          connectionTimeoutMillis: 5000 // 5 segundos para conectar (dentro do limite de 10s do Vercel)
+        });
+        
+        // Adiciona handler de erro no pool
+        pool.on('error', (err) => {
+          console.error('❌ Erro no pool de conexões:', err.message);
+        });
+        
+        // Testa a conexão imediatamente (não bloqueia, mas loga o resultado)
+        pool.query('SELECT NOW()').then(() => {
+          console.log('✅ Pool de conexões testado com sucesso');
+        }).catch((err) => {
+          console.error('❌ Erro ao testar pool:', err.message);
         });
         
         // Cria wrapper compatível com sql usando o pool
