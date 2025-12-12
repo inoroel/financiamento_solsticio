@@ -57,6 +57,7 @@ async function saveCobranca(cobranca) {
     const dadosPagamentoFinal = dadosPagamento && typeof dadosPagamento === 'object' ? dadosPagamento : null;
     const dadosDoadorTempFinal = dadosDoadorTemp && typeof dadosDoadorTemp === 'object' ? dadosDoadorTemp : null;
     
+    // INSERT simples sem ON CONFLICT (verificação prévia já foi feita)
     const insertPromise = sql`
       INSERT INTO cobrancas (
         txid, valor, status, campanha_id, tipo_pagamento, provider, chave_pix, brcode, expiracao, 
@@ -68,18 +69,6 @@ async function saveCobranca(cobranca) {
         ${redeTid || null}, ${finalProviderTid}, ${dadosPagamentoFinal}, 
         ${cryptoCurrency || null}, ${cryptoAddress || null}, ${dadosDoadorTempFinal}
       )
-      ON CONFLICT (txid) DO UPDATE SET
-        status = EXCLUDED.status,
-        brcode = EXCLUDED.brcode,
-        tipo_pagamento = EXCLUDED.tipo_pagamento,
-        provider = EXCLUDED.provider,
-        rede_tid = COALESCE(EXCLUDED.rede_tid, cobrancas.rede_tid),
-        provider_tid = COALESCE(EXCLUDED.provider_tid, cobrancas.provider_tid),
-        dados_pagamento = EXCLUDED.dados_pagamento,
-        crypto_currency = EXCLUDED.crypto_currency,
-        crypto_address = EXCLUDED.crypto_address,
-        dados_doador_temp = EXCLUDED.dados_doador_temp,
-        atualizado_em = CURRENT_TIMESTAMP
       RETURNING txid, tipo_pagamento, provider, status, criado_em
     `;
     const timeoutPromise = new Promise((_, reject) => {
@@ -102,13 +91,12 @@ async function saveCobranca(cobranca) {
     
     if (result.rows && result.rows.length > 0) {
       const row = result.rows[0];
-      console.log(`✅ INSERT/UPDATE executado para txid: ${txid}`);
+      console.log(`✅ INSERT executado para txid: ${txid}`);
       console.log(`   - Tipo pagamento: ${row.tipo_pagamento}`);
       console.log(`   - Provider: ${row.provider}`);
       console.log(`   - Status: ${row.status}`);
       console.log(`   - Criado em: ${row.criado_em}`);
       
-      // Não faz nova consulta para evitar travamentos; confia no RETURNING
       return { txid, valor, status, tipoPagamento: tipoPagamento || 'PIX', provider: finalProvider };
     } else {
       console.error(`❌ ERRO CRÍTICO: INSERT executado mas nenhuma linha retornada para txid: ${txid}`);

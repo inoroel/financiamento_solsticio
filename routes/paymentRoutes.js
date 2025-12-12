@@ -286,8 +286,17 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
       });
     }
 
-    // Pula verificação prévia para evitar bloqueio; ON CONFLICT no insert garante unicidade
-    console.log(`ℹ️  Pulando verificação prévia de txid (usando ON CONFLICT no INSERT).`);
+    // Verifica se o txid já existe no banco antes de criar a cobrança
+    const { getCobranca } = require('../services/dbService');
+    const cobrancaExistente = await getCobranca(txid);
+    if (cobrancaExistente) {
+      console.log(`⚠️  TXID já existe no banco: ${txid}`);
+      return res.status(409).json({
+        error: 'TXID já existe. Tente novamente.',
+        txid: txid
+      });
+    }
+    console.log(`✅ TXID verificado: ${txid} não existe no banco, prosseguindo...`);
 
     // Cria a cobrança na e-Rede conforme o tipo de pagamento
     let cobranca = null;
