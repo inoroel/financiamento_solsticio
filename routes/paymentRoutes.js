@@ -286,9 +286,30 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
       });
     }
 
-    // Verifica se já existe uma cobrança com esse txid
+    // Verifica se já existe uma cobrança com esse txid (com timeout curto)
+    // Se a verificação falhar ou demorar, continua mesmo assim (o INSERT tem ON CONFLICT)
     console.log(`🔍 Verificando se cobrança já existe: txid=${txid}`);
-    const existingCobranca = await getCobranca(txid);
+    const checkStartTime = Date.now();
+    
+    let existingCobranca = null;
+    try {
+      // Timeout de 2 segundos para verificação (não deve bloquear o fluxo)
+      const checkPromise = getCobranca(txid);
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Timeout na verificação')), 2000);
+      });
+      
+      existingCobranca = await Promise.race([checkPromise, timeoutPromise]);
+      const checkElapsedTime = Date.now() - checkStartTime;
+      console.log(`✅ Verificação de cobrança concluída em ${checkElapsedTime}ms`);
+    } catch (checkError) {
+      const checkElapsedTime = Date.now() - checkStartTime;
+      console.warn(`⚠️  Verificação de cobrança falhou ou demorou muito (${checkElapsedTime}ms):`, checkError.message);
+      console.warn(`   Continuando mesmo assim (o INSERT tem ON CONFLICT para lidar com duplicatas)`);
+      // Continua mesmo se houver erro na verificação (pode ser timeout)
+      existingCobranca = null;
+    }
+    
     if (existingCobranca) {
       console.log(`⚠️  Cobrança já existe: txid=${txid}`);
       return res.status(409).json({

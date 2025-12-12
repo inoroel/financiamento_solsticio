@@ -152,9 +152,33 @@ async function getCobranca(txid) {
       return null;
     }
     
-    const result = await sql`
+    // Adiciona timeout para evitar travamentos
+    console.log(`⏳ Executando query no banco de dados...`);
+    const queryStartTime = Date.now();
+    
+    // Cria uma Promise com timeout
+    const queryPromise = sql`
       SELECT * FROM cobrancas WHERE txid = ${txid}
     `;
+    
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => {
+        reject(new Error('Timeout: Query demorou mais de 5 segundos'));
+      }, 5000); // 5 segundos de timeout
+    });
+    
+    let result;
+    try {
+      result = await Promise.race([queryPromise, timeoutPromise]);
+      const elapsedTime = Date.now() - queryStartTime;
+      console.log(`✅ Query executada com sucesso em ${elapsedTime}ms`);
+    } catch (timeoutError) {
+      const elapsedTime = Date.now() - queryStartTime;
+      console.error(`❌ TIMEOUT na query após ${elapsedTime}ms:`, timeoutError.message);
+      console.error(`   ⚠️  A query pode estar travando no banco de dados`);
+      console.error(`   💡 Verifique se há deadlocks ou problemas de conexão`);
+      return null;
+    }
     
     if (result.rows && result.rows.length > 0) {
       console.log(`✅ getCobranca: encontrada cobrança txid="${result.rows[0].txid}"`);
@@ -163,31 +187,15 @@ async function getCobranca(txid) {
       return result.rows[0];
     } else {
       console.log(`⚠️  getCobranca: nenhuma cobrança encontrada com txid="${txid}"`);
-      // Debug: lista algumas cobranças recentes para ver o formato
-      try {
-        const recent = await sql`
-          SELECT txid, tipo_pagamento, provider, criado_em, status
-          FROM cobrancas 
-          WHERE tipo_pagamento = 'CRIPTO' 
-          ORDER BY criado_em DESC 
-          LIMIT 10
-        `;
-        if (recent.rows && recent.rows.length > 0) {
-          console.log(`📋 Cobranças CRIPTO recentes (últimas 10):`);
-          recent.rows.forEach((r, i) => {
-            console.log(`   ${i + 1}. txid="${r.txid}" (tamanho: ${r.txid?.length}), provider="${r.provider}", status="${r.status}"`);
-          });
-        } else {
-          console.log(`⚠️  Nenhuma cobrança CRIPTO encontrada no banco`);
-        }
-      } catch (debugError) {
-        console.error(`❌ Erro ao buscar cobranças recentes para debug:`, debugError.message);
-      }
+      // Remove o debug de cobranças recentes para evitar mais queries lentas
       return null;
     }
   } catch (error) {
     console.error('❌ Erro ao buscar cobrança:', error.message);
     console.error('   Stack:', error.stack);
+    if (error.code) {
+      console.error(`   Código do erro: ${error.code}`);
+    }
     return null;
   }
 }
