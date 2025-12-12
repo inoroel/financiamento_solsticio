@@ -40,6 +40,21 @@ function addPgbouncer(url = '') {
 }
 
 /**
+ * Remove pgbouncer=true da URL (Prisma Accelerate não precisa)
+ * @param {string} url - URL de conexão
+ * @returns {string} URL sem pgbouncer
+ */
+function removePgbouncer(url = '') {
+  if (!url) return url;
+  // Remove pgbouncer=true e pgbouncer=false da query string
+  return url
+    .replace(/[?&]pgbouncer=true/gi, '')
+    .replace(/[?&]pgbouncer=false/gi, '')
+    .replace(/pgbouncer=true[&?]/gi, '')
+    .replace(/pgbouncer=false[&?]/gi, '');
+}
+
+/**
  * Verifica se a URL é do Prisma Accelerate
  * @param {string} url - URL de conexão
  * @returns {boolean} true se for URL Prisma Accelerate
@@ -185,9 +200,17 @@ if (useLocalPg) {
   // @vercel/postgres.sql precisa de POSTGRES_PRISMA_URL ou POSTGRES_PRISMA_DATABASE_URL (com pooling)
   // A Vercel gera: POSTGRES_PRISMA_DATABASE_URL, POSTGRES_DATABASE_URL, POSTGRES_URL
   // Verifica múltiplas variações possíveis
+  
+  // NOVA TENTATIVA: Verificar POSTGRES_URL_NON_POOLING primeiro (pode funcionar melhor com Prisma Accelerate)
+  const nonPoolingUrl = process.env.POSTGRES_URL_NON_POOLING;
+  if (nonPoolingUrl && isPrismaAccelerateUrl(nonPoolingUrl)) {
+    console.log('🔍 POSTGRES_URL_NON_POOLING encontrada e é Prisma Accelerate - usando ela');
+  }
+  
   const prismaUrl = process.env.POSTGRES_PRISMA_URL || 
                     process.env.POSTGRES_PRISMA_DATABASE_URL ||
-                    process.env.POSTGRES_DATABASE_URL;
+                    process.env.POSTGRES_DATABASE_URL ||
+                    (nonPoolingUrl && isPrismaAccelerateUrl(nonPoolingUrl) ? nonPoolingUrl : null);
   
   // Verifica se POSTGRES_URL é uma URL pooled (contém pgbouncer=true)
   const postgresUrl = process.env.POSTGRES_URL || '';
@@ -208,13 +231,20 @@ if (useLocalPg) {
     if (isPrismaAccelerate) {
       console.log('🔧 Detectada URL Prisma Accelerate - usando pg diretamente');
       
+      // Remove pgbouncer da URL (Prisma Accelerate já faz pooling)
+      let cleanUrl = removePgbouncer(convertedUrl);
+      
+      // Adiciona timeouts na URL (PostgreSQL aceita como parâmetros de conexão)
+      const hasQuery = cleanUrl.includes('?');
+      cleanUrl += (hasQuery ? '&' : '?') + 'connect_timeout=5&statement_timeout=5000';
+      
       const { Pool } = require('pg');
       pool = new Pool({
-        connectionString: convertedUrl,
+        connectionString: cleanUrl,
         ssl: { rejectUnauthorized: false }, // Prisma Accelerate requer SSL
         max: 1, // Serverless: uma conexão por vez
         idleTimeoutMillis: 30000,
-        connectionTimeoutMillis: 10000
+        connectionTimeoutMillis: 5000, // Reduzido para 5s
       });
       
       // Wrapper compatível com sql template literal usando o pool
@@ -338,13 +368,20 @@ if (useLocalPg) {
     if (isPrismaAccelerate) {
       console.log('🔧 Detectada URL Prisma Accelerate - usando pg diretamente (forçada)');
       
+      // Remove pgbouncer da URL (Prisma Accelerate já faz pooling)
+      let cleanUrl = removePgbouncer(convertedUrl);
+      
+      // Adiciona timeouts na URL (PostgreSQL aceita como parâmetros de conexão)
+      const hasQuery = cleanUrl.includes('?');
+      cleanUrl += (hasQuery ? '&' : '?') + 'connect_timeout=5&statement_timeout=5000';
+      
       const { Pool } = require('pg');
       pool = new Pool({
-        connectionString: convertedUrl,
+        connectionString: cleanUrl,
         ssl: { rejectUnauthorized: false }, // Prisma Accelerate requer SSL
         max: 1, // Serverless: uma conexão por vez
         idleTimeoutMillis: 30000,
-        connectionTimeoutMillis: 10000
+        connectionTimeoutMillis: 5000, // Reduzido para 5s
       });
       
       // Wrapper compatível com sql template literal usando o pool
