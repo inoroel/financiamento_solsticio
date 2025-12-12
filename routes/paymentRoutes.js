@@ -287,18 +287,25 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
     }
 
     // Verifica se já existe uma cobrança com esse txid
+    console.log(`🔍 Verificando se cobrança já existe: txid=${txid}`);
     const existingCobranca = await getCobranca(txid);
     if (existingCobranca) {
+      console.log(`⚠️  Cobrança já existe: txid=${txid}`);
       return res.status(409).json({
         error: 'TXID já existe. Tente novamente.'
       });
     }
+    console.log(`✅ Cobrança não existe, prosseguindo com criação...`);
 
     // Cria a cobrança na e-Rede conforme o tipo de pagamento
     let cobranca = null;
     let dadosPagamento = null;
 
     if (tipoPagamento === 'PIX') {
+      console.log(`\n📝 Iniciando criação de cobrança PIX...`);
+      console.log(`   - txid: ${txid}`);
+      console.log(`   - valor: ${valorValidado}`);
+      
       const nomeSanitizado = doador?.anonimo === false && doador?.nome
         ? sanitizeString(doador.nome)
         : null;
@@ -307,19 +314,44 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
         ? `Doação de ${nomeSanitizado} para o Festival Solsticio`
         : "Doação para o Festival Solsticio";
 
-      cobranca = await createPixCharge(txid, valorValidado, solicitacaoPagador);
+      console.log(`   - solicitacaoPagador: ${solicitacaoPagador}`);
+      console.log(`   - Chamando createPixCharge...`);
+      
+      try {
+        cobranca = await createPixCharge(txid, valorValidado, solicitacaoPagador);
+        console.log(`✅ createPixCharge retornou:`, cobranca ? (cobranca.error ? 'ERRO' : 'SUCESSO') : 'NULL');
+      } catch (error) {
+        console.error(`❌ ERRO ao chamar createPixCharge:`, error.message);
+        console.error(`   Stack:`, error.stack);
+        return res.status(500).json({
+          error: 'Erro ao criar cobrança PIX.',
+          details: process.env.NODE_ENV === 'development' ? error.message : undefined
+        });
+      }
       
       // Prepara dados_pagamento incluindo a imagem base64 do QR Code
+      console.log(`📋 Processando resultado de createPixCharge...`);
       if (cobranca && !cobranca.error && cobranca.qrCodeImage) {
+        console.log(`✅ Cobrança criada com sucesso, preparando dados_pagamento...`);
         dadosPagamento = {
           brCode: cobranca.brCode,
           qrCodeImage: cobranca.qrCodeImage, // Imagem base64 do QR Code (evita problemas com CSP)
           rede_tid: cobranca.rede_tid,
           expiracao: cobranca.expiracao
         };
+        console.log(`   - brCode: ${cobranca.brCode ? 'disponível' : 'null'}`);
+        console.log(`   - qrCodeImage: ${cobranca.qrCodeImage ? 'disponível' : 'null'}`);
+        console.log(`   - rede_tid: ${cobranca.rede_tid || 'null'}`);
+      } else {
+        console.log(`⚠️  Cobrança sem qrCodeImage ou com erro`);
       }
 
       if (!cobranca || cobranca.error) {
+        console.error(`❌ Erro ao criar cobrança PIX`);
+        console.error(`   - cobranca: ${cobranca ? 'existe' : 'null'}`);
+        console.error(`   - cobranca.error: ${cobranca?.error || 'null'}`);
+        console.error(`   - errorDetails:`, cobranca?.errorDetails || 'null');
+        
         // Se retornou erro, inclui detalhes para diagnóstico
         // Prioriza mensagem customizada do serviço, depois mensagem da API, depois genérica
         const errorMessage = cobranca?.errorDetails?.message 
@@ -330,11 +362,14 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
         // Preserva o status code original (403 para CloudFront, 401 para credenciais, etc)
         const statusCode = cobranca?.errorDetails?.status || 500;
         
+        console.error(`   - Retornando erro ${statusCode}: ${errorMessage}`);
         return res.status(statusCode).json({
           error: errorMessage,
           details: process.env.NODE_ENV === 'development' ? cobranca?.errorDetails : undefined
         });
       }
+      
+      console.log(`✅ Cobrança PIX criada com sucesso, prosseguindo para salvar no banco...`);
     } else if (tipoPagamento === 'CREDITO') {
       const parcelasValidadas = validateParcelas(parcelas || 1);
 
@@ -1088,12 +1123,28 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
       }
     }
 
+    console.log(`\n✅ Preparando resposta final para o frontend...`);
+    console.log(`   - txid: ${response.txid}`);
+    console.log(`   - tipo_pagamento: ${response.tipo_pagamento}`);
+    console.log(`   - status: ${response.status}`);
+    console.log(`   - valor: ${response.valor}`);
+    
     res.status(200).json(response);
+    console.log(`✅ Resposta enviada com sucesso para o frontend`);
 
   } catch (error) {
     console.error('❌ Erro inesperado no endpoint /api/gerar-pagamento:', error.message);
+    console.error('   Tipo do erro:', error.constructor.name);
     if (process.env.NODE_ENV === 'development') {
       console.error('Stack:', error.stack);
+    }
+    
+    // Log adicional para erros de rede/timeout
+    if (error.code === 'ECONNABORTED' || error.message.includes('timeout')) {
+      console.error('   ⚠️  Erro de timeout na requisição');
+    }
+    if (error.response) {
+      console.error('   ⚠️  Erro de resposta HTTP:', error.response.status, error.response.statusText);
     }
 
     // IMPORTANTE: Adiciona headers CORS mesmo em caso de erro

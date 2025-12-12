@@ -64,6 +64,8 @@ async function getAccessToken() {
   }
 
   console.log('🔐 Obtendo novo access_token via OAuth 2.0...');
+  console.log(`   - OAuth URL: ${OAUTH_TOKEN_URL}`);
+  console.log(`   - Ambiente: ${ENVIRONMENT}`);
   
   try {
     // Conforme documentação OAuth 2.0:
@@ -72,6 +74,9 @@ async function getAccessToken() {
     // - Usamos Basic Auth apenas para obter o access_token
     // - O access_token obtido é usado nas requisições da API (Bearer token)
     const authHeader = `Basic ${Buffer.from(`${PV}:${TOKEN}`).toString('base64')}`;
+    
+    console.log(`   - Enviando requisição OAuth...`);
+    const oauthStartTime = Date.now();
     
     const response = await axios.post(
       OAUTH_TOKEN_URL,
@@ -84,6 +89,9 @@ async function getAccessToken() {
         timeout: 10000 // 10 segundos para obter token
       }
     );
+    
+    const oauthElapsedTime = Date.now() - oauthStartTime;
+    console.log(`   ✅ Resposta OAuth recebida em ${oauthElapsedTime}ms`);
 
     if (!response.data || !response.data.access_token) {
       throw new Error('Resposta OAuth inválida: access_token não encontrado');
@@ -137,7 +145,11 @@ async function getAuthHeaders() {
 
   // SEMPRE usa OAuth 2.0 - Basic Auth não é mais aceito em produção
   // O access_token é obtido dinamicamente via getAccessToken()
+  console.log('🔐 Obtendo access_token via OAuth 2.0...');
+  const startTime = Date.now();
   const accessToken = await getAccessToken();
+  const elapsedTime = Date.now() - startTime;
+  console.log(`✅ Access_token obtido em ${elapsedTime}ms`);
   const authHeader = `Bearer ${accessToken}`;
   
   console.log('🔐 Usando autenticação OAuth 2.0 (Bearer token)');
@@ -292,6 +304,7 @@ async function createPixCharge(txid, valor, solicitacaoPagador = "Doação para 
 
     const endpoint = '/v2/transactions';
     const correlationId = generateCorrelationId();
+    console.log(`🔗 Endpoint: ${endpoint}, Correlation ID: ${correlationId}`);
 
     // Valida que o reference está dentro do limite (até 50 caracteres conforme documentação e-Rede)
     // Documentação: reference - Até 50, Alfanumérico, Sim, Código da transação gerado pelo estabelecimento
@@ -345,16 +358,28 @@ async function createPixCharge(txid, valor, solicitacaoPagador = "Doação para 
       console.log(`🌐 Ambiente Vercel detectado - IPs são dinâmicos`);
     }
 
-    const response = await axios.post(
-      `${API_BASE_URL}${endpoint}`,
-      requestBody,
-      {
-        headers,
-        timeout: 30000 // 30 segundos de timeout
-        // NOTA: Não usamos validateStatus aqui porque queremos que 4xx (403, 401, etc) 
-        // sejam tratados como erros e lancem exceção para entrar no catch
-      }
-    );
+    console.log(`⏳ Aguardando resposta da API e-Rede...`);
+    const startTime = Date.now();
+    
+    let response;
+    try {
+      response = await axios.post(
+        `${API_BASE_URL}${endpoint}`,
+        requestBody,
+        {
+          headers,
+          timeout: 30000 // 30 segundos de timeout
+          // NOTA: Não usamos validateStatus aqui porque queremos que 4xx (403, 401, etc) 
+          // sejam tratados como erros e lancem exceção para entrar no catch
+        }
+      );
+      const elapsedTime = Date.now() - startTime;
+      console.log(`✅ Resposta recebida da API e-Rede em ${elapsedTime}ms`);
+    } catch (axiosError) {
+      const elapsedTime = Date.now() - startTime;
+      console.error(`❌ Erro na requisição axios após ${elapsedTime}ms:`, axiosError.message);
+      throw axiosError; // Re-lança para ser tratado no catch externo
+    }
 
     console.log('✅ COBRANÇA PIX e-Rede CRIADA COM SUCESSO!');
     console.log('📦 Resposta completa da e-Rede:', JSON.stringify(response.data, null, 2));
