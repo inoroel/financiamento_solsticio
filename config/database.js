@@ -32,6 +32,13 @@ function logChosenUrl(label, url) {
   }
 }
 
+function addPgbouncer(url = '') {
+  if (!url) return url;
+  if (url.includes('pgbouncer=true')) return url;
+  const hasQuery = url.includes('?');
+  return url + (hasQuery ? '&' : '?') + 'pgbouncer=true';
+}
+
 /**
  * Executa uma query com retry em caso de erro de conexão
  * @param {Function} queryFn - Função que executa a query
@@ -208,97 +215,6 @@ if (useLocalPg) {
     if (process.env.NODE_ENV !== 'production') {
       console.log('📦 Usando Vercel Postgres com URL pooled (POSTGRES_PRISMA_URL ou POSTGRES_PRISMA_DATABASE_URL)');
     }
-  } else if (prismaUrl && !isPrismaUrlPooled) {
-    logChosenUrl('POSTGRES_PRISMA_URL/POSTGRES_PRISMA_DATABASE_URL (non-pooled)', prismaUrl);
-    // prismaUrl existe mas não é pooled - usa createClient()
-    try {
-      const { createClient } = require('@vercel/postgres');
-      const client = createClient({
-        connectionString: prismaUrl
-      });
-      
-      // Cria wrapper compatível com @vercel/postgres usando o client
-      sql = function(strings, ...values) {
-        return executeWithRetry(async () => {
-          if (arguments.length === 1 && typeof arguments[0] === 'string') {
-            const result = await client.query(arguments[0]);
-            return { rows: result.rows };
-          }
-          
-          const text = strings.reduce((acc, str, i) => {
-            return acc + str + (i < values.length ? `$${i + 1}` : '');
-          }, '');
-          
-          const result = await client.query(text, values);
-          return { rows: result.rows };
-        });
-      };
-      
-      sql.query = async (queryText) => {
-        return executeWithRetry(async () => {
-          if (typeof queryText === 'string') {
-            const result = await client.query(queryText);
-            return { rows: result.rows };
-          }
-          if (queryText && queryText.raw) {
-            const text = queryText.strings.reduce((acc, str, i) => {
-              return acc + str + (i < queryText.values.length ? `$${i + 1}` : '');
-            }, '');
-            const values = queryText.values || [];
-            const result = await client.query(text, values);
-            return { rows: result.rows };
-          }
-          throw new Error('Formato de query inválido');
-        });
-      };
-      
-      dbType = 'vercel';
-      if (process.env.NODE_ENV !== 'production') {
-        console.log('📦 Usando @vercel/postgres createClient() com POSTGRES_PRISMA_URL (não pooled)');
-      }
-    } catch (error) {
-      console.warn('⚠️  Erro ao usar @vercel/postgres createClient() com prismaUrl, tentando pg:', error.message);
-      // Fallback para pg
-      try {
-        const { Pool } = require('pg');
-        const poolConfig = {
-          connectionString: prismaUrl,
-          ssl: { rejectUnauthorized: false },
-          max: 1,
-          idleTimeoutMillis: 30000,
-          connectionTimeoutMillis: 10000,
-          allowExitOnIdle: true
-        };
-        
-        pool = new Pool(poolConfig);
-        pool.on('error', (err) => {
-          console.error('❌ Erro inesperado no pool de conexões:', err.message);
-        });
-        
-        dbType = 'vercel';
-        console.log('📦 Usando pg com POSTGRES_PRISMA_URL (fallback)');
-        
-        sql = function(strings, ...values) {
-          if (arguments.length === 1 && typeof arguments[0] === 'string') {
-            return executeWithRetry(() => pool.query(arguments[0]).then(result => ({ rows: result.rows })));
-          }
-          const text = strings.reduce((acc, str, i) => {
-            return acc + str + (i < values.length ? `$${i + 1}` : '');
-          }, '');
-          return executeWithRetry(() => pool.query(text, values).then(result => ({ rows: result.rows })));
-        };
-        
-        sql.query = async (queryText) => {
-          if (typeof queryText === 'string') {
-            return executeWithRetry(() => pool.query(queryText).then(result => ({ rows: result.rows })));
-          }
-          throw new Error('Formato de query inválido');
-        };
-      } catch (pgError) {
-        console.error('❌ Erro ao usar pg como fallback:', pgError.message);
-        throw new Error('Não foi possível inicializar conexão com banco de dados');
-      }
-    }
   } else if (process.env.POSTGRES_URL && isPostgresUrlPooled) {
     logChosenUrl('POSTGRES_URL (pooled)', process.env.POSTGRES_URL);
     // POSTGRES_URL existe e é pooled (tem pgbouncer=true) - pode usar sql diretamente
@@ -325,106 +241,54 @@ if (useLocalPg) {
     if (process.env.NODE_ENV !== 'production') {
       console.log('📦 Usando Vercel Postgres com POSTGRES_URL pooled (pgbouncer=true)');
     }
-  } else if (process.env.POSTGRES_URL) {
-    logChosenUrl('POSTGRES_URL (non-pooled)', process.env.POSTGRES_URL);
-    // Se não tem POSTGRES_PRISMA_URL, usa createClient() do @vercel/postgres
-    // createClient() aceita connection strings diretas (sem pooling)
-    try {
-      const { createClient } = require('@vercel/postgres');
-      const client = createClient({
-        connectionString: process.env.POSTGRES_URL
+  } else if (prismaUrl && !isPrismaUrlPooled) {
+    // Tenta forçar pooling adicionando pgbouncer=true
+    const forced = addPgbouncer(prismaUrl);
+    logChosenUrl('POSTGRES_PRISMA_URL/POSTGRES_PRISMA_DATABASE_URL (forçada com pgbouncer=true)', forced);
+    const originalPostgresUrl = process.env.POSTGRES_URL;
+    process.env.POSTGRES_URL = forced;
+    const vercelPostgres = require('@vercel/postgres');
+    const originalSql = vercelPostgres.sql;
+    sql = function(strings, ...values) {
+      return executeWithRetry(() => originalSql.apply(null, arguments));
+    };
+    sql.query = async (queryText) => {
+      return executeWithRetry(async () => {
+        if (typeof queryText === 'string') {
+          return originalSql([queryText]);
+        }
+        if (queryText && queryText.raw) {
+          return originalSql(queryText.strings, ...(queryText.values || []));
+        }
+        throw new Error('Formato de query inválido');
       });
-      
-      // Cria wrapper compatível com @vercel/postgres usando o client
-      // @vercel/postgres usa template literals como função tag
-      sql = function(strings, ...values) {
-        return executeWithRetry(async () => {
-          // Se chamado sem template literal (string direta)
-          if (arguments.length === 1 && typeof arguments[0] === 'string') {
-            const result = await client.query(arguments[0]);
-            return { rows: result.rows };
-          }
-          
-          // Template literal - converte para query parametrizada
-          const text = strings.reduce((acc, str, i) => {
-            return acc + str + (i < values.length ? `$${i + 1}` : '');
-          }, '');
-          
-          const result = await client.query(text, values);
-          return { rows: result.rows };
-        });
-      };
-      
-      sql.query = async (queryText) => {
-        return executeWithRetry(async () => {
-          if (typeof queryText === 'string') {
-            const result = await client.query(queryText);
-            return { rows: result.rows };
-          }
-          // Se for objeto do @vercel/postgres (com .raw, .strings, .values)
-          if (queryText && queryText.raw) {
-            const text = queryText.strings.reduce((acc, str, i) => {
-              return acc + str + (i < queryText.values.length ? `$${i + 1}` : '');
-            }, '');
-            const values = queryText.values || [];
-            const result = await client.query(text, values);
-            return { rows: result.rows };
-          }
-          throw new Error('Formato de query inválido');
-        });
-      };
-      
-      dbType = 'vercel';
-      if (process.env.NODE_ENV !== 'production') {
-        console.log('📦 Usando @vercel/postgres createClient() com POSTGRES_URL (connection string direta)');
-      }
-    } catch (error) {
-      console.warn('⚠️  Erro ao usar @vercel/postgres createClient(), tentando pg:', error.message);
-      // Fallback para pg com POSTGRES_URL direta
-      try {
-        const { Pool } = require('pg');
-        
-        // Configuração otimizada para serverless (Vercel)
-        const poolConfig = {
-          connectionString: process.env.POSTGRES_URL,
-          ssl: { rejectUnauthorized: false }, // Vercel Postgres requer SSL
-          max: 1, // Máximo de 1 conexão por função serverless
-          idleTimeoutMillis: 30000,
-          connectionTimeoutMillis: 10000,
-          allowExitOnIdle: true
-        };
-        
-        pool = new Pool(poolConfig);
-        
-        pool.on('error', (err) => {
-          console.error('❌ Erro inesperado no pool de conexões:', err.message);
-        });
-        
-        dbType = 'vercel';
-        console.log('📦 Usando pg com POSTGRES_URL (fallback)');
-        
-        // Cria wrapper compatível com @vercel/postgres com retry
-        sql = function(strings, ...values) {
-          if (arguments.length === 1 && typeof arguments[0] === 'string') {
-            return executeWithRetry(() => pool.query(arguments[0]).then(result => ({ rows: result.rows })));
-          }
-          const text = strings.reduce((acc, str, i) => {
-            return acc + str + (i < values.length ? `$${i + 1}` : '');
-          }, '');
-          return executeWithRetry(() => pool.query(text, values).then(result => ({ rows: result.rows })));
-        };
-        
-        sql.query = async (queryText) => {
-          if (typeof queryText === 'string') {
-            return executeWithRetry(() => pool.query(queryText).then(result => ({ rows: result.rows })));
-          }
-          throw new Error('Formato de query inválido');
-        };
-      } catch (pgError) {
-        console.error('❌ Erro ao usar pg como fallback:', pgError.message);
-        throw new Error('Não foi possível inicializar conexão com banco de dados');
-      }
+    };
+    if (originalPostgresUrl) {
+      process.env.POSTGRES_URL = originalPostgresUrl;
+    } else {
+      delete process.env.POSTGRES_URL;
     }
+    dbType = 'vercel';
+  } else if (process.env.POSTGRES_URL) {
+    const forced = addPgbouncer(process.env.POSTGRES_URL);
+    logChosenUrl('POSTGRES_URL (forçada com pgbouncer=true)', forced);
+    const vercelPostgres = require('@vercel/postgres');
+    const originalSql = vercelPostgres.sql;
+    sql = function(strings, ...values) {
+      return executeWithRetry(() => originalSql.apply(null, arguments));
+    };
+    sql.query = async (queryText) => {
+      return executeWithRetry(async () => {
+        if (typeof queryText === 'string') {
+          return originalSql([queryText]);
+        }
+        if (queryText && queryText.raw) {
+          return originalSql(queryText.strings, ...(queryText.values || []));
+        }
+        throw new Error('Formato de query inválido');
+      });
+    };
+    dbType = 'vercel';
   } else {
     // Sem variáveis de ambiente, usa sql padrão
     const vercelPostgres = require('@vercel/postgres');
