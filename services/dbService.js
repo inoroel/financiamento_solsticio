@@ -79,21 +79,7 @@ async function saveCobranca(cobranca) {
       console.log(`   - Status: ${row.status}`);
       console.log(`   - Criado em: ${row.criado_em}`);
       
-      // VERIFICAÇÃO CRÍTICA: Confirma que a cobrança realmente foi salva
-      console.log(`🔍 Verificando se cobrança foi realmente salva no banco: txid=${txid}`);
-      const cobrancaVerificada = await getCobranca(txid);
-      if (!cobrancaVerificada) {
-        console.error(`❌ ERRO CRÍTICO: Cobrança salva mas não encontrada imediatamente após INSERT: ${txid}`);
-        console.error(`   Isso indica um problema grave com o banco de dados ou com a query de busca`);
-        throw new Error(`Falha ao verificar cobrança salva: ${txid}`);
-      }
-      
-      console.log(`✅ Cobrança ${txid} verificada e confirmada no banco`);
-      console.log(`   - Status verificado: ${cobrancaVerificada.status}`);
-      console.log(`   - Provider verificado: ${cobrancaVerificada.provider}`);
-      console.log(`   - Rede TID verificado: ${cobrancaVerificada.rede_tid || 'null'}`);
-      console.log(`   - Provider TID verificado: ${cobrancaVerificada.provider_tid || 'null'}`);
-      
+      // Não faz nova consulta para evitar travamentos; confia no RETURNING
       return { txid, valor, status, tipoPagamento: tipoPagamento || 'PIX', provider: finalProvider };
     } else {
       console.error(`❌ ERRO CRÍTICO: INSERT executado mas nenhuma linha retornada para txid: ${txid}`);
