@@ -353,6 +353,11 @@
                             <label for="whatsapp">WhatsApp *</label>
                             <input type="text" id="whatsapp" placeholder="5511999999999" pattern="[0-9]{10,15}">
                         </div>
+
+                        <div class="form-group">
+                            <label for="mensagem">Mensagem (opcional)</label>
+                            <textarea id="mensagem" rows="3" placeholder="Deixe uma mensagem para a campanha..." maxlength="500"></textarea>
+                        </div>
                     </div>
 
                     <button type="submit" id="createBtn">
@@ -585,11 +590,15 @@
                 };
 
                 if (!anonimo) {
+                    const mensagem = document.getElementById('mensagem').value.trim();
                     requestBody.doador = {
                         nome: document.getElementById('nome').value,
                         whatsapp: document.getElementById('whatsapp').value,
                         anonimo: false
                     };
+                    if (mensagem) {
+                        requestBody.doador.mensagem = mensagem;
+                    }
                 }
 
                 const response = await fetch(`${API_URL}/api/gerar-pagamento`, {

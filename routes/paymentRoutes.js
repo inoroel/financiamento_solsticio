@@ -18,7 +18,7 @@ const {
   findPaymentByMemo,
   isSupportedCurrency
 } = require('../services/stellarService');
-const { saveCobranca, getCobranca, processConfirmedTransaction, getDoadoresIdentificados } = require('../services/dbService');
+const { saveCobranca, getCobranca, processConfirmedTransaction, getDoadoresIdentificados, getDoadoresComTickets } = require('../services/dbService');
 const { processWebhook } = require('../services/redeWebhookService');
 const { processWebhook: processStellarWebhook } = require('../services/stellarWebhookService');
 const { createChargeLimiter, consultChargeLimiter, webhookLimiter } = require('../middleware/security');
@@ -2226,6 +2226,60 @@ router.get('/doadores', async (req, res) => {
       success: false,
       error: 'Erro interno do servidor',
       message: process.env.NODE_ENV === 'development' ? error.message : 'Erro ao buscar doadores'
+    });
+  }
+});
+
+/**
+ * GET /api/doadores/tickets
+ * Lista doadores identificados com quantidade de tickets
+ * Regra: 1 ticket a cada R$ 50 doados (múltiplos de 50)
+ * Query params:
+ *   - page: número da página (padrão: 1)
+ *   - limit: itens por página (padrão: 50)
+ */
+router.get('/doadores/tickets', async (req, res) => {
+  try {
+    // Parâmetros de paginação
+    const page = parseInt(req.query.page, 10) || 1;
+    const limit = parseInt(req.query.limit, 10) || 50;
+    
+    // Validação de parâmetros
+    if (page < 1) {
+      return res.status(400).json({
+        success: false,
+        error: 'Parâmetro inválido',
+        message: 'page deve ser maior que 0'
+      });
+    }
+    
+    if (limit < 1 || limit > 100) {
+      return res.status(400).json({
+        success: false,
+        error: 'Parâmetro inválido',
+        message: 'limit deve estar entre 1 e 100'
+      });
+    }
+    
+    const offset = (page - 1) * limit;
+    
+    // Busca doadores com tickets
+    const doadores = await getDoadoresComTickets(limit, offset);
+    
+    // Retorna apenas nome e tickets
+    return res.status(200).json({
+      success: true,
+      data: doadores
+    });
+    
+  } catch (error) {
+    console.error('❌ Erro ao listar doadores com tickets:', error.message);
+    console.error(error.stack);
+    
+    return res.status(500).json({
+      success: false,
+      error: 'Erro interno do servidor',
+      message: process.env.NODE_ENV === 'development' ? error.message : 'Erro ao buscar doadores com tickets'
     });
   }
 });

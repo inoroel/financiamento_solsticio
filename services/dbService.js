@@ -687,6 +687,42 @@ async function getDoadoresIdentificados(limit = 50, offset = 0) {
   }
 }
 
+/**
+ * Busca doadores identificados com quantidade de tickets
+ * Calcula tickets: 1 ticket a cada R$ 50 doados (múltiplos de 50)
+ * @param {number} limit - Número de registros por página
+ * @param {number} offset - Offset para paginação
+ * @returns {Array} Array de doadores com nome e tickets
+ */
+async function getDoadoresComTickets(limit = 50, offset = 0) {
+  try {
+    // Busca doadores identificados com soma de transações confirmadas
+    // Calcula tickets: FLOOR(total / 50) - 1 ticket a cada R$ 50
+    const result = await sql`
+      SELECT 
+        d.id,
+        d.nome,
+        FLOOR(COALESCE(SUM(t.valor), 0) / 50)::INTEGER as tickets
+      FROM doadores d
+      LEFT JOIN transacoes t ON d.id = t.doador_id AND t.status = 'CONFIRMADA'
+      WHERE d.anonimo = false
+      GROUP BY d.id, d.nome
+      HAVING COALESCE(SUM(t.valor), 0) > 0
+      ORDER BY COALESCE(SUM(t.valor), 0) DESC, d.nome ASC
+      LIMIT ${limit}
+      OFFSET ${offset}
+    `;
+    
+    return result.rows.map(row => ({
+      nome: row.nome,
+      tickets: parseInt(row.tickets, 10)
+    }));
+  } catch (error) {
+    console.error('❌ Erro ao buscar doadores com tickets:', error.message);
+    throw error;
+  }
+}
+
 module.exports = {
   saveCobranca,
   getCobranca,
@@ -696,6 +732,7 @@ module.exports = {
   getTransacao,
   getTransacaoByRedeTid,
   getTransacaoByProviderTid,
-  getDoadoresIdentificados
+  getDoadoresIdentificados,
+  getDoadoresComTickets
 };
 
