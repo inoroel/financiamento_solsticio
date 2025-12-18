@@ -698,6 +698,7 @@ async function getDoadoresComTickets(limit = 50, offset = 0) {
   try {
     // Busca doadores identificados com soma de transações confirmadas
     // Calcula tickets: FLOOR(total / 50) - 1 ticket a cada R$ 50
+    // Retorna apenas doadores com pelo menos 1 ticket (R$ 50 ou mais)
     const result = await sql`
       SELECT 
         d.id,
@@ -707,7 +708,7 @@ async function getDoadoresComTickets(limit = 50, offset = 0) {
       LEFT JOIN transacoes t ON d.id = t.doador_id AND t.status = 'CONFIRMADA'
       WHERE d.anonimo = false
       GROUP BY d.id, d.nome
-      HAVING COALESCE(SUM(t.valor), 0) > 0
+      HAVING COALESCE(SUM(t.valor), 0) >= 50
       ORDER BY COALESCE(SUM(t.valor), 0) DESC, d.nome ASC
       LIMIT ${limit}
       OFFSET ${offset}
