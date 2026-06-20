@@ -2025,7 +2025,7 @@ router.post('/3ds/callback', async (req, res) => {
     console.log(`   TID: ${tid}`);
     
     if (!foiAutorizada) {
-      console.log(`❌ Transação não foi autorizada. ReturnCode: ${transactionData.returnCode}`);
+      console.log(`❌ Transação não foi autorizada. ReturnCode: ${returnCode}, ReturnMessage: ${returnMessage}`);
       
       // Atualiza status da cobrança para NEGADA
       await saveCobranca({
