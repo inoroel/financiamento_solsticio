@@ -1156,6 +1156,7 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
       response.qr_code_alt = cobranca.qr_code_alt; // QR code alternativo sem memo_type
       response.qr_code_address = cobranca.qr_code_address; // QR code apenas com o endereço Stellar
       response.qr_code_memo = cobranca.qr_code_memo; // QR code apenas com o memo
+    } else {
       // Para cartões, verifica se requer autenticação 3DS (returnCode 220)
       if (cobranca.requires3DS && cobranca.threeDSecureUrl) {
         response.requires3DS = true;
