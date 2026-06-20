@@ -3,6 +3,7 @@
 const crypto = require('crypto');
 const { processConfirmedTransaction, getCobranca } = require('./dbService');
 const { monitorPayments, consultStellarTransaction } = require('./stellarService');
+const { trackDonation } = require('./rewardsService');
 require('dotenv').config();
 
 /**
@@ -354,6 +355,11 @@ async function processWebhook(webhookBody, signature = null, clientIp = null, do
 
     if (!result) {
       throw new Error('Falha ao processar transação no banco de dados');
+    }
+
+    // Track reward progress for identified donors
+    if (result.doador && result.doador.whatsapp && transactionData.valor) {
+      trackDonation(result.doador.whatsapp, transactionData.valor, transactionData.provider_tid).catch(console.error);
     }
 
     console.log(`✅ Webhook Stellar processado com sucesso para hash: ${webhookData.provider_tid}`);

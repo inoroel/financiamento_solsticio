@@ -4,6 +4,8 @@ const express = require('express');
 const cors = require('cors');
 const { testConnection, initializeDatabase, getDatabaseDiagnostics } = require('./config/database');
 const paymentRoutes = require('./routes/paymentRoutes');
+const authRoutes = require('./routes/authRoutes');
+const rewardsRoutes = require('./routes/rewardsRoutes');
 const { requestLogger, errorHandler, notFoundHandler } = require('./middleware/errorHandler');
 const { helmetConfig } = require('./middleware/security');
 
@@ -161,6 +163,8 @@ app.get('/', (req, res) => {
 // ROTAS
 // =================================================================
 app.use('/api', paymentRoutes);
+app.use('/api/auth', authRoutes);
+app.use('/api/rewards', rewardsRoutes);
 
 // Rota de health check
 app.get('/health', async (req, res) => {

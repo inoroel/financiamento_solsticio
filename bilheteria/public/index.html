@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bilheteria Solstício - Ingressos para os melhores eventos</title>
+  <meta name="description" content="Compre ingressos para os melhores eventos, shows e festivais. Bilheteria online segura e rápida.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <!-- Header -->
+  <header class="header">
+    <div class="container header-content">
+      <a href="/" class="logo">🎫 Solstício</a>
+      <nav class="nav">
+        <a href="/">Eventos</a>
+        <a href="/meus-ingressos.html">Meus Ingressos</a>
+        <a href="#" id="loginBtn" class="btn btn-secondary btn-sm">Entrar</a>
+      </nav>
+    </div>
+  </header>
+
+  <!-- Hero -->
+  <section class="hero">
+    <div class="container">
+      <h1 class="hero-title">Encontre seu próximo evento</h1>
+      <p class="hero-subtitle">
+        Descubra shows, festivais e experiências únicas. Compre seus ingressos com segurança e rapidez.
+      </p>
+      <div class="form-group" style="max-width: 500px; margin: 0 auto;">
+        <input type="text" class="form-input" id="searchInput" placeholder="🔍 Buscar eventos, artistas ou cidades...">
+      </div>
+    </div>
+  </section>
+
+  <!-- Eventos -->
+  <main class="container">
+    <h2 style="margin-bottom: var(--spacing-md);">Próximos Eventos</h2>
+    
+    <div id="eventsGrid" class="events-grid">
+      <div class="loading">
+        <div class="spinner"></div>
+      </div>
+    </div>
+    
+    <div id="noEvents" style="display: none; text-align: center; padding: 3rem;">
+      <p style="color: var(--text-secondary); font-size: 1.25rem;">
+        Nenhum evento encontrado no momento.
+      </p>
+    </div>
+  </main>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="container">
+      <p>© 2024 Bilheteria Solstício. Todos os direitos reservados.</p>
+    </div>
+  </footer>
+
+  <script>
+    const API_URL = '';
+    
+    // Formata data
+    function formatDate(dateStr) {
+      const date = new Date(dateStr);
+      const options = { 
+        weekday: 'short', 
+        day: 'numeric', 
+        month: 'short',
+        hour: '2-digit',
+        minute: '2-digit'
+      };
+      return date.toLocaleDateString('pt-BR', options);
+    }
+    
+    // Formata preço
+    function formatPrice(value) {
+      return new Intl.NumberFormat('pt-BR', {
+        style: 'currency',
+        currency: 'BRL'
+      }).format(value);
+    }
+    
+    // Cria card de evento
+    function createEventCard(evento) {
+      const disponivel = evento.ingressos_disponiveis > 0;
+      const badgeClass = disponivel ? 'badge-available' : 'badge-soldout';
+      const badgeText = disponivel ? 'Disponível' : 'Esgotado';
+      
+      return `
+        <article class="card" onclick="window.location.href='/evento.html?slug=${evento.slug}'">
+          <img 
+            src="${evento.imagem_url || 'https://placehold.co/400x200/1e293b/94a3b8?text=Evento'}" 
+            alt="${evento.titulo}"
+            class="card-image"
+            onerror="this.src='https://placehold.co/400x200/1e293b/94a3b8?text=Evento'"
+          >
+          <div class="card-body">
+            <span class="badge ${badgeClass}">${badgeText}</span>
+            <h3 class="card-title">${evento.titulo}</h3>
+            <div class="card-meta">
+              <span>📅 ${formatDate(evento.data_evento)}</span>
+              <span>📍 ${evento.local_cidade || 'Local a definir'}${evento.local_uf ? ', ' + evento.local_uf : ''}</span>
+            </div>
+            <div class="card-price">
+              ${evento.preco_minimo 
+                ? `${formatPrice(evento.preco_minimo)} <small>a partir de</small>` 
+                : '<small>Preço a definir</small>'
+              }
+            </div>
+          </div>
+        </article>
+      `;
+    }
+    
+    // Carrega eventos
+    async function loadEvents() {
+      try {
+        const response = await fetch(`${API_URL}/api/eventos`);
+        const data = await response.json();
+        
+        const grid = document.getElementById('eventsGrid');
+        const noEvents = document.getElementById('noEvents');
+        
+        if (data.success && data.eventos.length > 0) {
+          grid.innerHTML = data.eventos.map(createEventCard).join('');
+          noEvents.style.display = 'none';
+        } else {
+          grid.innerHTML = '';
+          noEvents.style.display = 'block';
+        }
+      } catch (error) {
+        console.error('Erro ao carregar eventos:', error);
+        document.getElementById('eventsGrid').innerHTML = `
+          <div class="alert alert-error">
+            Erro ao carregar eventos. Tente novamente mais tarde.
+          </div>
+        `;
+      }
+    }
+    
+    // Busca eventos
+    document.getElementById('searchInput').addEventListener('input', async (e) => {
+      const query = e.target.value.toLowerCase();
+      if (query.length < 2) {
+        loadEvents();
+        return;
+      }
+      // TODO: Implementar busca no backend
+    });
+    
+    // Login button
+    document.getElementById('loginBtn').addEventListener('click', () => {
+      window.location.href = '/login.html';
+    });
+    
+    // Init
+    loadEvents();
+  </script>
+</body>
+</html>

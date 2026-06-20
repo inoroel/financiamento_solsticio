@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Checkout - Bilheteria Solstício</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="container header-content">
+            <a href="/" class="logo">🎫 Solstício</a>
+            <nav class="nav">
+                <a href="/">← Voltar</a>
+            </nav>
+        </div>
+    </header>
+
+    <main class="container">
+        <h1 style="margin: var(--spacing-xl) 0;">Finalizar Compra</h1>
+
+        <!-- Timer -->
+        <div id="timerContainer" style="margin-bottom: var(--spacing-xl);">
+            <div class="timer">
+                <span>⏱️ Tempo para finalizar:</span>
+                <span id="timer">15:00</span>
+            </div>
+        </div>
+
+        <div class="checkout-grid">
+            <!-- Formulário -->
+            <section>
+                <div class="card">
+                    <div class="card-body">
+                        <h3 style="margin-bottom: var(--spacing-lg);">Seus Dados</h3>
+
+                        <div id="alertBox"></div>
+
+                        <form id="checkoutForm">
+                            <div class="form-group">
+                                <label class="form-label" for="nome">Nome Completo *</label>
+                                <input type="text" id="nome" class="form-input" required
+                                    placeholder="Seu nome completo">
+                            </div>
+
+                            <div class="form-group">
+                                <label class="form-label" for="email">E-mail *</label>
+                                <input type="email" id="email" class="form-input" required placeholder="seu@email.com">
+                            </div>
+
+                            <div class="form-group">
+                                <label class="form-label" for="cpf">CPF</label>
+                                <input type="text" id="cpf" class="form-input" placeholder="000.000.000-00"
+                                    maxlength="14">
+                            </div>
+
+                            <div class="form-group">
+                                <label class="form-label" for="telefone">Telefone</label>
+                                <input type="tel" id="telefone" class="form-input" placeholder="(11) 99999-9999">
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- Pagamento -->
+                <div class="card" style="margin-top: var(--spacing-xl);">
+                    <div class="card-body">
+                        <h3 style="margin-bottom: var(--spacing-lg);">Forma de Pagamento</h3>
+
+                        <div style="display: flex; gap: var(--spacing-md); flex-wrap: wrap;">
+                            <label class="setor-card" style="flex: 1; min-width: 150px; cursor: pointer;">
+                                <input type="radio" name="pagamento" value="PIX" checked style="display: none;">
+                                <div class="setor-info">
+                                    <h4>💳 PIX</h4>
+                                    <p>Aprovação instantânea</p>
+                                </div>
+                            </label>
+
+                            <label class="setor-card" style="flex: 1; min-width: 150px; cursor: pointer; opacity: 0.5;">
+                                <input type="radio" name="pagamento" value="CREDITO" disabled style="display: none;">
+                                <div class="setor-info">
+                                    <h4>💳 Cartão</h4>
+                                    <p>Em breve</p>
+                                </div>
+                            </label>
+                        </div>
+
+                        <!-- QR Code PIX -->
+                        <div id="pixContainer"
+                            style="display: none; margin-top: var(--spacing-xl); text-align: center;">
+                            <p style="margin-bottom: var(--spacing-md); color: var(--text-secondary);">
+                                Escaneie o QR Code ou copie o código PIX:
+                            </p>
+                            <div class="qr-container" style="margin-bottom: var(--spacing-md);">
+                                <img id="qrcode" src="" alt="QR Code PIX" style="width: 200px; height: 200px;">
+                            </div>
+                            <textarea id="pixCode" readonly class="form-input"
+                                style="height: 80px; font-size: 0.75rem;"></textarea>
+                            <button type="button" class="btn btn-secondary" onclick="copyPix()"
+                                style="margin-top: var(--spacing-sm);">
+                                📋 Copiar código
+                            </button>
+                        </div>
+
+                        <button type="submit" id="submitBtn" class="btn btn-primary btn-lg"
+                            style="width: 100%; margin-top: var(--spacing-xl);">
+                            Gerar PIX
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Resumo -->
+            <aside class="checkout-summary">
+                <h3>Resumo do Pedido</h3>
+
+                <div id="eventInfo" style="margin-bottom: var(--spacing-md);">
+                    <strong id="eventTitle">Carregando...</strong>
+                    <p id="eventDate" style="color: var(--text-secondary); font-size: 0.875rem;"></p>
+                </div>
+
+                <div id="itemsList"></div>
+
+                <div class="summary-row">
+                    <span>Subtotal</span>
+                    <span id="subtotal">R$ 0,00</span>
+                </div>
+                <div class="summary-row">
+                    <span>Taxa de serviço (10%)</span>
+                    <span id="taxa">R$ 0,00</span>
+                </div>
+                <div class="summary-row total">
+                    <span>Total</span>
+                    <span id="total">R$ 0,00</span>
+                </div>
+            </aside>
+        </div>
+    </main>
+
+    <script>
+        const API_URL = '';
+        let checkoutData = null;
+        let pedidoCodigo = null;
+        let timerInterval = null;
+        let timeRemaining = 15 * 60; // 15 minutos em segundos
+
+        // Formata preço
+        function formatPrice(value) {
+            return new Intl.NumberFormat('pt-BR', {
+                style: 'currency',
+                currency: 'BRL'
+            }).format(value);
+        }
+
+        // Formata data
+        function formatDate(dateStr) {
+            const date = new Date(dateStr);
+            return date.toLocaleDateString('pt-BR', {
+                day: 'numeric',
+                month: 'long',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        }
+
+        // Formata CPF
+        function formatCPF(value) {
+            return value
+                .replace(/\D/g, '')
+                .replace(/(\d{3})(\d)/, '$1.$2')
+                .replace(/(\d{3})(\d)/, '$1.$2')
+                .replace(/(\d{3})(\d{1,2})$/, '$1-$2');
+        }
+
+        // Timer
+        function startTimer() {
+            timerInterval = setInterval(() => {
+                timeRemaining--;
+                if (timeRemaining <= 0) {
+                    clearInterval(timerInterval);
+                    alert('Tempo esgotado! O pedido foi cancelado.');
+                    sessionStorage.removeItem('checkout');
+                    window.location.href = '/';
+                    return;
+                }
+
+                const minutes = Math.floor(timeRemaining / 60);
+                const seconds = timeRemaining % 60;
+                document.getElementById('timer').textContent =
+                    `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+            }, 1000);
+        }
+
+        // Carrega dados do checkout
+        function loadCheckout() {
+            const data = sessionStorage.getItem('checkout');
+            if (!data) {
+                window.location.href = '/';
+                return;
+            }
+
+            checkoutData = JSON.parse(data);
+
+            // Atualiza resumo
+            document.getElementById('eventTitle').textContent = checkoutData.evento_titulo;
+            document.getElementById('eventDate').textContent = formatDate(checkoutData.data_evento);
+
+            // Lista de itens
+            let subtotal = 0;
+            const itemsHtml = checkoutData.itens.map(item => {
+                const itemTotal = item.preco * item.quantidade;
+                subtotal += itemTotal;
+                return `
+          <div class="summary-row">
+            <span>${item.setor_nome} x${item.quantidade}</span>
+            <span>${formatPrice(itemTotal)}</span>
+          </div>
+        `;
+            }).join('');
+
+            document.getElementById('itemsList').innerHTML = itemsHtml;
+
+            const taxa = subtotal * 0.10;
+            document.getElementById('subtotal').textContent = formatPrice(subtotal);
+            document.getElementById('taxa').textContent = formatPrice(taxa);
+            document.getElementById('total').textContent = formatPrice(subtotal + taxa);
+
+            startTimer();
+        }
+
+        // Máscara CPF
+        document.getElementById('cpf').addEventListener('input', (e) => {
+            e.target.value = formatCPF(e.target.value);
+        });
+
+        // Submit
+        document.getElementById('submitBtn').addEventListener('click', async (e) => {
+            e.preventDefault();
+
+            const nome = document.getElementById('nome').value.trim();
+            const email = document.getElementById('email').value.trim();
+            const cpf = document.getElementById('cpf').value.replace(/\D/g, '');
+            const telefone = document.getElementById('telefone').value.replace(/\D/g, '');
+            const alertBox = document.getElementById('alertBox');
+
+            // Validações
+            if (!nome || nome.length < 3) {
+                alertBox.innerHTML = '<div class="alert alert-error">Por favor, insira seu nome completo.</div>';
+                return;
+            }
+
+            if (!email || !email.includes('@')) {
+                alertBox.innerHTML = '<div class="alert alert-error">Por favor, insira um e-mail válido.</div>';
+                return;
+            }
+
+            alertBox.innerHTML = '';
+            document.getElementById('submitBtn').disabled = true;
+            document.getElementById('submitBtn').textContent = 'Processando...';
+
+            try {
+                // Criar pedido
+                const orderResponse = await fetch(`${API_URL}/api/pedidos`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        evento_id: checkoutData.evento_id,
+                        email,
+                        nome,
+                        cpf: cpf || null,
+                        telefone: telefone || null,
+                        itens: checkoutData.itens.map(i => ({
+                            setor_id: i.setor_id,
+                            quantidade: i.quantidade
+                        }))
+                    })
+                });
+
+                const orderData = await orderResponse.json();
+
+                if (!orderData.success) {
+                    alertBox.innerHTML = `<div class="alert alert-error">${orderData.error || 'Erro ao criar pedido'}</div>`;
+                    document.getElementById('submitBtn').disabled = false;
+                    document.getElementById('submitBtn').textContent = 'Gerar PIX';
+                    return;
+                }
+
+                pedidoCodigo = orderData.pedido.codigo;
+
+                // Gerar PIX
+                const payResponse = await fetch(`${API_URL}/api/pedidos/${pedidoCodigo}/pagar`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ tipo_pagamento: 'PIX' })
+                });
+
+                const payData = await payResponse.json();
+
+                if (!payData.success) {
+                    alertBox.innerHTML = `<div class="alert alert-error">${payData.error || 'Erro ao gerar PIX'}</div>`;
+                    document.getElementById('submitBtn').disabled = false;
+                    document.getElementById('submitBtn').textContent = 'Gerar PIX';
+                    return;
+                }
+
+                // Mostra QR Code (simulado)
+                document.getElementById('pixContainer').style.display = 'block';
+                document.getElementById('pixCode').value = payData.pagamento.qrcode;
+                // QR Code placeholder
+                document.getElementById('qrcode').src = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(payData.pagamento.qrcode)}`;
+
+                document.getElementById('submitBtn').textContent = '✓ PIX Gerado';
+
+                alertBox.innerHTML = `
+          <div class="alert alert-success">
+            Pedido <strong>${pedidoCodigo}</strong> criado com sucesso!<br>
+            Pague via PIX para receber seus ingressos.
+          </div>
+        `;
+
+                // Limpa carrinho
+                sessionStorage.removeItem('checkout');
+
+            } catch (error) {
+                console.error('Erro:', error);
+                alertBox.innerHTML = '<div class="alert alert-error">Erro ao processar pagamento. Tente novamente.</div>';
+                document.getElementById('submitBtn').disabled = false;
+                document.getElementById('submitBtn').textContent = 'Gerar PIX';
+            }
+        });
+
+        // Copiar PIX
+        function copyPix() {
+            const pixCode = document.getElementById('pixCode');
+            pixCode.select();
+            document.execCommand('copy');
+            alert('Código PIX copiado!');
+        }
+
+        // Init
+        loadCheckout();
+    </script>
+</body>
+
+</html>

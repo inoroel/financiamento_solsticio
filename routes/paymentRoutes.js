@@ -62,6 +62,46 @@ function detectarBandeira(cardNumber) {
   }
 
 /**
+ * Formata CEP/postalcode para o formato exigido pela e-Rede (9 caracteres: XXXXX-XXX)
+ * A API e-Rede retorna "PostalCode: Invalid parameter size" se não tiver exatamente 9 chars
+ * @param {string|null} cep - CEP do doador (pode ser '12345678', '12345-678', ou null)
+ * @returns {string} CEP formatado como 'XXXXX-XXX' (9 caracteres)
+ */
+function formatPostalCode(cep) {
+  if (!cep || typeof cep !== 'string') {
+    return '00000-000'; // Fallback com 9 caracteres (formato XXXXX-XXX)
+  }
+  
+  // Remove tudo que não é número
+  const digits = cep.replace(/\D/g, '');
+  
+  if (digits.length === 0) {
+    return '00000-000';
+  }
+  
+  // Garante 8 dígitos (pad com zeros à direita se necessário)
+  const padded = digits.slice(0, 8).padEnd(8, '0');
+  
+  // Formata como XXXXX-XXX (9 caracteres, conforme documentação e-Rede)
+  return `${padded.slice(0, 5)}-${padded.slice(5, 8)}`;
+}
+
+/**
+ * Formata telefone para o campo phoneNumber da e-Rede (até 32 numérico)
+ * Remove caracteres não-numéricos
+ * @param {string|null} phone - Telefone do doador
+ * @returns {string} Telefone apenas com números
+ */
+function formatPhoneNumber(phone) {
+  if (!phone || typeof phone !== 'string') {
+    return '00000000000'; // Fallback: 11 dígitos
+  }
+  
+  const digits = phone.replace(/\D/g, '');
+  return digits.length > 0 ? digits : '00000000000';
+}
+
+/**
  * Valida e processa dados do cartão
  * Aceita tanto token quanto dados do cartão (para tokenização automática)
  * @param {Object} cartaoData - Dados do cartão (token OU dados completos)
@@ -565,12 +605,22 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
           threeDSecureData.billing = {
             address: doador.endereco || 'Não informado',
             city: doador.cidade || 'Não informado',
-            postalcode: doador.cep || '00000000',
+            postalcode: formatPostalCode(doador.cep),
             state: doador.estado || 'SP',
             country: 'Brasil',
             emailAddress: doador.email || cartaoProcessado.email || 'nao-informado@example.com',
-            phoneNumber: doador.telefone || doador.whatsapp || '00000000000'
+            phoneNumber: formatPhoneNumber(doador.telefone || doador.whatsapp)
           };
+        } else {
+          // Garante formato correto do postalcode mesmo quando billing é fornecido
+          if (threeDSecureData.billing.postalcode) {
+            threeDSecureData.billing.postalcode = formatPostalCode(threeDSecureData.billing.postalcode);
+          } else {
+            threeDSecureData.billing.postalcode = formatPostalCode(null);
+          }
+          if (threeDSecureData.billing.phoneNumber) {
+            threeDSecureData.billing.phoneNumber = formatPhoneNumber(threeDSecureData.billing.phoneNumber);
+          }
         }
       }
 
@@ -785,12 +835,22 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
         threeDSecureData.billing = {
           address: doador.endereco || 'Não informado',
           city: doador.cidade || 'Não informado',
-          postalcode: doador.cep || '00000000',
+          postalcode: formatPostalCode(doador.cep),
           state: doador.estado || 'SP',
           country: 'Brasil',
           emailAddress: doador.email || cartaoProcessado.email || 'nao-informado@example.com',
-          phoneNumber: doador.telefone || doador.whatsapp || '00000000000'
+          phoneNumber: formatPhoneNumber(doador.telefone || doador.whatsapp)
         };
+      } else {
+        // Garante formato correto do postalcode mesmo quando billing é fornecido
+        if (threeDSecureData.billing.postalcode) {
+          threeDSecureData.billing.postalcode = formatPostalCode(threeDSecureData.billing.postalcode);
+        } else {
+          threeDSecureData.billing.postalcode = formatPostalCode(null);
+        }
+        if (threeDSecureData.billing.phoneNumber) {
+          threeDSecureData.billing.phoneNumber = formatPhoneNumber(threeDSecureData.billing.phoneNumber);
+        }
       }
       
       console.log(`🔒 3DS obrigatório configurado para débito (onFailure: decline)`);
@@ -1021,6 +1081,12 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
           console.log(`   - Valor: ${transacaoProcessada.transacao.valor}`);
           console.log(`   - Doador ID: ${transacaoProcessada.transacao.doador_id || 'null'}`);
           console.log(`   - Provider TID: ${transacaoProcessada.transacao.provider_tid || 'null'}`);
+          
+          // Track reward progress for identified donors
+          if (transacaoProcessada.doador && transacaoProcessada.doador.whatsapp && webhookData.valor) {
+            const { trackDonation } = require('../services/rewardsService');
+            trackDonation(transacaoProcessada.doador.whatsapp, webhookData.valor, webhookData.txid).catch(console.error);
+          }
         } else {
           console.warn(`⚠️  Não foi possível criar transação automaticamente. O webhook ainda pode criar quando chegar.`);
           console.warn(`   Resultado:`, transacaoProcessada);
@@ -2147,6 +2213,12 @@ router.post('/3ds/callback', async (req, res) => {
       console.log(`✅ Transação processada e confirmada no banco de dados`);
       console.log(`   - Transação ID: ${transacaoProcessada.transacao.id}`);
       console.log(`   - Status da cobrança atualizado para: CONFIRMADA`);
+      
+      // Track reward progress for identified donors
+      if (transacaoProcessada.doador && transacaoProcessada.doador.whatsapp && webhookData.valor) {
+        const { trackDonation } = require('../services/rewardsService');
+        trackDonation(transacaoProcessada.doador.whatsapp, webhookData.valor, webhookData.txid).catch(console.error);
+      }
     } else {
       console.error(`⚠️  Transação capturada mas houve erro ao processar no banco`);
       // Mesmo com erro, retorna sucesso para e-Rede (idempotência)

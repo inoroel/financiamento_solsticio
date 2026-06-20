@@ -177,10 +177,36 @@ desktop.ini
 last prompt.md
 *.md.bak
 
-# Logs específicos do projeto
+# Documentação interna / notas de desenvolvimento (não versionar)
+API_DOCUMENTATION_FRONTEND.md
+CHECKLIST_PRODUCAO.md
+COMO_RODAR_MOCK.md
+EREDE_*.md
+FRONTEND_INTEGRATION_MANUAL.md
+LIMPEZA_REALIZADA.md
+MUDANCA_URL_PROJETO.md
+SECURITY.md
+SOLUCOES_TENTADAS.md
+STELLAR_*.md
+TESTE_LOCAL.md
+VERCEL_*.md
+
+# Documentação e-Rede (arquivos grandes)
+e-rede_26102025.docx
+e-rede_26102025.pdf
+e-rede_docs.txt
+
+# Logs e resultados de debug
 logs/
 *.log.*
+logs_result.json
+
+# IDE / Editor
+.cursor/
 
 # Arquivos de migração executados (opcional - descomente se não quiser versionar)
 # scripts/migration-*.sql.executed
 *.zip
+
+# Scripts de sorteio - PDFs gerados
+scripts/*.pdf

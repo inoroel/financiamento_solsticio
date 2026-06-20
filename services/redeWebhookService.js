@@ -1,6 +1,7 @@
 // Serviço de processamento de webhooks da e-Rede
 const crypto = require('crypto');
 const { processConfirmedTransaction, getCobranca } = require('./dbService');
+const { trackDonation } = require('./rewardsService');
 require('dotenv').config();
 
 // Função auxiliar para buscar cobrança por rede_tid (evita dependência circular)
@@ -403,6 +404,11 @@ async function processWebhook(webhookBody, signature = null, clientIp = null, do
 
     if (!result) {
       throw new Error('Falha ao processar transação no banco de dados');
+    }
+
+    // Track reward progress for identified donors
+    if (result.doador && result.doador.whatsapp && webhookData.valor) {
+      trackDonation(result.doador.whatsapp, webhookData.valor, webhookData.rede_tid || webhookData.txid).catch(console.error);
     }
 
     console.log(`✅ Webhook e-Rede processado com sucesso para tid: ${webhookData.rede_tid}`);

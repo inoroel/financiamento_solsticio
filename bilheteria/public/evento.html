@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Evento - Bilheteria Solstício</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="container header-content">
+            <a href="/" class="logo">🎫 Solstício</a>
+            <nav class="nav">
+                <a href="/">Eventos</a>
+                <a href="/meus-ingressos.html">Meus Ingressos</a>
+            </nav>
+        </div>
+    </header>
+
+    <!-- Hero do Evento -->
+    <div id="eventHero" class="event-hero">
+        <img id="eventBanner" class="event-hero-bg" src="https://placehold.co/1200x400/1e293b/94a3b8?text=Carregando..."
+            alt="">
+        <div class="event-hero-content container">
+            <h1 id="eventTitle">Carregando...</h1>
+            <p id="eventMeta" style="color: var(--text-secondary); font-size: 1.125rem;"></p>
+        </div>
+    </div>
+
+    <!-- Conteúdo -->
+    <main class="container">
+        <div class="event-detail-grid">
+            <!-- Informações -->
+            <section>
+                <div class="card" style="margin-bottom: var(--spacing-xl);">
+                    <div class="card-body">
+                        <h3 style="margin-bottom: var(--spacing-md);">Sobre o Evento</h3>
+                        <p id="eventDescription" style="color: var(--text-secondary); white-space: pre-line;">
+                            Carregando descrição...
+                        </p>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-body">
+                        <h3 style="margin-bottom: var(--spacing-md);">📍 Local</h3>
+                        <p id="eventLocal" style="font-size: 1.125rem; margin-bottom: var(--spacing-xs);"></p>
+                        <p id="eventAddress" style="color: var(--text-secondary);"></p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Ingressos -->
+            <section>
+                <div class="card">
+                    <div class="card-body">
+                        <h3 style="margin-bottom: var(--spacing-lg);">🎟️ Escolha seus Ingressos</h3>
+
+                        <div id="setoresList">
+                            <div class="loading">
+                                <div class="spinner"></div>
+                            </div>
+                        </div>
+
+                        <div id="selectedSummary"
+                            style="display: none; margin-top: var(--spacing-lg); padding-top: var(--spacing-lg); border-top: 1px solid var(--border);">
+                            <div class="summary-row">
+                                <span>Subtotal</span>
+                                <span id="subtotal">R$ 0,00</span>
+                            </div>
+                            <div class="summary-row">
+                                <span>Taxa de serviço (10%)</span>
+                                <span id="taxa">R$ 0,00</span>
+                            </div>
+                            <div class="summary-row total">
+                                <span>Total</span>
+                                <span id="total">R$ 0,00</span>
+                            </div>
+                        </div>
+
+                        <button id="buyBtn" class="btn btn-primary btn-lg"
+                            style="width: 100%; margin-top: var(--spacing-lg);" disabled>
+                            Comprar Ingressos
+                        </button>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <p>© 2024 Bilheteria Solstício</p>
+        </div>
+    </footer>
+
+    <script>
+        const API_URL = '';
+        let evento = null;
+        let carrinho = {}; // { setor_id: quantidade }
+
+        // Formata data
+        function formatDate(dateStr) {
+            const date = new Date(dateStr);
+            return date.toLocaleDateString('pt-BR', {
+                weekday: 'long',
+                day: 'numeric',
+                month: 'long',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        }
+
+        // Formata preço
+        function formatPrice(value) {
+            return new Intl.NumberFormat('pt-BR', {
+                style: 'currency',
+                currency: 'BRL'
+            }).format(value);
+        }
+
+        // Cria card de setor
+        function createSetorCard(setor) {
+            const disponivel = setor.disponivel > 0;
+            const quantidade = carrinho[setor.id] || 0;
+
+            return `
+        <div class="setor-card" data-setor-id="${setor.id}">
+          <div class="setor-info">
+            <h4>${setor.nome}</h4>
+            <p>${setor.descricao || ''}</p>
+          </div>
+          <div class="setor-price">
+            <div class="price">${formatPrice(setor.preco)}</div>
+            <div class="available">${disponivel ? setor.disponivel + ' disponíveis' : 'Esgotado'}</div>
+            ${disponivel ? `
+              <div class="quantity-select" style="margin-top: var(--spacing-sm);">
+                <button class="quantity-btn" onclick="updateQuantity(${setor.id}, -1)">−</button>
+                <span class="quantity-value" id="qty-${setor.id}">${quantidade}</span>
+                <button class="quantity-btn" onclick="updateQuantity(${setor.id}, 1)">+</button>
+              </div>
+            ` : ''}
+          </div>
+        </div>
+      `;
+        }
+
+        // Atualiza quantidade
+        function updateQuantity(setorId, delta) {
+            const setor = evento.setores.find(s => s.id === setorId);
+            if (!setor) return;
+
+            const atual = carrinho[setorId] || 0;
+            const novo = Math.max(0, Math.min(atual + delta, Math.min(setor.disponivel, setor.max_por_pedido)));
+
+            if (novo === 0) {
+                delete carrinho[setorId];
+            } else {
+                carrinho[setorId] = novo;
+            }
+
+            document.getElementById(`qty-${setorId}`).textContent = novo;
+            updateSummary();
+        }
+
+        // Atualiza resumo
+        function updateSummary() {
+            const summary = document.getElementById('selectedSummary');
+            const buyBtn = document.getElementById('buyBtn');
+
+            const total = Object.entries(carrinho).reduce((acc, [setorId, qty]) => {
+                const setor = evento.setores.find(s => s.id === parseInt(setorId));
+                return acc + (setor ? setor.preco * qty : 0);
+            }, 0);
+
+            if (total > 0) {
+                const taxa = total * 0.10;
+                document.getElementById('subtotal').textContent = formatPrice(total);
+                document.getElementById('taxa').textContent = formatPrice(taxa);
+                document.getElementById('total').textContent = formatPrice(total + taxa);
+                summary.style.display = 'block';
+                buyBtn.disabled = false;
+            } else {
+                summary.style.display = 'none';
+                buyBtn.disabled = true;
+            }
+        }
+
+        // Carrega evento
+        async function loadEvent() {
+            const params = new URLSearchParams(window.location.search);
+            const slug = params.get('slug');
+
+            if (!slug) {
+                window.location.href = '/';
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_URL}/api/eventos/${slug}`);
+                const data = await response.json();
+
+                if (!data.success || !data.evento) {
+                    alert('Evento não encontrado');
+                    window.location.href = '/';
+                    return;
+                }
+
+                evento = data.evento;
+                document.title = evento.titulo + ' - Bilheteria Solstício';
+
+                // Atualiza hero
+                document.getElementById('eventBanner').src = evento.banner_url || evento.imagem_url || 'https://placehold.co/1200x400/1e293b/94a3b8?text=' + encodeURIComponent(evento.titulo);
+                document.getElementById('eventTitle').textContent = evento.titulo;
+                document.getElementById('eventMeta').textContent = formatDate(evento.data_evento);
+
+                // Atualiza conteúdo
+                document.getElementById('eventDescription').textContent = evento.descricao || 'Descrição não disponível.';
+                document.getElementById('eventLocal').textContent = evento.local_nome || 'Local a definir';
+                document.getElementById('eventAddress').textContent = [
+                    evento.local_endereco,
+                    evento.local_cidade,
+                    evento.local_uf
+                ].filter(Boolean).join(', ') || '';
+
+                // Atualiza setores
+                if (evento.setores && evento.setores.length > 0) {
+                    document.getElementById('setoresList').innerHTML = evento.setores.map(createSetorCard).join('');
+                } else {
+                    document.getElementById('setoresList').innerHTML = `
+            <p style="color: var(--text-secondary); text-align: center; padding: var(--spacing-lg);">
+              Ingressos não disponíveis no momento.
+            </p>
+          `;
+                }
+            } catch (error) {
+                console.error('Erro ao carregar evento:', error);
+                alert('Erro ao carregar evento');
+            }
+        }
+
+        // Comprar
+        document.getElementById('buyBtn').addEventListener('click', () => {
+            const itens = Object.entries(carrinho).map(([setor_id, quantidade]) => ({
+                setor_id: parseInt(setor_id),
+                quantidade
+            }));
+
+            if (itens.length === 0) return;
+
+            // Salva no sessionStorage e vai para checkout
+            sessionStorage.setItem('checkout', JSON.stringify({
+                evento_id: evento.id,
+                evento_titulo: evento.titulo,
+                data_evento: evento.data_evento,
+                local_nome: evento.local_nome,
+                itens: itens.map(item => {
+                    const setor = evento.setores.find(s => s.id === item.setor_id);
+                    return {
+                        ...item,
+                        setor_nome: setor?.nome,
+                        preco: setor?.preco
+                    };
+                })
+            }));
+
+            window.location.href = '/checkout.html';
+        });
+
+        // Init
+        loadEvent();
+    </script>
+</body>
+
+</html>

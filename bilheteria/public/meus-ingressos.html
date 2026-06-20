@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Meus Ingressos - Bilheteria Solstício</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="container header-content">
+            <a href="/" class="logo">🎫 Solstício</a>
+            <nav class="nav">
+                <a href="/">Eventos</a>
+                <a href="/meus-ingressos.html" style="color: var(--primary-light);">Meus Ingressos</a>
+            </nav>
+        </div>
+    </header>
+
+    <main class="container" style="padding: var(--spacing-xl) var(--spacing-md);">
+        <h1 style="margin-bottom: var(--spacing-xl);">Meus Ingressos</h1>
+
+        <!-- Busca por código -->
+        <div class="card" style="margin-bottom: var(--spacing-xl);">
+            <div class="card-body">
+                <h3 style="margin-bottom: var(--spacing-md);">Consultar Pedido</h3>
+                <p style="color: var(--text-secondary); margin-bottom: var(--spacing-md);">
+                    Digite o código do pedido para verificar seus ingressos:
+                </p>
+                <div style="display: flex; gap: var(--spacing-md);">
+                    <input type="text" id="codigoPedido" class="form-input" placeholder="SOL-XXXXXX"
+                        style="max-width: 200px; text-transform: uppercase;">
+                    <button id="buscarBtn" class="btn btn-primary">Buscar</button>
+                </div>
+                <div id="alertBox" style="margin-top: var(--spacing-md);"></div>
+            </div>
+        </div>
+
+        <!-- Resultado -->
+        <div id="resultado" style="display: none;">
+            <h2 style="margin-bottom: var(--spacing-md);">Detalhes do Pedido</h2>
+
+            <div class="card" style="margin-bottom: var(--spacing-xl);">
+                <div class="card-body">
+                    <div
+                        style="display: flex; justify-content: space-between; align-items: start; flex-wrap: wrap; gap: var(--spacing-md);">
+                        <div>
+                            <p style="color: var(--text-muted); font-size: 0.875rem;">Código do Pedido</p>
+                            <p id="pedidoCodigo" style="font-size: 1.5rem; font-weight: 700;"></p>
+                        </div>
+                        <div id="pedidoStatus"></div>
+                    </div>
+
+                    <div
+                        style="margin-top: var(--spacing-lg); padding-top: var(--spacing-lg); border-top: 1px solid var(--border);">
+                        <h4 id="eventoTitulo" style="margin-bottom: var(--spacing-xs);"></h4>
+                        <p id="eventoData" style="color: var(--text-secondary);"></p>
+                        <p id="eventoLocal" style="color: var(--text-secondary);"></p>
+                    </div>
+                </div>
+            </div>
+
+            <h3 style="margin-bottom: var(--spacing-md);">Ingressos</h3>
+            <div id="ingressosList"></div>
+        </div>
+
+        <!-- Login/Área logada -->
+        <div id="areaLogada" style="display: none;">
+            <h2 style="margin-bottom: var(--spacing-md);">Seus Ingressos</h2>
+            <div id="meusIngressos"></div>
+        </div>
+    </main>
+
+    <footer class="footer">
+        <div class="container">
+            <p>© 2024 Bilheteria Solstício</p>
+        </div>
+    </footer>
+
+    <script>
+        const API_URL = '';
+
+        // Formata data
+        function formatDate(dateStr) {
+            const date = new Date(dateStr);
+            return date.toLocaleDateString('pt-BR', {
+                weekday: 'long',
+                day: 'numeric',
+                month: 'long',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        }
+
+        // Badge de status
+        function getStatusBadge(status) {
+            const badges = {
+                'PAGO': '<span class="badge badge-available">✓ Pago</span>',
+                'AGUARDANDO': '<span class="badge badge-soon">⏳ Aguardando Pagamento</span>',
+                'EXPIRADO': '<span class="badge badge-soldout">Expirado</span>',
+                'CANCELADO': '<span class="badge badge-soldout">Cancelado</span>'
+            };
+            return badges[status] || status;
+        }
+
+        // Badge de ingresso
+        function getTicketStatusBadge(status) {
+            const badges = {
+                'VALIDO': '<span class="badge badge-available">✓ Válido</span>',
+                'USADO': '<span class="badge badge-soon">Utilizado</span>',
+                'CANCELADO': '<span class="badge badge-soldout">Cancelado</span>'
+            };
+            return badges[status] || status;
+        }
+
+        // Cria card de ingresso
+        function createTicketCard(ingresso) {
+            const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(ingresso.codigo)}`;
+
+            return `
+        <div class="ticket-card">
+          <div class="ticket-qr">
+            <div class="qr-container">
+              <img src="${qrUrl}" alt="QR Code" style="width: 120px; height: 120px;">
+            </div>
+          </div>
+          <div class="ticket-info">
+            <h4>${ingresso.setor}</h4>
+            <p style="color: var(--text-secondary); margin-bottom: var(--spacing-xs);">
+              Titular: ${ingresso.nome_titular || 'Não informado'}
+            </p>
+            <p style="color: var(--text-muted); font-size: 0.75rem;">
+              Código: ${ingresso.codigo}
+            </p>
+          </div>
+          <div class="ticket-status">
+            ${getTicketStatusBadge(ingresso.status)}
+          </div>
+        </div>
+      `;
+        }
+
+        // Buscar pedido
+        async function buscarPedido() {
+            const codigo = document.getElementById('codigoPedido').value.trim().toUpperCase();
+            const alertBox = document.getElementById('alertBox');
+
+            if (!codigo || codigo.length < 6) {
+                alertBox.innerHTML = '<div class="alert alert-error">Digite um código válido.</div>';
+                return;
+            }
+
+            document.getElementById('buscarBtn').disabled = true;
+            alertBox.innerHTML = '';
+
+            try {
+                const response = await fetch(`${API_URL}/api/pedidos/${codigo}`);
+                const data = await response.json();
+
+                if (!data.success || !data.pedido) {
+                    alertBox.innerHTML = '<div class="alert alert-error">Pedido não encontrado.</div>';
+                    document.getElementById('resultado').style.display = 'none';
+                    return;
+                }
+
+                const pedido = data.pedido;
+
+                // Atualiza UI
+                document.getElementById('pedidoCodigo').textContent = pedido.codigo;
+                document.getElementById('pedidoStatus').innerHTML = getStatusBadge(pedido.status);
+                document.getElementById('eventoTitulo').textContent = pedido.evento_titulo;
+                document.getElementById('eventoData').textContent = '📅 ' + formatDate(pedido.data_evento);
+                document.getElementById('eventoLocal').textContent = '📍 ' + (pedido.local_nome || 'Local a definir');
+
+                // Ingressos
+                if (pedido.ingressos && pedido.ingressos.length > 0) {
+                    document.getElementById('ingressosList').innerHTML = pedido.ingressos.map(createTicketCard).join('');
+                } else {
+                    document.getElementById('ingressosList').innerHTML = `
+            <div class="card">
+              <div class="card-body" style="text-align: center; color: var(--text-secondary);">
+                ${pedido.status === 'PAGO'
+                            ? 'Nenhum ingresso encontrado.'
+                            : 'Os ingressos serão disponibilizados após a confirmação do pagamento.'}
+              </div>
+            </div>
+          `;
+                }
+
+                document.getElementById('resultado').style.display = 'block';
+
+            } catch (error) {
+                console.error('Erro:', error);
+                alertBox.innerHTML = '<div class="alert alert-error">Erro ao buscar pedido. Tente novamente.</div>';
+            } finally {
+                document.getElementById('buscarBtn').disabled = false;
+            }
+        }
+
+        // Event listeners
+        document.getElementById('buscarBtn').addEventListener('click', buscarPedido);
+        document.getElementById('codigoPedido').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') buscarPedido();
+        });
+
+        // Verifica URL params
+        const params = new URLSearchParams(window.location.search);
+        const codigoParam = params.get('codigo');
+        if (codigoParam) {
+            document.getElementById('codigoPedido').value = codigoParam;
+            buscarPedido();
+        }
+    </script>
+</body>
+
+</html>
