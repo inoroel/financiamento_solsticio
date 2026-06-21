@@ -18,7 +18,7 @@ const {
   findPaymentByMemo,
   isSupportedCurrency
 } = require('../services/stellarService');
-const { saveCobranca, getCobranca, processConfirmedTransaction, getDoadoresIdentificados, getDoadoresComTickets } = require('../services/dbService');
+const { saveCobranca, getCobranca, processConfirmedTransaction, getDoadoresIdentificados, getDoadoresComTickets, updateCobrancaStatus } = require('../services/dbService');
 const { processWebhook } = require('../services/redeWebhookService');
 const { processWebhook: processStellarWebhook } = require('../services/stellarWebhookService');
 const { createChargeLimiter, consultChargeLimiter, webhookLimiter } = require('../middleware/security');
@@ -1997,21 +1997,8 @@ router.post('/3ds/callback', async (req, res) => {
     if (!threeDSAuthenticated) {
       console.log(`❌ Autenticação 3DS falhou. 3DS ReturnCode: ${threeDSecureReturnCode}`);
       
-      // Atualiza status da cobrança para NEGADA
-      await saveCobranca({
-        txid: cobranca.txid,
-        tipoPagamento: cobranca.tipo_pagamento,
-        provider: cobranca.provider,
-        valor: cobranca.valor,
-        status: 'NEGADA',
-        cryptoCurrency: cobranca.crypto_currency,
-        cryptoAddress: cobranca.crypto_address,
-        dadosPagamento: cobranca.dados_pagamento,
-        dadosDoadorTemp: cobranca.dados_doador_temp,
-        redeTid: cobranca.rede_tid,
-        providerTid: cobranca.provider_tid,
-        campanhaId: cobranca.campanha_id
-      });
+      // Atualiza status da cobrança para NEGADA (UPDATE — a cobrança já existe)
+      await updateCobrancaStatus(cobranca.txid, 'NEGADA');
 
       return res.status(200).json({ received: true, authenticated: false });
     }
@@ -2032,21 +2019,8 @@ router.post('/3ds/callback', async (req, res) => {
     if (!foiAutorizada) {
       console.log(`❌ Transação não foi autorizada. ReturnCode: ${returnCode}, ReturnMessage: ${returnMessage}`);
       
-      // Atualiza status da cobrança para NEGADA
-      await saveCobranca({
-        txid: cobranca.txid,
-        tipoPagamento: cobranca.tipo_pagamento,
-        provider: cobranca.provider,
-        valor: cobranca.valor,
-        status: 'NEGADA',
-        cryptoCurrency: cobranca.crypto_currency,
-        cryptoAddress: cobranca.crypto_address,
-        dadosPagamento: cobranca.dados_pagamento,
-        dadosDoadorTemp: cobranca.dados_doador_temp,
-        redeTid: cobranca.rede_tid,
-        providerTid: cobranca.provider_tid,
-        campanhaId: cobranca.campanha_id
-      });
+      // Atualiza status da cobrança para NEGADA (UPDATE — a cobrança já existe)
+      await updateCobrancaStatus(cobranca.txid, 'NEGADA');
 
       return res.status(200).json({ received: true, authorized: false });
     }
