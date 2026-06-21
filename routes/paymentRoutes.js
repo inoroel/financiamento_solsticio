@@ -365,7 +365,7 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
         console.error(`❌ ERRO ao chamar createPixCharge:`, error.message);
         console.error(`   Stack:`, error.stack);
         return res.status(500).json({
-          error: 'Erro ao criar cobrança PIX.',
+          error: 'Não foi possível gerar o Pix agora. Tente novamente em alguns instantes ou escolha outra forma de doação.',
           details: process.env.NODE_ENV === 'development' ? error.message : undefined
         });
       }
@@ -405,8 +405,8 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
         
         console.error(`   - Retornando erro ${statusCode}: ${errorMessage}`);
         return res.status(statusCode).json({
-          error: errorMessage,
-          details: process.env.NODE_ENV === 'development' ? cobranca?.errorDetails : undefined
+          error: 'Não foi possível gerar o Pix agora. Tente novamente em alguns instantes ou escolha outra forma de doação.',
+          details: process.env.NODE_ENV === 'development' ? (cobranca?.errorDetails || errorMessage) : undefined
         });
       }
       
@@ -446,8 +446,8 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
 
         if (!zeroDollarAuth || zeroDollarAuth.aprovado !== true) {
           return res.status(400).json({
-            error: 'Cartão não passou na validação Zero Dollar.',
-            details: zeroDollarAuth?.returnMessage || 'Cartão inválido ou bloqueado'
+            error: 'Não conseguimos validar este cartão. Confira o número, a validade e o CVV, ou tente outro cartão.',
+            details: process.env.NODE_ENV === 'development' ? (zeroDollarAuth?.returnMessage || 'Cartão inválido ou bloqueado') : undefined
           });
         }
 
@@ -638,7 +638,7 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
         console.error(`   Isso significa que a transação falhou na e-Rede antes de ser salva no banco.`);
         console.error(`   Verifique os logs anteriores para identificar o erro específico.`);
         return res.status(500).json({
-          error: 'Não foi possível processar o pagamento com cartão de crédito.',
+          error: 'Não foi possível concluir a doação com cartão de crédito agora. Tente novamente ou use outra forma de doação.',
           txid: txid
         });
       }
@@ -701,8 +701,8 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
 
         if (!zeroDollarAuth || zeroDollarAuth.aprovado !== true) {
           return res.status(400).json({
-            error: 'Cartão não passou na validação Zero Dollar.',
-            details: zeroDollarAuth?.returnMessage || 'Cartão inválido ou bloqueado'
+            error: 'Não conseguimos validar este cartão. Confira o número, a validade e o CVV, ou tente outro cartão.',
+            details: process.env.NODE_ENV === 'development' ? (zeroDollarAuth?.returnMessage || 'Cartão inválido ou bloqueado') : undefined
           });
         }
 
@@ -866,16 +866,15 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
 
       if (!cobranca) {
         return res.status(500).json({
-          error: 'Não foi possível processar o pagamento com cartão de débito.'
+          error: 'Não foi possível concluir a doação com cartão de débito agora. Tente novamente ou use outra forma de doação.'
         });
       }
 
       // Verifica se há erro específico (ex: erro 204 - cartão não suporta 3DS)
       if (cobranca.error) {
         return res.status(400).json({
-          error: cobranca.returnMessage || 'Erro ao processar pagamento com cartão de débito.',
-          returnCode: cobranca.returnCode,
-          details: 'Para transações de débito, o 3DS é obrigatório. O cartão não suporta autenticação 3DS. Entre em contato com o banco emissor.'
+          error: 'Não foi possível concluir a doação com este cartão de débito. Ele pode não suportar a autenticação de segurança exigida — tente outro cartão ou use Pix.',
+          details: process.env.NODE_ENV === 'development' ? { returnCode: cobranca.returnCode, returnMessage: cobranca.returnMessage } : undefined
         });
       }
 
@@ -908,7 +907,7 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
       if (!cobranca) {
         console.error(`❌ createStellarPayment retornou null para txid: ${txid}`);
         return res.status(500).json({
-          error: 'Não foi possível gerar o pagamento Stellar.'
+          error: 'Não foi possível gerar a doação em cripto agora. Tente novamente em alguns instantes.'
         });
       }
       
@@ -1004,7 +1003,7 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
       console.error(`   TXID que tentou salvar: ${cobranca.txid || txid}`);
       const isTimeout = error.message?.toLowerCase().includes('timeout');
       return res.status(isTimeout ? 503 : 500).json({
-        error: isTimeout ? 'Banco de dados indisponível (timeout).' : 'Erro ao salvar cobrança no banco de dados. Tente novamente.',
+        error: isTimeout ? 'Nossos sistemas estão um pouco lentos agora. Tente novamente em alguns instantes.' : 'Não conseguimos registrar sua doação agora. Tente novamente em alguns instantes.',
         txid: txid,
         details: process.env.NODE_ENV === 'development' ? error.message : undefined
       });
@@ -1014,7 +1013,7 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
       console.error(`❌ ERRO CRÍTICO: saveCobranca retornou null para txid: ${txid}`);
       console.error(`   Cobrança criada mas não salva! Isso é um problema grave.`);
       return res.status(500).json({
-        error: 'Erro ao salvar cobrança no banco de dados. Tente novamente.',
+        error: 'Não conseguimos registrar sua doação agora. Tente novamente em alguns instantes.',
         txid: txid
       });
     }
@@ -1031,7 +1030,7 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
       const cobrancaVerificada2 = await getCobranca(cobrancaSalva.txid);
       if (!cobrancaVerificada2) {
         return res.status(500).json({
-          error: 'Erro ao verificar cobrança no banco de dados. Tente novamente.',
+          error: 'Não conseguimos confirmar o registro da sua doação agora. Tente novamente em alguns instantes.',
           txid: cobrancaSalva.txid
         });
       }
@@ -1241,7 +1240,7 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
     }
 
     res.status(500).json({
-      error: 'Erro interno do servidor.',
+      error: 'Algo deu errado do nosso lado ao processar sua doação. Tente novamente em alguns instantes.',
       message: process.env.NODE_ENV === 'development' ? error.message : undefined,
       stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
