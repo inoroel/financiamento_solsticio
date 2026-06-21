@@ -1140,6 +1140,7 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
       }
       
       response.expiracao = cobranca.expiracao;
+      response.mensagem = 'Quase lá! Escaneie o QR Code com o app do seu banco ou copie o código Pix para concluir sua doação. Assim que o pagamento cair, a confirmação aparece sozinha aqui. 💚';
       console.log('📋 PIX Response - brCode:', response.brCode ? `${response.brCode.substring(0, 50)}...` : 'null/undefined/vazio');
       console.log('📋 PIX Response - qrCodeImage:', response.qrCodeImage ? 'disponível (base64)' : 'null/undefined');
       console.log('📋 PIX Response - expiracao:', cobranca.expiracao);
@@ -1156,6 +1157,7 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
       response.qr_code_alt = cobranca.qr_code_alt; // QR code alternativo sem memo_type
       response.qr_code_address = cobranca.qr_code_address; // QR code apenas com o endereço Stellar
       response.qr_code_memo = cobranca.qr_code_memo; // QR code apenas com o memo
+      response.mensagem = `Tudo pronto! Envie sua doação em ${cobranca.currency || 'cripto'} para o endereço indicado, usando exatamente o memo informado. Pode deixar esta página aberta — confirmamos automaticamente em alguns segundos. 💚`;
     } else {
       // Para cartões, verifica se requer autenticação 3DS (returnCode 220)
       if (cobranca.requires3DS && cobranca.threeDSecureUrl) {
@@ -1163,6 +1165,7 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
         response.threeDSecureUrl = cobranca.threeDSecureUrl;
         response.threeDSecureDisplayMode = 'popup'; // Sempre pop-up (sandbox + produção)
         response.status = 'PENDENTE_3DS';
+        response.mensagem = 'Falta só um passo: confirme a doação na janela de segurança do seu banco que vai abrir. Pode levar alguns segundos.';
         response.autorizacao = {
           codigo: null,
           status: 'PENDENTE_3DS',
@@ -1179,12 +1182,15 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
         // Para cartões, o status real da autorização é baseado no returnCode
         // returnCode '00' = AUTORIZADA, outros = NEGADA
         const statusAutorizacao = cobranca.returnCode === '00' ? 'AUTORIZADA' : 'NEGADA';
-        
+
         response.autorizacao = {
           codigo: cobranca.authorizationCode || null,
           status: statusAutorizacao,
           bandeira: cobranca.bandeira || dadosPagamento?.bandeira || null
         };
+        response.mensagem = statusAutorizacao === 'AUTORIZADA'
+          ? 'Doação confirmada! Muito obrigado por apoiar o festival. 💚'
+          : 'Não foi possível concluir a doação com este cartão. Confira os dados ou tente outro cartão — nenhum valor foi cobrado.';
         if (tipoPagamento === 'CREDITO') {
           response.parcelas = cobranca.parcelas || dadosPagamento?.parcelas || 1;
         }
