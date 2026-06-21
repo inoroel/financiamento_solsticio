@@ -1156,6 +1156,7 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
       response.qr_code_alt = cobranca.qr_code_alt; // QR code alternativo sem memo_type
       response.qr_code_address = cobranca.qr_code_address; // QR code apenas com o endereço Stellar
       response.qr_code_memo = cobranca.qr_code_memo; // QR code apenas com o memo
+    } else {
       // Para cartões, verifica se requer autenticação 3DS (returnCode 220)
       if (cobranca.requires3DS && cobranca.threeDSecureUrl) {
         response.requires3DS = true;
@@ -1170,17 +1171,6 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
         if (tipoPagamento === 'CREDITO') {
           response.parcelas = cobranca.parcelas || dadosPagamento?.parcelas || 1;
         }
-        
-        response.returnMessage = `
-          <div style="padding: 16px; border-radius: 12px; background-color: #f8fafc; border: 1px solid #e2e8f0; color: #334155; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; display: flex; align-items: center; gap: 16px; margin-top: 12px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
-            <div style="font-size: 28px; animation: pulse 2s infinite;">⏳</div>
-            <div>
-              <strong style="display: block; font-size: 16px; margin-bottom: 4px; color: #0f172a;">Processando...</strong>
-              <span style="font-size: 14px; opacity: 0.8;">Por favor, conclua a autenticação de segurança no pop-up do seu banco.</span>
-            </div>
-          </div>
-        `;
-        
         console.log('🔒 Transação requer autenticação 3DS');
         console.log(`   URL: ${cobranca.threeDSecureUrl}`);
         console.log(`   Modo de exibição: popup (unificado para sandbox e produção)`);
@@ -1197,29 +1187,6 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
         };
         if (tipoPagamento === 'CREDITO') {
           response.parcelas = cobranca.parcelas || dadosPagamento?.parcelas || 1;
-        }
-
-        if (statusAutorizacao === 'AUTORIZADA') {
-          response.returnMessage = `
-            <div style="padding: 16px; border-radius: 12px; background-color: #f0fdf4; border: 1px solid #bbf7d0; color: #166534; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; display: flex; align-items: center; gap: 16px; margin-top: 12px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
-              <div style="font-size: 28px;">✅</div>
-              <div>
-                <strong style="display: block; font-size: 16px; margin-bottom: 4px; color: #14532d;">Pagamento Autorizado</strong>
-                <span style="font-size: 14px; opacity: 0.9;">Sua doação foi processada com sucesso. Muito obrigado!</span>
-              </div>
-            </div>
-          `;
-        } else {
-          const msgErro = cobranca.returnMessage || 'Não foi possível autorizar o cartão.';
-          response.returnMessage = `
-            <div style="padding: 16px; border-radius: 12px; background-color: #fef2f2; border: 1px solid #fecaca; color: #991b1b; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; display: flex; align-items: center; gap: 16px; margin-top: 12px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
-              <div style="font-size: 28px;">❌</div>
-              <div>
-                <strong style="display: block; font-size: 16px; margin-bottom: 4px; color: #7f1d1d;">Pagamento Negado</strong>
-                <span style="font-size: 14px; opacity: 0.9;">${msgErro}</span>
-              </div>
-            </div>
-          `;
         }
       }
     }
