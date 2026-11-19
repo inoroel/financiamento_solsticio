@@ -16,6 +16,7 @@ const { helmetConfig } = require('./middleware/security');
 const ADMIN_HTML = fs.readFileSync(path.join(__dirname, 'views', 'admin', 'index.html'), 'utf8');
 const ADMIN_CSS = fs.readFileSync(path.join(__dirname, 'views', 'admin', 'admin.css'), 'utf8');
 const ADMIN_JS = fs.readFileSync(path.join(__dirname, 'views', 'admin', 'admin.js'), 'utf8');
+const ADMIN_LOGO = fs.readFileSync(path.join(__dirname, 'views', 'admin', 'logo-solsticio.jpg'));
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -223,6 +224,13 @@ app.get('/admin/admin.js', (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   res.setHeader('X-Robots-Tag', 'noindex, nofollow');
   return res.status(200).send(ADMIN_JS);
+});
+
+app.get('/admin/logo-solsticio.jpg', (req, res) => {
+  res.setHeader('Content-Type', 'image/jpeg');
+  res.setHeader('Cache-Control', 'public, max-age=86400');
+  res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+  return res.status(200).send(ADMIN_LOGO);
 });
 
 // Rota de health check

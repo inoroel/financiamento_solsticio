@@ -74,17 +74,13 @@ code {
   gap: 0.875rem;
 }
 
-.brand-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0.4rem 0.75rem;
-  border-radius: 999px;
-  background: var(--text);
-  color: var(--surface);
-  font-weight: 700;
-  font-size: 0.85rem;
-  letter-spacing: 0.02em;
+.brand-logo {
+  display: block;
+  height: 52px;
+  width: auto;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  flex-shrink: 0;
 }
 
 .topbar h1 {
