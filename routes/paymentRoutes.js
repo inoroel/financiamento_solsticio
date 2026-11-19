@@ -22,7 +22,7 @@ const { saveCobranca, getCobranca, processConfirmedTransaction, getDoadoresIdent
 const { processWebhook } = require('../services/redeWebhookService');
 const { processWebhook: processStellarWebhook } = require('../services/stellarWebhookService');
 const { createChargeLimiter, consultChargeLimiter, webhookLimiter, adminActionLimiter } = require('../middleware/security');
-const { requireAdmin } = require('../middleware/authMiddleware');
+const { requireAdmin, requireTabAccess } = require('../middleware/authMiddleware');
 const { getCobrancaByRedeTid, markRefundedInDatabase, logEstorno } = require('../services/adminService');
 const {
   validateValor,
@@ -1844,7 +1844,7 @@ router.post('/validar-cartao', createChargeLimiter, async (req, res) => {
  * - Após 21:30: processamento no dia seguinte
  * - Maestro: apenas UMA parcial permitida
  */
-router.post('/cancelar-cobranca', adminActionLimiter, requireAdmin, async (req, res) => {
+router.post('/cancelar-cobranca', adminActionLimiter, requireAdmin, requireTabAccess('estornos'), async (req, res) => {
   try {
     const { tid, valor, callbackUrl, motivo } = req.body || {};
 

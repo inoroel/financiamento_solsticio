@@ -116,7 +116,7 @@ router.post('/google', consultChargeLimiter, async (req, res) => {
     if (!adminRecord || !adminRecord.active) {
       console.warn(`⚠️  Tentativa de login admin negada para: ${googleUser.email}`);
       return res.status(403).json({
-        error: 'Acesso negado. Este e-mail não está cadastrado como administrador.'
+        error: 'Acesso negado. Este e-mail não está cadastrado com acesso ao painel.'
       });
     }
 
@@ -136,7 +136,9 @@ router.post('/google', consultChargeLimiter, async (req, res) => {
         name: googleUser.name,
         picture: googleUser.picture,
         role: adminRecord.role,
-        isRoot: adminRecord.role === 'root'
+        isRoot: adminRecord.role === 'root',
+        isAdmin: adminRecord.role === 'root' || adminRecord.role === 'admin',
+        allowedTabs: adminRecord.allowedTabs
       }
     });
   } catch (error) {

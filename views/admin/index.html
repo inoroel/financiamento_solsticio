@@ -45,7 +45,7 @@
       <section id="login-view" class="card login-card" aria-labelledby="login-heading">
         <h2 id="login-heading">Entrar com conta Google autorizada</h2>
         <p class="muted">
-          Apenas contas Gmail previamente cadastradas como administradoras podem consultar transações, executar estornos e gerenciar recompensas.
+          Apenas contas Google previamente cadastradas com acesso autorizado podem utilizar este painel, de acordo com as abas liberadas para cada usuário.
         </p>
 
         <div id="google-signin-container" class="google-signin-box"></div>
@@ -59,7 +59,10 @@
 
       <!-- Painel Autenticado -->
       <div id="dashboard-view" hidden>
-        <div class="tabs-shell">
+        <div id="no-tabs-warning" class="banner banner-warning" role="alert" hidden>
+          Sua conta não possui nenhuma aba liberada no momento. Solicite acesso a um administrador.
+        </div>
+        <div id="tabs-shell" class="tabs-shell">
           <div
             class="tablist"
             role="tablist"
@@ -1496,58 +1499,164 @@
           <!-- Aba 5: Usuários -->
           <div id="panel-admins" role="tabpanel" aria-labelledby="tab-admins" hidden>
             <div class="tabpanel-content">
-              <section class="card" aria-labelledby="admins-heading">
-                <h2 id="admins-heading" class="visually-hidden">Usuários</h2>
-
-                <form id="add-admin-form" class="inline-form" aria-labelledby="admins-heading" hidden>
-                  <div class="field field-grow">
-                    <label for="new-admin-email">Cadastrar novo e-mail administrador <span aria-hidden="true">*</span></label>
-                    <span id="new-admin-email-hint" class="hint">Formato: nome@gmail.com</span>
-                    <input
-                      type="email"
-                      id="new-admin-email"
-                      name="email"
-                      required
-                      maxlength="255"
-                      autocomplete="email"
-                      autocorrect="off"
-                      autocapitalize="none"
-                      spellcheck="false"
-                      enterkeyhint="done"
-                      aria-describedby="new-admin-email-hint"
-                      data-error="new-admin-email-error"
-                    >
-                    <div id="new-admin-email-error" class="error-msg">
-                      <span role="img" aria-label="Erro">!</span> Informe um endereço de e-mail válido no formato nome@dominio.com.
-                    </div>
-                  </div>
-                  <div class="inline-form-actions">
-                    <button type="submit" id="add-admin-btn" class="btn btn-primary">Adicionar admin</button>
-                  </div>
-                </form>
-
-                <div id="admin-manage-result" class="banner" role="status" aria-live="polite" hidden></div>
-
-                <div tabindex="0" role="region" aria-labelledby="admins-table-caption" class="table-wrapper">
-                  <table class="table-admins">
-                    <caption id="admins-table-caption" class="table-caption">Contas autorizadas</caption>
-                    <thead>
-                      <tr>
-                        <th scope="col">E-mail</th>
-                        <th scope="col">Perfil</th>
-                        <th scope="col">Origem</th>
-                        <th scope="col">Cadastrado por</th>
-                        <th scope="col">Ação</th>
-                      </tr>
-                    </thead>
-                    <tbody id="admins-tbody">
-                      <tr>
-                        <td colspan="5" class="empty-cell">Carregando administradores...</td>
-                      </tr>
-                    </tbody>
-                  </table>
+              <div class="subtabs-shell">
+                <div
+                  class="tablist subtablist"
+                  role="tablist"
+                  focusgroup="tablist nomemory"
+                  aria-label="Submenu de usuários"
+                >
+                  <button type="button" role="tab" id="subtab-usuarios-lista" aria-selected="true" focusgroupstart>Lista de Usuários</button>
+                  <button type="button" role="tab" id="subtab-usuarios-criar" aria-selected="false" tabindex="-1">Criar Usuário</button>
                 </div>
-              </section>
+
+                <!-- Submenu 5.1: Lista de Usuários -->
+                <div id="subpanel-usuarios-lista" role="tabpanel" aria-labelledby="subtab-usuarios-lista">
+                  <div class="tabpanel-content dashboard-grid">
+                    <section class="card" aria-labelledby="users-list-heading">
+                      <div class="section-header section-header-row">
+                        <div>
+                          <h2 id="users-list-heading">Lista de Usuários</h2>
+                          <p class="muted">
+                            Contas cadastradas e respectivas abas visíveis no painel. Apenas administradores e o root visualizam esta lista.
+                          </p>
+                        </div>
+                        <div class="row-actions">
+                          <button type="button" id="refresh-admins-btn" class="btn btn-secondary btn-sm">Atualizar</button>
+                          <button type="button" id="go-create-user-btn" class="btn btn-primary btn-sm">Criar usuário</button>
+                        </div>
+                      </div>
+
+                      <div id="admin-manage-result" class="banner" role="status" aria-live="polite" hidden></div>
+
+                      <div tabindex="0" role="region" aria-labelledby="admins-table-caption" class="table-wrapper">
+                        <table class="table-admins">
+                          <caption id="admins-table-caption" class="table-caption">Contas autorizadas</caption>
+                          <thead>
+                            <tr>
+                              <th scope="col">E-mail</th>
+                              <th scope="col">Perfil</th>
+                              <th scope="col">Abas permitidas</th>
+                              <th scope="col">Cadastrado por</th>
+                              <th scope="col">Ações</th>
+                            </tr>
+                          </thead>
+                          <tbody id="admins-tbody">
+                            <tr>
+                              <td colspan="5" class="empty-cell">Carregando usuários...</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </section>
+                  </div>
+                </div>
+
+                <!-- Submenu 5.2: Página dedicada de Criar / Editar Usuário -->
+                <div id="subpanel-usuarios-criar" role="tabpanel" aria-labelledby="subtab-usuarios-criar" hidden>
+                  <div class="tabpanel-content dashboard-grid">
+                    <section class="card" aria-labelledby="create-user-heading">
+                      <div class="section-header section-header-row">
+                        <div>
+                          <h2 id="create-user-heading" tabindex="-1">Criar Novo Usuário</h2>
+                          <p id="create-user-subtitle" class="muted">
+                            Escolha o e-mail Google, o perfil e exatamente quais abas serão visíveis para este usuário.
+                          </p>
+                        </div>
+                        <button type="button" id="back-to-users-list-btn" class="btn btn-secondary btn-sm">Ver lista de usuários</button>
+                      </div>
+
+                      <form id="add-admin-form" aria-labelledby="create-user-heading">
+                        <div class="field">
+                          <label for="new-admin-email">E-mail Google do usuário <span aria-hidden="true">*</span></label>
+                          <span id="new-admin-email-hint" class="hint">Conta Google autorizada a fazer login (ex: nome@gmail.com).</span>
+                          <input
+                            type="email"
+                            id="new-admin-email"
+                            name="email"
+                            required
+                            maxlength="255"
+                            autocomplete="email"
+                            autocorrect="off"
+                            autocapitalize="none"
+                            spellcheck="false"
+                            enterkeyhint="next"
+                            aria-describedby="new-admin-email-hint"
+                            data-error="new-admin-email-error"
+                          >
+                          <div id="new-admin-email-error" class="error-msg">
+                            <span role="img" aria-label="Erro">!</span> Informe um endereço de e-mail válido no formato nome@dominio.com.
+                          </div>
+                        </div>
+
+                        <fieldset id="user-role-fieldset" class="radio-fieldset">
+                          <legend>Perfil de acesso</legend>
+                          <div class="radio-group">
+                            <div class="radio-option">
+                              <input type="radio" id="new-user-role-user" name="role" value="user" checked>
+                              <label for="new-user-role-user">Usuário (acessa somente as abas selecionadas)</label>
+                            </div>
+                            <div id="new-user-role-admin-wrap" class="radio-option">
+                              <input type="radio" id="new-user-role-admin" name="role" value="admin">
+                              <label for="new-user-role-admin">Administrador (vê a lista de usuários e pode criar usuários)</label>
+                            </div>
+                          </div>
+                          <p id="user-role-admin-note" class="hint" hidden>
+                            Apenas o administrador root pode criar ou editar contas com perfil Administrador.
+                          </p>
+                        </fieldset>
+
+                        <fieldset id="user-tabs-fieldset" class="checkbox-fieldset">
+                          <legend>Abas permitidas <span aria-hidden="true">*</span></legend>
+                          <span class="hint">
+                            As abas não selecionadas não serão mostradas para este usuário.
+                          </span>
+
+                          <div class="tab-permissions-grid">
+                            <div class="tab-permission-item">
+                              <input type="checkbox" id="perm-tab-estornos" name="allowed_tabs" value="estornos">
+                              <label for="perm-tab-estornos">Estornos e Transações</label>
+                            </div>
+                            <div class="tab-permission-item">
+                              <input type="checkbox" id="perm-tab-recompensas" name="allowed_tabs" value="recompensas">
+                              <label for="perm-tab-recompensas">Recompensas</label>
+                            </div>
+                            <div class="tab-permission-item">
+                              <input type="checkbox" id="perm-tab-metas" name="allowed_tabs" value="metas">
+                              <label for="perm-tab-metas">Metas</label>
+                            </div>
+                            <div class="tab-permission-item">
+                              <input type="checkbox" id="perm-tab-doacao" name="allowed_tabs" value="doacao">
+                              <label for="perm-tab-doacao">Doação</label>
+                            </div>
+                          </div>
+
+                          <p id="user-tabs-admin-auto-note" class="hint" hidden>
+                            Administradores também recebem automaticamente acesso à aba Usuários.
+                          </p>
+
+                          <div class="tab-selector-helpers">
+                            <button type="button" id="select-all-tabs-btn" class="btn btn-secondary btn-sm">Selecionar todas</button>
+                            <button type="button" id="clear-all-tabs-btn" class="btn btn-secondary btn-sm">Desmarcar todas</button>
+                          </div>
+
+                          <div id="user-tabs-error" class="error-msg" role="alert">
+                            <span role="img" aria-label="Erro">!</span> Selecione pelo menos uma aba para este usuário.
+                          </div>
+                        </fieldset>
+
+                        <div class="form-actions">
+                          <button type="submit" id="add-admin-btn" class="btn btn-primary">Criar usuário</button>
+                          <button type="button" id="cancel-edit-user-btn" class="btn btn-secondary" hidden>Cancelar edição</button>
+                          <button type="button" id="reset-user-form-btn" class="btn btn-secondary">Limpar campos</button>
+                        </div>
+                      </form>
+
+                      <div id="user-create-result" class="banner" role="status" aria-live="polite" hidden></div>
+                    </section>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>

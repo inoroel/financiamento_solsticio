@@ -1,14 +1,16 @@
 // Rotas administrativas protegidas por Google OAuth + lista de admins autorizados
 const express = require('express');
 const router = express.Router();
-const { requireAdmin, requireRootAdmin } = require('../middleware/authMiddleware');
+const { requireAdmin, requireAdminOrRoot, requireTabAccess } = require('../middleware/authMiddleware');
 const { adminActionLimiter } = require('../middleware/security');
 const {
   ROOT_ADMIN_EMAIL,
+  OPERATIONAL_TABS,
   listTransactionsForAdmin,
   listEstornos,
   listAdmins,
   addAdmin,
+  updateAdmin,
   removeAdmin
 } = require('../services/adminService');
 const {
@@ -48,7 +50,7 @@ router.use(requireAdmin);
  * GET /api/admin/transacoes
  * Lista cobranças/transações da e-Rede para consulta e estorno.
  */
-router.get('/transacoes', async (req, res) => {
+router.get('/transacoes', requireTabAccess('estornos'), async (req, res) => {
   try {
     const page = parseInt(req.query.page, 10) || 1;
     const limit = parseInt(req.query.limit, 10) || 25;
@@ -79,7 +81,7 @@ router.get('/transacoes', async (req, res) => {
  * GET /api/admin/estornos
  * Lista o log de auditoria de estornos executados.
  */
-router.get('/estornos', async (req, res) => {
+router.get('/estornos', requireTabAccess('estornos'), async (req, res) => {
   try {
     const page = parseInt(req.query.page, 10) || 1;
     const limit = parseInt(req.query.limit, 10) || 30;
@@ -106,46 +108,48 @@ router.get('/estornos', async (req, res) => {
 
 /**
  * GET /api/admin/admins
- * Lista os e-mails cadastrados como administradores.
+ * Lista os usuários e administradores cadastrados (restrito a admin e root).
  */
-router.get('/admins', async (req, res) => {
+router.get('/admins', requireAdminOrRoot, async (req, res) => {
   try {
     const admins = await listAdmins();
     return res.status(200).json({
       admins,
-      rootEmail: ROOT_ADMIN_EMAIL
+      rootEmail: ROOT_ADMIN_EMAIL,
+      availableTabs: OPERATIONAL_TABS
     });
   } catch (error) {
     console.error('❌ Erro ao listar administradores:', error.message);
-    return res.status(500).json({ error: 'Erro ao listar administradores.' });
+    return res.status(500).json({ error: 'Erro ao listar usuários.' });
   }
 });
 
 /**
  * POST /api/admin/admins
- * Cadastra um novo e-mail de administrador (restrito ao root).
- * Body: { email: string }
+ * Cadastra um novo usuário ou administrador com permissões por aba.
+ * Body: { email: string, role?: 'user'|'admin', allowedTabs?: string[] }
  */
-router.post('/admins', adminActionLimiter, requireRootAdmin, async (req, res) => {
+router.post('/admins', adminActionLimiter, requireAdminOrRoot, async (req, res) => {
   try {
-    const { email } = req.body || {};
-    const admin = await addAdmin(email, req.user.email);
-    console.log(`✅ Admin cadastrado por ${req.user.email}: ${admin.email}`);
+    const body = req.body || {};
+    const admin = await addAdmin(body.email, req.user.email, {
+      role: body.role || 'user',
+      allowedTabs: body.allowed_tabs ?? body.allowedTabs,
+      actor: req.user
+    });
+    console.log(`✅ Usuário cadastrado por ${req.user.email}: ${admin.email} (${admin.role})`);
     return res.status(201).json({ admin });
   } catch (error) {
-    if (error.status && error.status < 500) {
-      return res.status(error.status).json({ error: error.message });
-    }
-    console.error('❌ Erro ao cadastrar administrador:', error.message);
-    return res.status(500).json({ error: 'Erro ao cadastrar administrador.' });
+    return handleServiceError(res, error, 'Erro ao cadastrar usuário.');
   }
 });
 
 /**
- * DELETE /api/admin/admins/:email
- * Remove um e-mail de administrador (restrito ao root).
+ * PUT /api/admin/admins/:email
+ * Atualiza perfil e abas permitidas de um usuário ou administrador.
+ * Body: { role?: 'user'|'admin', allowedTabs?: string[] }
  */
-router.delete('/admins/:email', adminActionLimiter, requireRootAdmin, async (req, res) => {
+router.put('/admins/:email', adminActionLimiter, requireAdminOrRoot, async (req, res) => {
   let targetEmail;
   try {
     targetEmail = decodeURIComponent(req.params.email || '');
@@ -154,26 +158,53 @@ router.delete('/admins/:email', adminActionLimiter, requireRootAdmin, async (req
   }
 
   try {
-    const result = await removeAdmin(targetEmail);
-    console.log(`🗑️  Admin removido por ${req.user.email}: ${result.email}`);
+    const body = req.body || {};
+    const admin = await updateAdmin(targetEmail, req.user, {
+      role: body.role,
+      allowedTabs: body.allowed_tabs ?? body.allowedTabs
+    });
+    console.log(`✏️  Usuário atualizado por ${req.user.email}: ${admin.email} (${admin.role})`);
+    return res.status(200).json({ admin });
+  } catch (error) {
+    return handleServiceError(res, error, 'Erro ao atualizar permissões do usuário.');
+  }
+});
+
+/**
+ * DELETE /api/admin/admins/:email
+ * Remove um usuário ou administrador (admin comum só remove 'user'; apenas root remove 'admin').
+ */
+router.delete('/admins/:email', adminActionLimiter, requireAdminOrRoot, async (req, res) => {
+  let targetEmail;
+  try {
+    targetEmail = decodeURIComponent(req.params.email || '');
+  } catch (_) {
+    return res.status(400).json({ error: 'E-mail inválido na URL.' });
+  }
+
+  try {
+    const result = await removeAdmin(targetEmail, req.user);
+    console.log(`🗑️  Usuário removido por ${req.user.email}: ${result.email}`);
     return res.status(200).json({
       removed: result.removed,
       email: result.email,
       inEnvList: result.inEnvList
     });
   } catch (error) {
-    return handleServiceError(res, error, 'Erro ao remover administrador.');
+    return handleServiceError(res, error, 'Erro ao remover usuário.');
   }
 });
 
 // =================================================================
 // TIERS DE RECOMPENSA
 // =================================================================
+router.use('/rewards', requireTabAccess('recompensas'));
+router.use('/doadores', requireTabAccess('recompensas'));
 
 /**
  * GET /api/admin/rewards/tiers
  */
-router.get('/rewards/tiers', async (req, res) => {
+router.get('/rewards/tiers', requireTabAccess('recompensas'), async (req, res) => {
   try {
     const includeInactive = req.query.includeInactive !== 'false';
     const data = await listRewardTiers({ includeInactive });
@@ -404,11 +435,12 @@ router.delete('/rewards/deliveries/:id', adminActionLimiter, async (req, res) =>
 // =================================================================
 // METAS DE DOAÇÃO
 // =================================================================
+router.use('/metas', requireTabAccess('metas'));
 
 /**
  * GET /api/admin/metas
  */
-router.get('/metas', async (req, res) => {
+router.get('/metas', requireTabAccess('metas'), async (req, res) => {
   try {
     const data = await listGoals({ includeInactive: true, isPublic: false });
     return res.status(200).json({ success: true, data });

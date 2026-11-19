@@ -67,7 +67,7 @@ function verifyAdminJWT(token) {
     !decoded ||
     decoded.scope !== 'admin' ||
     decoded.authProvider !== 'google' ||
-    !['root', 'admin'].includes(decoded.role) ||
+    !['root', 'admin', 'user'].includes(decoded.role) ||
     typeof decoded.email !== 'string' ||
     !decoded.email.trim()
   ) {

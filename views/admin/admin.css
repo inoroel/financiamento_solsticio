@@ -23,6 +23,10 @@
   box-sizing: border-box;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 body {
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
@@ -142,6 +146,16 @@ code {
 .role-badge.is-root {
   background: var(--text);
   color: var(--surface);
+}
+
+.role-badge.is-admin {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.role-badge.is-user {
+  background: var(--surface-muted);
+  color: var(--text-muted);
 }
 
 .dashboard-grid {
@@ -686,9 +700,9 @@ tbody th {
 
 .table-admins {
   --label-2: "Perfil";
-  --label-3: "Origem";
+  --label-3: "Abas permitidas";
   --label-4: "Cadastrado por";
-  --label-5: "Ação";
+  --label-5: "Ações";
 }
 
 .table-tiers {
@@ -803,6 +817,100 @@ tbody th {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
+}
+
+.checkbox-fieldset {
+  margin: 0 0 1.25rem;
+  padding: 0.9rem 1rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.checkbox-fieldset legend {
+  padding-inline: 0.35rem;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.tab-permissions-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.65rem;
+  margin-block: 0.65rem 0.5rem;
+}
+
+.tab-permission-item {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  min-height: 48px;
+  padding: 0.5rem 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.tab-permission-item:hover:not(.is-disabled) {
+  border-color: var(--border-input);
+}
+
+.tab-permission-item:has(input:checked) {
+  border-color: var(--text);
+  background: var(--surface);
+}
+
+.tab-permission-item.is-disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.tab-permission-item input[type="checkbox"] {
+  flex-shrink: 0;
+  accent-color: var(--text);
+}
+
+.tab-permission-item label {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  margin: 0;
+  cursor: pointer;
+}
+
+.tab-permission-item.is-disabled label,
+.tab-permission-item input:disabled {
+  cursor: not-allowed;
+}
+
+.tab-selector-helpers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-block: 0.5rem 0.25rem;
+}
+
+#user-tabs-error.is-visible {
+  display: block;
+}
+
+.tab-badges-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.tab-badge {
+  display: inline-block;
+  padding: 0.16rem 0.55rem;
+  border-radius: 6px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  background: var(--surface-muted);
+  color: var(--text);
+  border: 1px solid var(--border);
+  white-space: nowrap;
 }
 
 .payment-output-box {

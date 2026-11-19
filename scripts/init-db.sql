@@ -74,16 +74,19 @@ CREATE INDEX IF NOT EXISTS idx_transacoes_provider_tid ON transacoes(provider_ti
 CREATE INDEX IF NOT EXISTS idx_transacoes_crypto_currency ON transacoes(crypto_currency) WHERE crypto_currency IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_doadores_whatsapp ON doadores(whatsapp) WHERE whatsapp IS NOT NULL;
 
--- Tabela de administradores autorizados (Google OAuth)
+-- Tabela de administradores e usuários autorizados (Google OAuth)
 CREATE TABLE IF NOT EXISTS admin_users (
     email VARCHAR(255) PRIMARY KEY,
     role VARCHAR(20) NOT NULL DEFAULT 'admin',
     active BOOLEAN NOT NULL DEFAULT true,
+    allowed_tabs JSONB NOT NULL DEFAULT '["estornos","recompensas","metas","doacao","usuarios"]'::jsonb,
     created_by VARCHAR(255),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT check_admin_role CHECK (role IN ('root', 'admin'))
+    CONSTRAINT check_admin_role CHECK (role IN ('root', 'admin', 'user'))
 );
+
+ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS allowed_tabs JSONB NOT NULL DEFAULT '["estornos","recompensas","metas","doacao","usuarios"]'::jsonb;
 
 -- Tabela de auditoria de estornos
 CREATE TABLE IF NOT EXISTS estornos_log (

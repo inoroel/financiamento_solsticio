@@ -71,13 +71,18 @@ async function requireAdmin(req, res, next) {
   try {
     const adminRecord = await getAdminRecord(decoded.email);
     if (!adminRecord || !adminRecord.active) {
-      return res.status(403).json({ error: 'Acesso negado. Este e-mail não possui permissão de administrador.' });
+      return res.status(403).json({
+        error: 'Acesso negado. Este e-mail não possui permissão de acesso ao painel.',
+        code: 'ACCOUNT_UNAUTHORIZED'
+      });
     }
 
     req.user = {
       email: adminRecord.email,
       role: adminRecord.role,
       isRoot: adminRecord.role === 'root',
+      isAdmin: adminRecord.role === 'root' || adminRecord.role === 'admin',
+      allowedTabs: adminRecord.allowedTabs,
       name: decoded.name || '',
       picture: decoded.picture || '',
       authProvider: 'google'
@@ -95,14 +100,52 @@ async function requireAdmin(req, res, next) {
  */
 function requireRootAdmin(req, res, next) {
   if (!req.user || req.user.role !== 'root' || !isRootAdmin(req.user.email)) {
-    return res.status(403).json({ error: 'Acesso restrito ao administrador root.' });
+    return res.status(403).json({
+      error: 'Acesso restrito ao administrador root.',
+      code: 'FORBIDDEN_SCOPE'
+    });
   }
   return next();
+}
+
+/**
+ * Restringe a rota a administradores e root (bloqueia usuários comuns).
+ */
+function requireAdminOrRoot(req, res, next) {
+  if (!req.user || (req.user.role !== 'root' && req.user.role !== 'admin')) {
+    return res.status(403).json({
+      error: 'Acesso restrito a administradores e root.',
+      code: 'FORBIDDEN_SCOPE'
+    });
+  }
+  return next();
+}
+
+/**
+ * Restringe a rota a usuários que tenham permissão explícita na aba informada (ou root).
+ * @param {string} tabKey
+ */
+function requireTabAccess(tabKey) {
+  return (req, res, next) => {
+    if (
+      !req.user ||
+      (!req.user.isRoot &&
+        (!Array.isArray(req.user.allowedTabs) || !req.user.allowedTabs.includes(tabKey)))
+    ) {
+      return res.status(403).json({
+        error: 'Acesso negado. Sua conta não possui permissão para esta aba.',
+        code: 'FORBIDDEN_SCOPE'
+      });
+    }
+    return next();
+  };
 }
 
 module.exports = {
   requireAuth,
   optionalAuth,
   requireAdmin,
-  requireRootAdmin
+  requireRootAdmin,
+  requireAdminOrRoot,
+  requireTabAccess
 };

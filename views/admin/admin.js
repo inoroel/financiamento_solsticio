@@ -1,6 +1,14 @@
 (() => {
   'use strict';
 
+  const TAB_LABELS = {
+    estornos: 'Estornos e Transações',
+    recompensas: 'Recompensas',
+    metas: 'Metas',
+    doacao: 'Doação',
+    usuarios: 'Usuários'
+  };
+
   const els = {
     userSessionBar: document.getElementById('user-session-bar'),
     userAvatar: document.getElementById('user-avatar'),
@@ -13,6 +21,8 @@
     googleConfigWarning: document.getElementById('google-config-warning'),
     loginError: document.getElementById('login-error'),
     dashboardView: document.getElementById('dashboard-view'),
+    noTabsWarning: document.getElementById('no-tabs-warning'),
+    tabsShell: document.getElementById('tabs-shell'),
     refundForm: document.getElementById('refund-form'),
     refundTid: document.getElementById('refund-tid'),
     refundValor: document.getElementById('refund-valor'),
@@ -27,11 +37,34 @@
     txTbody: document.getElementById('tx-tbody'),
     refreshEstornosBtn: document.getElementById('refresh-estornos-btn'),
     estornosTbody: document.getElementById('estornos-tbody'),
+    subtabUsuariosLista: document.getElementById('subtab-usuarios-lista'),
+    subtabUsuariosCriar: document.getElementById('subtab-usuarios-criar'),
+    subpanelUsuariosLista: document.getElementById('subpanel-usuarios-lista'),
+    subpanelUsuariosCriar: document.getElementById('subpanel-usuarios-criar'),
+    refreshAdminsBtn: document.getElementById('refresh-admins-btn'),
+    goCreateUserBtn: document.getElementById('go-create-user-btn'),
+    backToUsersListBtn: document.getElementById('back-to-users-list-btn'),
+    createUserHeading: document.getElementById('create-user-heading'),
+    createUserSubtitle: document.getElementById('create-user-subtitle'),
     addAdminForm: document.getElementById('add-admin-form'),
     newAdminEmail: document.getElementById('new-admin-email'),
+    userRoleFieldset: document.getElementById('user-role-fieldset'),
+    newUserRoleUser: document.getElementById('new-user-role-user'),
+    newUserRoleAdminWrap: document.getElementById('new-user-role-admin-wrap'),
+    newUserRoleAdmin: document.getElementById('new-user-role-admin'),
+    userRoleAdminNote: document.getElementById('user-role-admin-note'),
+    userTabsFieldset: document.getElementById('user-tabs-fieldset'),
+    userTabsAdminAutoNote: document.getElementById('user-tabs-admin-auto-note'),
+    selectAllTabsBtn: document.getElementById('select-all-tabs-btn'),
+    clearAllTabsBtn: document.getElementById('clear-all-tabs-btn'),
+    userTabsError: document.getElementById('user-tabs-error'),
     addAdminBtn: document.getElementById('add-admin-btn'),
+    cancelEditUserBtn: document.getElementById('cancel-edit-user-btn'),
+    resetUserFormBtn: document.getElementById('reset-user-form-btn'),
+    userCreateResult: document.getElementById('user-create-result'),
     adminManageResult: document.getElementById('admin-manage-result'),
     adminsTbody: document.getElementById('admins-tbody'),
+    permTabCheckboxes: Array.from(document.querySelectorAll('#user-tabs-fieldset input[name="allowed_tabs"]')),
     confirmDialog: document.getElementById('confirm-dialog'),
     confirmDialogTitle: document.getElementById('confirm-dialog-title'),
     confirmDialogMessage: document.getElementById('confirm-dialog-message'),
@@ -167,14 +200,18 @@
   let editingTierSlug = null;
   let editingRewardId = null;
   let editingGoalId = null;
+  let editingUserEmail = null;
   let tierSlugManuallyEdited = false;
   let goalSlugManuallyEdited = false;
   let allTiers = [];
   let allRewards = [];
   let allDonors = [];
+  let allUsers = [];
   let currentDonation = null;
   let donationPollTimer = null;
   let donationPopupTimer = null;
+  let mainTabsController = null;
+  let usersSubtabsController = null;
 
   // =========================================================
   // Acessibilidade de validação (ARIA + fallback :user-invalid)
@@ -473,48 +510,83 @@
   }
 
   function initTabGroup(pairs) {
-    if (!Array.isArray(pairs) || pairs.length === 0) return;
+    if (!Array.isArray(pairs) || pairs.length === 0) return null;
     const supportsFocusGroup =
       typeof HTMLElement !== 'undefined' && Object.hasOwn(HTMLElement.prototype, 'focusGroup');
 
     const activate = (selectedTab, shouldScroll = true) => {
+      if (!selectedTab || selectedTab.hidden) return;
       for (const { tab, panel } of pairs) {
-        const isSelected = tab === selectedTab;
+        const isSelected = tab === selectedTab && !tab.hidden;
         tab.setAttribute('aria-selected', String(isSelected));
         tab.toggleAttribute('focusgroupstart', isSelected);
         tab.tabIndex = isSelected ? 0 : -1;
         panel.hidden = !isSelected;
       }
       if (shouldScroll) {
-        selectedTab.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+        selectedTab.scrollIntoView({ block: 'nearest', inline: 'nearest', container: 'nearest' });
       }
     };
 
-    const initialPair = pairs.find(({ tab }) => tab.getAttribute('aria-selected') === 'true') || pairs[0];
-    activate(initialPair.tab, false);
+    const syncVisibility = (allowedKeysSet) => {
+      for (const { key, tab, panel } of pairs) {
+        const isAllowed = !allowedKeysSet || !key || allowedKeysSet.has(key);
+        tab.hidden = !isAllowed;
+        if (!isAllowed) {
+          tab.setAttribute('focusgroup', 'none');
+          tab.setAttribute('aria-selected', 'false');
+          tab.removeAttribute('focusgroupstart');
+          tab.tabIndex = -1;
+          panel.hidden = true;
+        } else {
+          tab.removeAttribute('focusgroup');
+        }
+      }
 
-    pairs.forEach(({ tab }, index) => {
+      const visiblePairs = pairs.filter(({ tab }) => !tab.hidden);
+      const selectedVisible =
+        visiblePairs.find(({ tab }) => tab.getAttribute('aria-selected') === 'true') || visiblePairs[0];
+      if (selectedVisible) {
+        activate(selectedVisible.tab, false);
+      }
+      return visiblePairs.map((p) => p.key).filter(Boolean);
+    };
+
+    const initialVisible = pairs.filter(({ tab }) => !tab.hidden);
+    const initialPair =
+      initialVisible.find(({ tab }) => tab.getAttribute('aria-selected') === 'true') || initialVisible[0];
+    if (initialPair) {
+      activate(initialPair.tab, false);
+    }
+
+    pairs.forEach(({ tab }) => {
       tab.addEventListener('click', () => activate(tab, true));
 
       if (!supportsFocusGroup) {
         tab.addEventListener('keydown', (event) => {
+          const visiblePairs = pairs.filter(({ tab: candidate }) => !candidate.hidden);
+          const currentIndex = visiblePairs.findIndex(({ tab: candidate }) => candidate === tab);
+          if (currentIndex === -1 || visiblePairs.length === 0) return;
+
           let nextIndex = null;
-          if (event.key === 'ArrowRight') nextIndex = (index + 1) % pairs.length;
-          else if (event.key === 'ArrowLeft') nextIndex = (index - 1 + pairs.length) % pairs.length;
+          if (event.key === 'ArrowRight') nextIndex = (currentIndex + 1) % visiblePairs.length;
+          else if (event.key === 'ArrowLeft') nextIndex = (currentIndex - 1 + visiblePairs.length) % visiblePairs.length;
           else if (event.key === 'Home') nextIndex = 0;
-          else if (event.key === 'End') nextIndex = pairs.length - 1;
+          else if (event.key === 'End') nextIndex = visiblePairs.length - 1;
 
           if (nextIndex === null) return;
           event.preventDefault();
-          const targetTab = pairs[nextIndex].tab;
-          pairs.forEach((p) => {
+          const targetTab = visiblePairs[nextIndex].tab;
+          visiblePairs.forEach((p) => {
             p.tab.tabIndex = p.tab === targetTab ? 0 : -1;
           });
           targetTab.focus();
-          targetTab.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+          targetTab.scrollIntoView({ block: 'nearest', inline: 'nearest', container: 'nearest' });
         });
       }
     });
+
+    return { activate, syncVisibility };
   }
 
   /**
@@ -574,6 +646,31 @@
     const contentType = response.headers.get('content-type') || '';
     const body = contentType.includes('application/json') ? await response.json() : null;
     return { response, body };
+  }
+
+  function hasTab(tabKey) {
+    if (!currentUser) return false;
+    if (currentUser.isRoot || currentUser.role === 'root') return true;
+    return Array.isArray(currentUser.allowedTabs) && currentUser.allowedTabs.includes(tabKey);
+  }
+
+  function canAccessUsersSection() {
+    if (!currentUser) return false;
+    return Boolean(currentUser.isRoot || currentUser.role === 'admin' || currentUser.isAdmin);
+  }
+
+  function isSessionInvalidResponse(response, body) {
+    return response.status === 401 || (response.status === 403 && body?.code === 'ACCOUNT_UNAUTHORIZED');
+  }
+
+  async function refreshPostDonationData() {
+    const tasks = [];
+    if (hasTab('estornos')) tasks.push(loadTransactions());
+    if (hasTab('metas')) tasks.push(loadGoals());
+    if (hasTab('recompensas')) tasks.push(loadDonors());
+    if (tasks.length > 0) {
+      await Promise.all(tasks);
+    }
   }
 
   function handleUnauthorized(message) {
@@ -672,8 +769,16 @@
     hideBanner(els.globalBanner);
 
     els.userEmail.textContent = user.email;
-    els.userRoleBadge.textContent = user.isRoot ? 'Root' : 'Admin';
-    els.userRoleBadge.classList.toggle('is-root', Boolean(user.isRoot));
+    if (user.isRoot || user.role === 'root') {
+      els.userRoleBadge.textContent = 'Root';
+      els.userRoleBadge.className = 'role-badge is-root';
+    } else if (user.role === 'admin' || user.isAdmin) {
+      els.userRoleBadge.textContent = 'Admin';
+      els.userRoleBadge.className = 'role-badge is-admin';
+    } else {
+      els.userRoleBadge.textContent = 'Usuário';
+      els.userRoleBadge.className = 'role-badge is-user';
+    }
 
     if (user.picture) {
       els.userAvatar.src = user.picture;
@@ -684,7 +789,33 @@
       els.userAvatar.removeAttribute('src');
     }
 
-    els.addAdminForm.hidden = !user.isRoot;
+    const rawTabs = Array.isArray(user.allowedTabs) ? user.allowedTabs : [];
+    const allowedSet = new Set(
+      user.isRoot || user.role === 'root'
+        ? ['estornos', 'recompensas', 'metas', 'doacao', 'usuarios']
+        : rawTabs
+    );
+    if (!canAccessUsersSection()) {
+      allowedSet.delete('usuarios');
+    } else {
+      allowedSet.add('usuarios');
+    }
+
+    const visibleKeys = mainTabsController ? mainTabsController.syncVisibility(allowedSet) : [];
+    const hasNoTabs = visibleKeys.length === 0;
+    els.noTabsWarning.hidden = !hasNoTabs;
+    els.tabsShell.hidden = hasNoTabs;
+
+    if (canAccessUsersSection()) {
+      usersSubtabsController?.syncVisibility(new Set(['lista', 'criar']));
+      usersSubtabsController?.activate(els.subtabUsuariosLista, false);
+    } else {
+      usersSubtabsController?.syncVisibility(new Set());
+    }
+
+    syncCreateUserFormPermissions();
+    resetUserForm();
+
     els.userSessionBar.hidden = false;
     els.loginView.hidden = true;
     els.dashboardView.hidden = false;
@@ -724,7 +855,7 @@
     if (els.filterStatus.value) params.set('status', els.filterStatus.value);
 
     const { response, body } = await apiFetch(`/api/admin/transacoes?${params.toString()}`);
-    if (response.status === 401 || response.status === 403) {
+    if (isSessionInvalidResponse(response, body)) {
       handleUnauthorized(body?.error || 'Sessão expirada.');
       return;
     }
@@ -802,7 +933,7 @@
 
   async function loadEstornos() {
     const { response, body } = await apiFetch('/api/admin/estornos?limit=30');
-    if (response.status === 401 || response.status === 403) {
+    if (isSessionInvalidResponse(response, body)) {
       handleUnauthorized(body?.error || 'Sessão expirada.');
       return;
     }
@@ -859,58 +990,117 @@
   }
 
   async function loadAdmins() {
+    if (!canAccessUsersSection()) {
+      els.adminsTbody.replaceChildren();
+      return;
+    }
+
     const { response, body } = await apiFetch('/api/admin/admins');
-    if (response.status === 401 || response.status === 403) {
+    if (isSessionInvalidResponse(response, body)) {
       handleUnauthorized(body?.error || 'Sessão expirada.');
       return;
     }
     if (!response.ok) {
-      renderEmptyRow(els.adminsTbody, 5, body?.error || 'Erro ao carregar administradores.');
+      renderEmptyRow(els.adminsTbody, 5, body?.error || 'Erro ao carregar usuários.');
       return;
     }
 
-    const admins = Array.isArray(body?.admins) ? body.admins : [];
-    if (admins.length === 0) {
-      renderEmptyRow(els.adminsTbody, 5, 'Nenhum administrador encontrado.');
+    allUsers = Array.isArray(body?.admins) ? body.admins : [];
+    if (allUsers.length === 0) {
+      renderEmptyRow(els.adminsTbody, 5, 'Nenhum usuário cadastrado.');
       return;
     }
 
     const fragment = document.createDocumentFragment();
-    for (const admin of admins) {
+    for (const userRecord of allUsers) {
       const tr = document.createElement('tr');
 
       const th = document.createElement('th');
       th.scope = 'row';
-      th.textContent = admin.email;
+      th.textContent = userRecord.email;
+      const subSource = document.createElement('span');
+      subSource.className = 'sub-meta';
+      subSource.textContent =
+        userRecord.source === 'root'
+          ? 'Sistema (root)'
+          : userRecord.source === 'env'
+            ? 'Variável de ambiente'
+            : 'Banco de dados';
+      th.append(subSource);
 
       const tdRole = document.createElement('td');
       const roleSpan = document.createElement('span');
-      roleSpan.className = `role-badge${admin.role === 'root' ? ' is-root' : ''}`;
-      roleSpan.textContent = admin.role === 'root' ? 'Root' : 'Admin';
+      if (userRecord.role === 'root') {
+        roleSpan.className = 'role-badge is-root';
+        roleSpan.textContent = 'Root';
+      } else if (userRecord.role === 'admin') {
+        roleSpan.className = 'role-badge is-admin';
+        roleSpan.textContent = 'Admin';
+      } else {
+        roleSpan.className = 'role-badge is-user';
+        roleSpan.textContent = 'Usuário';
+      }
       tdRole.append(roleSpan);
 
-      const tdSource = document.createElement('td');
-      tdSource.textContent =
-        admin.source === 'root' ? 'Sistema (root)' : admin.source === 'env' ? 'Variável de ambiente' : 'Banco de dados';
+      const tdTabs = document.createElement('td');
+      const tabsWrap = document.createElement('div');
+      tabsWrap.className = 'tab-badges-list';
+      if (userRecord.role === 'root') {
+        const allBadge = document.createElement('span');
+        allBadge.className = 'tab-badge';
+        allBadge.textContent = 'Todas as abas';
+        tabsWrap.append(allBadge);
+      } else {
+        const tabs = Array.isArray(userRecord.allowedTabs) ? userRecord.allowedTabs : [];
+        if (tabs.length === 0) {
+          const noneSpan = document.createElement('span');
+          noneSpan.className = 'sub-meta';
+          noneSpan.textContent = 'Nenhuma';
+          tabsWrap.append(noneSpan);
+        } else {
+          for (const tabKey of tabs) {
+            const badge = document.createElement('span');
+            badge.className = 'tab-badge';
+            badge.textContent = TAB_LABELS[tabKey] || tabKey;
+            tabsWrap.append(badge);
+          }
+        }
+      }
+      tdTabs.append(tabsWrap);
 
       const tdCreatedBy = document.createElement('td');
-      tdCreatedBy.textContent = admin.created_by || '-';
+      tdCreatedBy.textContent = userRecord.created_by || '-';
 
       const tdAcao = document.createElement('td');
-      if (admin.role === 'root') {
+      const isSelf =
+        Boolean(currentUser?.email) && userRecord.email.toLowerCase() === currentUser.email.toLowerCase();
+      if (userRecord.role === 'root') {
         tdAcao.textContent = 'Protegido';
-      } else if (currentUser?.isRoot) {
+      } else if (isSelf) {
+        tdAcao.textContent = 'Sua conta';
+      } else if (userRecord.role === 'admin' && !currentUser?.isRoot) {
+        tdAcao.textContent = 'Somente root';
+      } else {
+        const actionsWrap = document.createElement('div');
+        actionsWrap.className = 'row-actions';
+
+        const editBtn = document.createElement('button');
+        editBtn.type = 'button';
+        editBtn.className = 'btn btn-secondary btn-sm';
+        editBtn.textContent = 'Editar';
+        editBtn.addEventListener('click', () => startEditUser(userRecord));
+
         const removeBtn = document.createElement('button');
         removeBtn.type = 'button';
         removeBtn.className = 'btn btn-danger btn-sm';
         removeBtn.textContent = 'Remover';
-        removeBtn.addEventListener('click', () => handleRemoveAdmin(admin.email));
-        tdAcao.append(removeBtn);
-      } else {
-        tdAcao.textContent = 'Somente root';
+        removeBtn.addEventListener('click', () => handleRemoveAdmin(userRecord));
+
+        actionsWrap.append(editBtn, removeBtn);
+        tdAcao.append(actionsWrap);
       }
 
-      tr.append(th, tdRole, tdSource, tdCreatedBy, tdAcao);
+      tr.append(th, tdRole, tdTabs, tdCreatedBy, tdAcao);
       fragment.append(tr);
     }
 
@@ -918,16 +1108,22 @@
   }
 
   async function loadDashboardData() {
-    await Promise.all([
-      loadTransactions(),
-      loadEstornos(),
-      loadAdmins(),
-      loadRewardTiers(),
-      loadRewards(),
-      loadDonors(),
-      loadDeliveries(),
-      loadGoals()
-    ]);
+    const tasks = [];
+    if (hasTab('estornos')) {
+      tasks.push(loadTransactions(), loadEstornos());
+    }
+    if (hasTab('recompensas')) {
+      tasks.push(loadRewardTiers(), loadRewards(), loadDonors(), loadDeliveries());
+    }
+    if (hasTab('metas')) {
+      tasks.push(loadGoals());
+    }
+    if (canAccessUsersSection()) {
+      tasks.push(loadAdmins());
+    }
+    if (tasks.length > 0) {
+      await Promise.all(tasks);
+    }
   }
 
   // =========================================================
@@ -1041,7 +1237,7 @@
 
   async function loadRewardTiers() {
     const { response, body } = await apiFetch('/api/admin/rewards/tiers');
-    if (response.status === 401 || response.status === 403) {
+    if (isSessionInvalidResponse(response, body)) {
       handleUnauthorized(body?.error || 'Sessão expirada.');
       return;
     }
@@ -1112,7 +1308,7 @@
 
   async function loadRewards() {
     const { response, body } = await apiFetch('/api/admin/rewards');
-    if (response.status === 401 || response.status === 403) {
+    if (isSessionInvalidResponse(response, body)) {
       handleUnauthorized(body?.error || 'Sessão expirada.');
       return;
     }
@@ -1196,7 +1392,7 @@
 
   async function loadDonors() {
     const { response, body } = await apiFetch('/api/admin/doadores?limit=300');
-    if (response.status === 401 || response.status === 403) {
+    if (isSessionInvalidResponse(response, body)) {
       handleUnauthorized(body?.error || 'Sessão expirada.');
       return;
     }
@@ -1220,7 +1416,7 @@
     }
 
     const { response, body } = await apiFetch(`/api/admin/rewards/deliveries?${params.toString()}`);
-    if (response.status === 401 || response.status === 403) {
+    if (isSessionInvalidResponse(response, body)) {
       handleUnauthorized(body?.error || 'Sessão expirada.');
       return;
     }
@@ -1358,7 +1554,7 @@
         body: JSON.stringify(payload)
       });
 
-      if (response.status === 401 || response.status === 403) {
+      if (isSessionInvalidResponse(response, body)) {
         handleUnauthorized(body?.error || 'Sessão expirada.');
         return;
       }
@@ -1399,7 +1595,7 @@
       const { response, body } = await apiFetch(`/api/admin/rewards/tiers/${encodeURIComponent(tier.slug)}`, {
         method: 'DELETE'
       });
-      if (response.status === 401) {
+      if (isSessionInvalidResponse(response, body)) {
         handleUnauthorized(body?.error || 'Sessão expirada.');
         return;
       }
@@ -1471,7 +1667,7 @@
         body: JSON.stringify(payload)
       });
 
-      if (response.status === 401 || response.status === 403) {
+      if (isSessionInvalidResponse(response, body)) {
         handleUnauthorized(body?.error || 'Sessão expirada.');
         return;
       }
@@ -1515,7 +1711,7 @@
 
     try {
       const { response, body } = await apiFetch(`/api/admin/rewards/${reward.id}`, { method: 'DELETE' });
-      if (response.status === 401) {
+      if (isSessionInvalidResponse(response, body)) {
         handleUnauthorized(body?.error || 'Sessão expirada.');
         return;
       }
@@ -1562,7 +1758,7 @@
         body: JSON.stringify(payload)
       });
 
-      if (response.status === 401 || response.status === 403) {
+      if (isSessionInvalidResponse(response, body)) {
         handleUnauthorized(body?.error || 'Sessão expirada.');
         return;
       }
@@ -1613,7 +1809,7 @@
       const { response, body } = await apiFetch(`/api/admin/rewards/deliveries/${delivery.id}`, {
         method: 'DELETE'
       });
-      if (response.status === 401) {
+      if (isSessionInvalidResponse(response, body)) {
         handleUnauthorized(body?.error || 'Sessão expirada.');
         return;
       }
@@ -1685,7 +1881,7 @@
 
   async function loadGoals() {
     const { response, body } = await apiFetch('/api/admin/metas');
-    if (response.status === 401 || response.status === 403) {
+    if (isSessionInvalidResponse(response, body)) {
       handleUnauthorized(body?.error || 'Sessão expirada.');
       return;
     }
@@ -1903,7 +2099,7 @@
         body: JSON.stringify(payload)
       });
 
-      if (response.status === 401 || response.status === 403) {
+      if (isSessionInvalidResponse(response, body)) {
         handleUnauthorized(body?.error || 'Sessão expirada.');
         return;
       }
@@ -1944,7 +2140,7 @@
 
     try {
       const { response, body } = await apiFetch(`/api/admin/metas/${goal.id}`, { method: 'DELETE' });
-      if (response.status === 401) {
+      if (isSessionInvalidResponse(response, body)) {
         handleUnauthorized(body?.error || 'Sessão expirada.');
         return;
       }
@@ -2184,7 +2380,7 @@
       if (body.status === 'CONFIRMADA') {
         stopDonationTimers();
         showBanner(els.donatePollStatus, 'Pagamento confirmado com sucesso!', 'success');
-        await Promise.all([loadTransactions(), loadGoals(), loadDonors()]);
+        await refreshPostDonationData();
       } else if (['NEGADA', 'CANCELADA', 'EXPIRADA'].includes(body.status)) {
         stopDonationTimers();
         showBanner(els.donatePollStatus, `Status final da cobrança: ${body.status}.`, 'error');
@@ -2339,7 +2535,7 @@
         isDenied ? 'error' : 'success'
       );
       renderDonationOutput(body);
-      await Promise.all([loadTransactions(), loadGoals(), loadDonors()]);
+      await refreshPostDonationData();
     } catch (_) {
       showBanner(els.donateResult, 'Erro de conexão ao gerar o pagamento.', 'error');
     } finally {
@@ -2364,7 +2560,7 @@
       currentDonation.status = 'CONFIRMADA';
       renderDonationSummary(currentDonation);
       showBanner(els.donatePollStatus, body.message || 'Pagamento Stellar confirmado!', 'success');
-      await Promise.all([loadTransactions(), loadGoals(), loadDonors()]);
+      await refreshPostDonationData();
     } catch (_) {
       showBanner(els.donatePollStatus, 'Erro de conexão ao verificar pagamento pelo memo.', 'error');
     } finally {
@@ -2391,7 +2587,7 @@
       renderDonationSummary(currentDonation);
       showBanner(els.donatePollStatus, body.message || 'Pagamento Stellar confirmado!', 'success');
       els.donateHashForm.reset();
-      await Promise.all([loadTransactions(), loadGoals(), loadDonors()]);
+      await refreshPostDonationData();
     } catch (_) {
       showBanner(els.donatePollStatus, 'Erro de conexão ao confirmar hash Stellar.', 'error');
     } finally {
@@ -2459,7 +2655,7 @@
         body: JSON.stringify(payload)
       });
 
-      if (response.status === 401 || response.status === 403) {
+      if (isSessionInvalidResponse(response, body)) {
         handleUnauthorized(body?.error || 'Sessão expirada.');
         return;
       }
@@ -2470,7 +2666,9 @@
           body?.error ? `${body.error}${body.message ? ` — ${body.message}` : ''}` : 'Falha ao executar estorno.',
           'error'
         );
-        await loadEstornos();
+        if (response.status !== 403) {
+          await loadEstornos();
+        }
         return;
       }
 
@@ -2488,53 +2686,210 @@
     }
   }
 
+  function getSelectedUserRole() {
+    if (els.newUserRoleAdmin?.checked && !els.newUserRoleAdmin.disabled) {
+      return 'admin';
+    }
+    return 'user';
+  }
+
+  function getSelectedUserTabs() {
+    return els.permTabCheckboxes
+      .filter((cb) => cb.checked && !cb.disabled)
+      .map((cb) => cb.value);
+  }
+
+  function validateUserTabsSelection() {
+    const role = getSelectedUserRole();
+    const selected = getSelectedUserTabs();
+    if (role === 'user' && selected.length === 0) {
+      els.userTabsError.classList.add('is-visible');
+      return false;
+    }
+    els.userTabsError.classList.remove('is-visible');
+    return true;
+  }
+
+  function syncCreateUserFormPermissions() {
+    const isRoot = Boolean(currentUser?.isRoot || currentUser?.role === 'root');
+    if (els.newUserRoleAdminWrap && els.newUserRoleAdmin) {
+      els.newUserRoleAdminWrap.hidden = !isRoot;
+      els.newUserRoleAdmin.disabled = !isRoot;
+      if (!isRoot && els.newUserRoleAdmin.checked) {
+        els.newUserRoleUser.checked = true;
+      }
+    }
+    if (els.userRoleAdminNote) {
+      els.userRoleAdminNote.hidden = isRoot;
+    }
+
+    const selectedRole = getSelectedUserRole();
+    if (els.userTabsAdminAutoNote) {
+      els.userTabsAdminAutoNote.hidden = selectedRole !== 'admin';
+    }
+
+    let enabledCount = 0;
+    for (const cb of els.permTabCheckboxes) {
+      const canGrant = isRoot || hasTab(cb.value);
+      cb.disabled = !canGrant;
+      if (!canGrant) {
+        cb.checked = false;
+      } else {
+        enabledCount += 1;
+      }
+      cb.closest('.tab-permission-item')?.classList.toggle('is-disabled', !canGrant);
+    }
+
+    if (els.selectAllTabsBtn) els.selectAllTabsBtn.disabled = enabledCount === 0;
+    if (els.clearAllTabsBtn) els.clearAllTabsBtn.disabled = enabledCount === 0;
+  }
+
+  function resetUserForm() {
+    editingUserEmail = null;
+    els.addAdminForm.reset();
+    els.newAdminEmail.readOnly = false;
+    els.newUserRoleUser.checked = true;
+    els.permTabCheckboxes.forEach((cb) => {
+      cb.checked = false;
+    });
+    els.userTabsError.classList.remove('is-visible');
+    els.createUserHeading.textContent = 'Criar Novo Usuário';
+    els.createUserSubtitle.textContent =
+      'Escolha o e-mail Google, o perfil e exatamente quais abas serão visíveis para este usuário.';
+    els.addAdminBtn.textContent = 'Criar usuário';
+    els.cancelEditUserBtn.hidden = true;
+    els.newAdminEmail.setCustomValidity('');
+    syncAria(els.newAdminEmail);
+    syncCreateUserFormPermissions();
+  }
+
+  function startEditUser(userRecord) {
+    hideBanner(els.adminManageResult);
+    hideBanner(els.userCreateResult);
+    resetUserForm();
+
+    editingUserEmail = userRecord.email;
+    els.newAdminEmail.value = userRecord.email;
+    els.newAdminEmail.readOnly = true;
+    els.newAdminEmail.setCustomValidity('');
+    syncAria(els.newAdminEmail);
+
+    if (userRecord.role === 'admin' && (currentUser?.isRoot || currentUser?.role === 'root')) {
+      els.newUserRoleAdmin.checked = true;
+    } else {
+      els.newUserRoleUser.checked = true;
+    }
+    syncCreateUserFormPermissions();
+
+    const allowedSet = new Set(Array.isArray(userRecord.allowedTabs) ? userRecord.allowedTabs : []);
+    els.permTabCheckboxes.forEach((cb) => {
+      if (!cb.disabled) {
+        cb.checked = allowedSet.has(cb.value);
+      }
+    });
+    els.userTabsError.classList.remove('is-visible');
+
+    els.createUserHeading.textContent = `Editar Usuário: ${userRecord.email}`;
+    els.createUserSubtitle.textContent =
+      'Atualize o perfil e selecione exatamente quais abas serão visíveis para este usuário.';
+    els.addAdminBtn.textContent = 'Salvar permissões';
+    els.cancelEditUserBtn.hidden = false;
+
+    usersSubtabsController?.activate(els.subtabUsuariosCriar, true);
+    els.createUserHeading.focus();
+  }
+
   async function handleAddAdminSubmit(event) {
     event.preventDefault();
+    hideBanner(els.userCreateResult);
     hideBanner(els.adminManageResult);
 
-    const email = els.newAdminEmail.value.trim().toLowerCase();
+    if (!els.addAdminForm.reportValidity()) {
+      return;
+    }
+
+    if (!validateUserTabsSelection()) {
+      const firstEnabled = els.permTabCheckboxes.find((cb) => !cb.disabled);
+      firstEnabled?.focus();
+      return;
+    }
+
+    const email = (editingUserEmail || els.newAdminEmail.value).trim().toLowerCase();
     if (!email) return;
+
+    const role = getSelectedUserRole();
+    const allowedTabs = getSelectedUserTabs();
+    const isEdit = Boolean(editingUserEmail);
 
     els.addAdminBtn.disabled = true;
     try {
-      const { response, body } = await apiFetch('/api/admin/admins', {
-        method: 'POST',
+      const url = isEdit
+        ? `/api/admin/admins/${encodeURIComponent(editingUserEmail)}`
+        : '/api/admin/admins';
+      const { response, body } = await apiFetch(url, {
+        method: isEdit ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email })
+        body: JSON.stringify({ email, role, allowedTabs })
       });
 
-      if (response.status === 401 || response.status === 403) {
-        if (response.status === 401) {
-          handleUnauthorized(body?.error || 'Sessão expirada.');
-          return;
-        }
-        showBanner(els.adminManageResult, body?.error || 'Acesso negado.', 'error');
+      if (isSessionInvalidResponse(response, body)) {
+        handleUnauthorized(body?.error || 'Sessão expirada.');
         return;
       }
 
       if (!response.ok) {
-        showBanner(els.adminManageResult, body?.error || 'Não foi possível cadastrar o administrador.', 'error');
+        showBanner(
+          els.userCreateResult,
+          body?.error || (isEdit ? 'Não foi possível atualizar o usuário.' : 'Não foi possível criar o usuário.'),
+          'error'
+        );
         return;
       }
 
-      showBanner(els.adminManageResult, `Administrador ${body.admin.email} autorizado com sucesso.`, 'success');
-      els.addAdminForm.reset();
       await loadAdmins();
+
+      const saved = body?.admin || { email, allowedTabs };
+      const tabSummary = (saved.allowedTabs || []).map((t) => TAB_LABELS[t] || t).join(', ');
+      if (isEdit) {
+        resetUserForm();
+        usersSubtabsController?.activate(els.subtabUsuariosLista, true);
+        showBanner(
+          els.adminManageResult,
+          `Permissões de ${saved.email} atualizadas (${tabSummary || 'sem abas'}).`,
+          'success'
+        );
+      } else {
+        resetUserForm();
+        showBanner(
+          els.userCreateResult,
+          `Usuário ${saved.email} criado com acesso a: ${tabSummary || 'nenhuma aba'}.`,
+          'success'
+        );
+      }
     } catch (_) {
-      showBanner(els.adminManageResult, 'Erro de conexão ao cadastrar administrador.', 'error');
+      showBanner(els.userCreateResult, 'Erro de conexão ao salvar usuário.', 'error');
     } finally {
       els.addAdminBtn.disabled = false;
     }
   }
 
-  async function handleRemoveAdmin(email) {
+  async function handleRemoveAdmin(userOrEmail) {
+    const email = typeof userOrEmail === 'string' ? userOrEmail : userOrEmail?.email;
+    const roleLabel =
+      typeof userOrEmail === 'object' && userOrEmail?.role === 'admin' ? 'Administrador' : 'Usuário';
+    if (!email) return;
+
     hideBanner(els.adminManageResult);
+    hideBanner(els.userCreateResult);
 
     const confirmed = await openConfirmDialog({
-      title: 'Remover administrador',
-      message: 'A conta perderá imediatamente o acesso ao painel e ao endpoint de estornos.',
+      title: 'Remover usuário',
+      message: 'A conta perderá imediatamente o acesso ao painel e às rotas protegidas.',
       confirmLabel: 'Remover acesso',
-      summaryItems: [{ label: 'E-mail', value: email }]
+      summaryItems: [
+        { label: 'E-mail', value: email },
+        { label: 'Perfil', value: roleLabel }
+      ]
     });
 
     if (!confirmed) return;
@@ -2544,14 +2899,18 @@
         method: 'DELETE'
       });
 
-      if (response.status === 401) {
+      if (isSessionInvalidResponse(response, body)) {
         handleUnauthorized(body?.error || 'Sessão expirada.');
         return;
       }
 
       if (!response.ok) {
-        showBanner(els.adminManageResult, body?.error || 'Não foi possível remover o administrador.', 'error');
+        showBanner(els.adminManageResult, body?.error || 'Não foi possível remover o usuário.', 'error');
         return;
+      }
+
+      if (editingUserEmail && editingUserEmail.toLowerCase() === email.toLowerCase()) {
+        resetUserForm();
       }
 
       const extra = body?.inEnvList
@@ -2560,7 +2919,7 @@
       showBanner(els.adminManageResult, `Acesso de ${email} removido.${extra}`, body?.inEnvList ? 'warning' : 'success');
       await loadAdmins();
     } catch (_) {
-      showBanner(els.adminManageResult, 'Erro de conexão ao remover administrador.', 'error');
+      showBanner(els.adminManageResult, 'Erro de conexão ao remover usuário.', 'error');
     }
   }
 
@@ -2574,6 +2933,7 @@
     allTiers = [];
     allRewards = [];
     allDonors = [];
+    allUsers = [];
     stopDonationTimers();
     els.txTbody.replaceChildren();
     els.estornosTbody.replaceChildren();
@@ -2587,8 +2947,10 @@
     resetDeliveryForm();
     resetGoalForm();
     resetDonateForm();
+    resetUserForm();
     hideBanner(els.refundResult);
     hideBanner(els.adminManageResult);
+    hideBanner(els.userCreateResult);
     hideBanner(els.tierResult);
     hideBanner(els.rewardResult);
     hideBanner(els.deliveryResult);
@@ -2601,17 +2963,22 @@
   // Inicialização
   // =========================================================
   function bindEvents() {
-    initTabGroup([
-      { tab: els.tabEstornos, panel: els.panelEstornos },
-      { tab: els.tabRecompensas, panel: els.panelRecompensas },
-      { tab: els.tabMetas, panel: els.panelMetas },
-      { tab: els.tabDoacao, panel: els.panelDoacao },
-      { tab: els.tabAdmins, panel: els.panelAdmins }
+    mainTabsController = initTabGroup([
+      { key: 'estornos', tab: els.tabEstornos, panel: els.panelEstornos },
+      { key: 'recompensas', tab: els.tabRecompensas, panel: els.panelRecompensas },
+      { key: 'metas', tab: els.tabMetas, panel: els.panelMetas },
+      { key: 'doacao', tab: els.tabDoacao, panel: els.panelDoacao },
+      { key: 'usuarios', tab: els.tabAdmins, panel: els.panelAdmins }
     ]);
 
     initTabGroup([
       { tab: els.subtabCatalogo, panel: els.subpanelCatalogo },
       { tab: els.subtabEntregas, panel: els.subpanelEntregas }
+    ]);
+
+    usersSubtabsController = initTabGroup([
+      { key: 'lista', tab: els.subtabUsuariosLista, panel: els.subpanelUsuariosLista },
+      { key: 'criar', tab: els.subtabUsuariosCriar, panel: els.subpanelUsuariosCriar }
     ]);
 
     syncDonationFormState();
@@ -2731,6 +3098,53 @@
       loadDeliveries();
     });
     els.refreshDeliveriesBtn.addEventListener('click', loadDeliveries);
+
+    els.refreshAdminsBtn.addEventListener('click', loadAdmins);
+    els.goCreateUserBtn.addEventListener('click', () => {
+      resetUserForm();
+      hideBanner(els.userCreateResult);
+      usersSubtabsController?.activate(els.subtabUsuariosCriar, true);
+      els.newAdminEmail.focus();
+    });
+    els.backToUsersListBtn.addEventListener('click', () => {
+      usersSubtabsController?.activate(els.subtabUsuariosLista, true);
+    });
+    els.newUserRoleUser.addEventListener('change', () => {
+      syncCreateUserFormPermissions();
+      validateUserTabsSelection();
+    });
+    els.newUserRoleAdmin.addEventListener('change', () => {
+      syncCreateUserFormPermissions();
+      validateUserTabsSelection();
+    });
+    els.permTabCheckboxes.forEach((cb) => {
+      cb.addEventListener('change', () => {
+        if (els.userTabsError.classList.contains('is-visible')) {
+          validateUserTabsSelection();
+        }
+      });
+    });
+    els.selectAllTabsBtn.addEventListener('click', () => {
+      els.permTabCheckboxes.forEach((cb) => {
+        if (!cb.disabled) cb.checked = true;
+      });
+      validateUserTabsSelection();
+    });
+    els.clearAllTabsBtn.addEventListener('click', () => {
+      els.permTabCheckboxes.forEach((cb) => {
+        if (!cb.disabled) cb.checked = false;
+      });
+      els.userTabsError.classList.remove('is-visible');
+    });
+    els.cancelEditUserBtn.addEventListener('click', () => {
+      resetUserForm();
+      hideBanner(els.userCreateResult);
+      usersSubtabsController?.activate(els.subtabUsuariosLista, true);
+    });
+    els.resetUserFormBtn.addEventListener('click', () => {
+      resetUserForm();
+      hideBanner(els.userCreateResult);
+    });
 
     els.addAdminForm.addEventListener('submit', handleAddAdminSubmit);
     els.logoutBtn.addEventListener('click', handleLogout);

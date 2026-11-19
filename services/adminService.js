@@ -3,6 +3,10 @@ const { sql } = require('../config/database');
 
 const ROOT_ADMIN_EMAIL = (process.env.ROOT_ADMIN_EMAIL || 'inoroel@gmail.com').trim().toLowerCase();
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const OPERATIONAL_TABS = ['estornos', 'recompensas', 'metas', 'doacao'];
+const USERS_TAB = 'usuarios';
+const ALL_TABS = ['estornos', 'recompensas', 'metas', 'doacao', 'usuarios'];
+const VALID_ROLES = ['root', 'admin', 'user'];
 
 let ensureTablesPromise = null;
 
@@ -49,6 +53,131 @@ function getEnvAdminEmails() {
 }
 
 /**
+ * Normaliza a lista de abas permitidas armazenada no banco de acordo com o perfil.
+ * @param {unknown} raw
+ * @param {string} role
+ * @returns {string[]}
+ */
+function parseAllowedTabs(raw, role = 'user') {
+  if (role === 'root') {
+    return [...ALL_TABS];
+  }
+
+  let parsed = raw;
+  if (typeof parsed === 'string') {
+    try {
+      parsed = JSON.parse(parsed);
+    } catch (_) {
+      parsed = null;
+    }
+  }
+
+  if ((parsed === null || parsed === undefined) && role === 'admin') {
+    return [...ALL_TABS];
+  }
+
+  const allowedSet = new Set();
+  if (Array.isArray(parsed)) {
+    for (const item of parsed) {
+      if (typeof item !== 'string') continue;
+      const clean = item.trim().toLowerCase();
+      if (ALL_TABS.includes(clean)) {
+        allowedSet.add(clean);
+      }
+    }
+  }
+
+  if (role === 'admin') {
+    allowedSet.add(USERS_TAB);
+    return ALL_TABS.filter((tab) => allowedSet.has(tab));
+  }
+
+  // Perfil 'user' nunca recebe acesso à aba 'usuarios'
+  allowedSet.delete(USERS_TAB);
+  return OPERATIONAL_TABS.filter((tab) => allowedSet.has(tab));
+}
+
+/**
+ * Valida perfil e abas solicitadas ao criar ou editar um usuário.
+ * @param {Object} params
+ * @param {string} params.role
+ * @param {unknown} params.allowedTabs
+ * @param {Object} [params.actor]
+ * @returns {{ role: 'admin'|'user', allowedTabs: string[] }}
+ */
+function validateUserPermissions({ role, allowedTabs, actor }) {
+  const normalizedRole = typeof role === 'string' ? role.trim().toLowerCase() : 'user';
+  if (!['user', 'admin'].includes(normalizedRole)) {
+    throw createServiceError('Perfil inválido. Escolha entre Administrador ou Usuário.', 400);
+  }
+
+  if (normalizedRole === 'admin' && actor && !actor.isRoot) {
+    throw createServiceError(
+      'Apenas o administrador root pode conceder ou alterar o perfil Administrador.',
+      403
+    );
+  }
+
+  let requestedSet = null;
+  if (allowedTabs !== undefined) {
+    if (!Array.isArray(allowedTabs)) {
+      throw createServiceError('O campo allowedTabs deve ser uma lista de abas.', 400);
+    }
+
+    const invalidTabs = [];
+    requestedSet = new Set();
+    for (const tab of allowedTabs) {
+      const clean = typeof tab === 'string' ? tab.trim().toLowerCase() : '';
+      if (!clean || !ALL_TABS.includes(clean)) {
+        invalidTabs.push(String(tab));
+      } else {
+        requestedSet.add(clean);
+      }
+    }
+
+    if (invalidTabs.length > 0) {
+      throw createServiceError(`Abas inválidas: ${invalidTabs.join(', ')}.`, 400);
+    }
+  }
+
+  let normalizedTabs;
+  if (normalizedRole === 'user') {
+    if (requestedSet && requestedSet.has(USERS_TAB)) {
+      throw createServiceError('A aba Usuários é restrita a administradores e root.', 400);
+    }
+    normalizedTabs = requestedSet
+      ? OPERATIONAL_TABS.filter((tab) => requestedSet.has(tab))
+      : [];
+    if (normalizedTabs.length === 0) {
+      throw createServiceError('Selecione ao menos uma aba para o usuário.', 400);
+    }
+  } else {
+    if (!requestedSet) {
+      normalizedTabs = [...ALL_TABS];
+    } else {
+      requestedSet.add(USERS_TAB);
+      normalizedTabs = ALL_TABS.filter((tab) => requestedSet.has(tab));
+    }
+  }
+
+  if (actor && !actor.isRoot) {
+    const actorTabs = new Set(Array.isArray(actor.allowedTabs) ? actor.allowedTabs : []);
+    const unauthorizedTabs = normalizedTabs.filter((tab) => !actorTabs.has(tab));
+    if (unauthorizedTabs.length > 0) {
+      throw createServiceError(
+        'Você só pode conceder acesso às abas às quais também tem permissão.',
+        403
+      );
+    }
+  }
+
+  return {
+    role: normalizedRole,
+    allowedTabs: normalizedTabs
+  };
+}
+
+/**
  * Garante que as tabelas administrativas existam e que o root esteja cadastrado.
  * Memoizado por processo, mas limpa o cache em caso de falha transitória.
  * @returns {Promise<void>}
@@ -68,12 +197,37 @@ async function ensureAdminTables() {
         email VARCHAR(255) PRIMARY KEY,
         role VARCHAR(20) NOT NULL DEFAULT 'admin',
         active BOOLEAN NOT NULL DEFAULT true,
+        allowed_tabs JSONB NOT NULL DEFAULT '["estornos","recompensas","metas","doacao","usuarios"]'::jsonb,
         created_by VARCHAR(255),
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        CONSTRAINT check_admin_role CHECK (role IN ('root', 'admin'))
+        CONSTRAINT check_admin_role CHECK (role IN ('root', 'admin', 'user'))
       )
     `;
+
+    await sql`
+      ALTER TABLE admin_users
+      ADD COLUMN IF NOT EXISTS allowed_tabs JSONB NOT NULL DEFAULT '["estornos","recompensas","metas","doacao","usuarios"]'::jsonb
+    `;
+
+    const constraintCheck = await sql`
+      SELECT pg_get_constraintdef(c.oid) AS def
+      FROM pg_constraint c
+      JOIN pg_class t ON t.oid = c.conrelid
+      WHERE t.relname = 'admin_users' AND c.conname = 'check_admin_role'
+      LIMIT 1
+    `;
+    const constraintDef = constraintCheck.rows?.[0]?.def || '';
+    if (!constraintDef.includes('user')) {
+      try {
+        await sql`ALTER TABLE admin_users DROP CONSTRAINT IF EXISTS check_admin_role`;
+        await sql`ALTER TABLE admin_users ADD CONSTRAINT check_admin_role CHECK (role IN ('root', 'admin', 'user'))`;
+      } catch (constraintErr) {
+        if (!String(constraintErr.message || '').includes('already exists')) {
+          throw constraintErr;
+        }
+      }
+    }
 
     await sql`
       CREATE TABLE IF NOT EXISTS estornos_log (
@@ -99,10 +253,13 @@ async function ensureAdminTables() {
     await sql`CREATE INDEX IF NOT EXISTS idx_estornos_log_criado_em ON estornos_log(criado_em DESC)`;
 
     await sql`
-      INSERT INTO admin_users (email, role, active, created_by)
-      VALUES (${ROOT_ADMIN_EMAIL}, 'root', true, 'system')
+      INSERT INTO admin_users (email, role, active, allowed_tabs, created_by)
+      VALUES (${ROOT_ADMIN_EMAIL}, 'root', true, ${JSON.stringify(ALL_TABS)}::jsonb, 'system')
       ON CONFLICT (email) DO UPDATE
-      SET role = 'root', active = true, updated_at = CURRENT_TIMESTAMP
+      SET role = 'root',
+          active = true,
+          allowed_tabs = ${JSON.stringify(ALL_TABS)}::jsonb,
+          updated_at = CURRENT_TIMESTAMP
     `;
   })().catch((error) => {
     ensureTablesPromise = null;
@@ -113,9 +270,9 @@ async function ensureAdminTables() {
 }
 
 /**
- * Retorna o registro de administrador para o e-mail informado, ou null se não autorizado.
+ * Retorna o registro de usuário autorizado para o e-mail informado, ou null se não autorizado.
  * @param {string} email
- * @returns {Promise<{email: string, role: string, active: boolean, source: string}|null>}
+ * @returns {Promise<{email: string, role: string, active: boolean, allowedTabs: string[], source: string}|null>}
  */
 async function getAdminRecord(email) {
   const normalized = normalizeEmail(email);
@@ -131,6 +288,7 @@ async function getAdminRecord(email) {
       email: ROOT_ADMIN_EMAIL,
       role: 'root',
       active: true,
+      allowedTabs: [...ALL_TABS],
       source: 'root'
     };
   }
@@ -138,7 +296,7 @@ async function getAdminRecord(email) {
   await ensureAdminTables();
 
   const result = await sql`
-    SELECT email, role, active, created_by, created_at
+    SELECT email, role, active, allowed_tabs, created_by, created_at
     FROM admin_users
     WHERE email = ${normalized}
     LIMIT 1
@@ -147,10 +305,12 @@ async function getAdminRecord(email) {
   if (result.rows && result.rows.length > 0) {
     const row = result.rows[0];
     if (row.active === true) {
+      const resolvedRole = VALID_ROLES.includes(row.role) ? row.role : 'user';
       return {
-        email: row.email,
-        role: row.role === 'root' ? 'root' : 'admin',
+        email: row.email.toLowerCase(),
+        role: resolvedRole,
         active: true,
+        allowedTabs: parseAllowedTabs(row.allowed_tabs, resolvedRole),
         created_by: row.created_by,
         created_at: row.created_at,
         source: 'database'
@@ -164,6 +324,7 @@ async function getAdminRecord(email) {
       email: normalized,
       role: 'admin',
       active: true,
+      allowedTabs: [...ALL_TABS],
       source: 'env'
     };
   }
@@ -172,27 +333,30 @@ async function getAdminRecord(email) {
 }
 
 /**
- * Lista todos os administradores cadastrados (banco + root + ADMIN_EMAILS).
+ * Lista todos os usuários e administradores cadastrados (banco + root + ADMIN_EMAILS).
  * @returns {Promise<Array<Object>>}
  */
 async function listAdmins() {
   await ensureAdminTables();
 
   const result = await sql`
-    SELECT email, role, active, created_by, created_at, updated_at
+    SELECT email, role, active, allowed_tabs, created_by, created_at, updated_at
     FROM admin_users
-    ORDER BY CASE WHEN role = 'root' THEN 0 ELSE 1 END, email ASC
+    ORDER BY CASE role WHEN 'root' THEN 0 WHEN 'admin' THEN 1 ELSE 2 END, email ASC
   `;
 
   const byEmail = new Map();
   for (const row of result.rows || []) {
+    if (row.active === false) continue;
+    const resolvedRole = VALID_ROLES.includes(row.role) ? row.role : 'user';
     byEmail.set(row.email.toLowerCase(), {
       email: row.email.toLowerCase(),
-      role: row.role,
+      role: resolvedRole,
       active: row.active,
+      allowedTabs: parseAllowedTabs(row.allowed_tabs, resolvedRole),
       created_by: row.created_by || null,
       created_at: row.created_at || null,
-      source: row.role === 'root' ? 'root' : 'database'
+      source: resolvedRole === 'root' ? 'root' : 'database'
     });
   }
 
@@ -201,6 +365,7 @@ async function listAdmins() {
       email: ROOT_ADMIN_EMAIL,
       role: 'root',
       active: true,
+      allowedTabs: [...ALL_TABS],
       created_by: 'system',
       created_at: null,
       source: 'root'
@@ -213,6 +378,7 @@ async function listAdmins() {
         email: envEmail,
         role: 'admin',
         active: true,
+        allowedTabs: [...ALL_TABS],
         created_by: 'env:ADMIN_EMAILS',
         created_at: null,
         source: 'env'
@@ -224,12 +390,16 @@ async function listAdmins() {
 }
 
 /**
- * Cadastra (ou reativa) um novo administrador no banco.
+ * Cadastra um novo usuário ou administrador no banco com controle granular de abas.
  * @param {string} email
  * @param {string} createdBy
+ * @param {Object} [options]
+ * @param {string} [options.role='user']
+ * @param {string[]} [options.allowedTabs]
+ * @param {Object} [options.actor]
  * @returns {Promise<Object>}
  */
-async function addAdmin(email, createdBy) {
+async function addAdmin(email, createdBy, options = {}) {
   const normalized = normalizeEmail(email);
   if (!normalized) {
     throw createServiceError('Informe um endereço de e-mail válido.', 400);
@@ -239,28 +409,154 @@ async function addAdmin(email, createdBy) {
     throw createServiceError('Este e-mail já é o administrador root.', 400);
   }
 
+  const actor = options.actor || {
+    email: createdBy || ROOT_ADMIN_EMAIL,
+    isRoot: isRootAdmin(createdBy || ROOT_ADMIN_EMAIL),
+    allowedTabs: ALL_TABS
+  };
+
   await ensureAdminTables();
 
+  const existingResult = await sql`
+    SELECT email, role, active
+    FROM admin_users
+    WHERE email = ${normalized}
+    LIMIT 1
+  `;
+  const existing = existingResult.rows?.[0] || null;
+  const inEnvList = getEnvAdminEmails().includes(normalized);
+
+  if (((existing && existing.active && existing.role === 'admin') || (!existing && inEnvList)) && !actor.isRoot) {
+    throw createServiceError('Apenas o administrador root pode alterar contas de administradores.', 403);
+  }
+
+  if ((existing && existing.active) || inEnvList) {
+    throw createServiceError(
+      'Este e-mail já está cadastrado. Use a opção Editar na lista de usuários para alterar as permissões.',
+      409
+    );
+  }
+
+  const targetRole = options.role || 'user';
+  const validated = validateUserPermissions({
+    role: targetRole,
+    allowedTabs: options.allowedTabs,
+    actor
+  });
+
+  const creatorEmail = createdBy || actor.email || ROOT_ADMIN_EMAIL;
   const result = await sql`
-    INSERT INTO admin_users (email, role, active, created_by, updated_at)
-    VALUES (${normalized}, 'admin', true, ${createdBy || ROOT_ADMIN_EMAIL}, CURRENT_TIMESTAMP)
+    INSERT INTO admin_users (email, role, active, allowed_tabs, created_by, updated_at)
+    VALUES (${normalized}, ${validated.role}, true, ${JSON.stringify(validated.allowedTabs)}::jsonb, ${creatorEmail}, CURRENT_TIMESTAMP)
     ON CONFLICT (email) DO UPDATE
-    SET active = true, updated_at = CURRENT_TIMESTAMP
-    RETURNING email, role, active, created_by, created_at
+    SET role = ${validated.role},
+        active = true,
+        allowed_tabs = ${JSON.stringify(validated.allowedTabs)}::jsonb,
+        created_by = ${creatorEmail},
+        updated_at = CURRENT_TIMESTAMP
+    RETURNING email, role, active, allowed_tabs, created_by, created_at
   `;
 
+  const row = result.rows[0];
+  const resolvedRole = VALID_ROLES.includes(row.role) ? row.role : 'user';
   return {
-    ...result.rows[0],
+    email: row.email.toLowerCase(),
+    role: resolvedRole,
+    active: row.active,
+    allowedTabs: parseAllowedTabs(row.allowed_tabs, resolvedRole),
+    created_by: row.created_by || null,
+    created_at: row.created_at || null,
     source: 'database'
   };
 }
 
 /**
- * Remove um administrador do banco de dados (protege o root contra remoção).
+ * Atualiza perfil e abas permitidas de um usuário existente.
  * @param {string} email
+ * @param {Object} actor
+ * @param {Object} [updates]
+ * @returns {Promise<Object>}
+ */
+async function updateAdmin(email, actor, { role, allowedTabs } = {}) {
+  const normalized = normalizeEmail(email);
+  if (!normalized) {
+    throw createServiceError('E-mail inválido.', 400);
+  }
+
+  if (isRootAdmin(normalized)) {
+    throw createServiceError('Não é possível alterar o administrador root.', 400);
+  }
+
+  if (actor && normalizeEmail(actor.email) === normalized) {
+    throw createServiceError('Você não pode alterar as permissões da sua própria conta.', 400);
+  }
+
+  await ensureAdminTables();
+
+  const existingResult = await sql`
+    SELECT email, role, active, allowed_tabs, created_by, created_at
+    FROM admin_users
+    WHERE email = ${normalized}
+    LIMIT 1
+  `;
+  const existing = existingResult.rows?.[0] || null;
+  const inEnvList = getEnvAdminEmails().includes(normalized);
+
+  if ((!existing || existing.active === false) && !inEnvList) {
+    throw createServiceError('Usuário não encontrado.', 404);
+  }
+
+  const existingRole = existing && existing.active ? existing.role : 'admin';
+  if (existingRole === 'admin' && !actor?.isRoot) {
+    throw createServiceError('Apenas o administrador root pode editar administradores.', 403);
+  }
+
+  const targetRole = role || existingRole;
+  const tabsInput =
+    allowedTabs !== undefined
+      ? allowedTabs
+      : existing
+        ? parseAllowedTabs(existing.allowed_tabs, targetRole)
+        : undefined;
+
+  const validated = validateUserPermissions({
+    role: targetRole,
+    allowedTabs: tabsInput,
+    actor
+  });
+
+  const creatorFallback = actor?.email || 'env:ADMIN_EMAILS';
+  const result = await sql`
+    INSERT INTO admin_users (email, role, active, allowed_tabs, created_by, updated_at)
+    VALUES (${normalized}, ${validated.role}, true, ${JSON.stringify(validated.allowedTabs)}::jsonb, ${creatorFallback}, CURRENT_TIMESTAMP)
+    ON CONFLICT (email) DO UPDATE
+    SET role = ${validated.role},
+        active = true,
+        allowed_tabs = ${JSON.stringify(validated.allowedTabs)}::jsonb,
+        updated_at = CURRENT_TIMESTAMP
+    RETURNING email, role, active, allowed_tabs, created_by, created_at
+  `;
+
+  const row = result.rows[0];
+  const resolvedRole = VALID_ROLES.includes(row.role) ? row.role : 'user';
+  return {
+    email: row.email.toLowerCase(),
+    role: resolvedRole,
+    active: row.active,
+    allowedTabs: parseAllowedTabs(row.allowed_tabs, resolvedRole),
+    created_by: row.created_by || null,
+    created_at: row.created_at || null,
+    source: 'database'
+  };
+}
+
+/**
+ * Remove um usuário ou administrador do banco de dados (protege root e impede auto-remoção).
+ * @param {string} email
+ * @param {Object|null} [actor=null]
  * @returns {Promise<{removed: boolean, email: string, inEnvList: boolean}>}
  */
-async function removeAdmin(email) {
+async function removeAdmin(email, actor = null) {
   const normalized = normalizeEmail(email);
   if (!normalized) {
     throw createServiceError('E-mail inválido.', 400);
@@ -270,7 +566,29 @@ async function removeAdmin(email) {
     throw createServiceError('Não é possível remover o administrador root.', 400);
   }
 
+  if (actor && normalizeEmail(actor.email) === normalized) {
+    throw createServiceError('Você não pode remover a sua própria conta.', 400);
+  }
+
   await ensureAdminTables();
+
+  const existingResult = await sql`
+    SELECT email, role
+    FROM admin_users
+    WHERE email = ${normalized}
+    LIMIT 1
+  `;
+  const existing = existingResult.rows?.[0] || null;
+  const inEnvList = getEnvAdminEmails().includes(normalized);
+
+  if (!existing && !inEnvList) {
+    throw createServiceError('Usuário não encontrado.', 404);
+  }
+
+  const targetRole = existing ? existing.role : 'admin';
+  if (targetRole === 'admin' && actor && !actor.isRoot) {
+    throw createServiceError('Apenas o administrador root pode remover outros administradores.', 403);
+  }
 
   const result = await sql`
     DELETE FROM admin_users
@@ -278,12 +596,7 @@ async function removeAdmin(email) {
     RETURNING email
   `;
 
-  const inEnvList = getEnvAdminEmails().includes(normalized);
   const removed = Boolean(result.rows && result.rows.length > 0);
-
-  if (!removed && !inEnvList) {
-    throw createServiceError('Administrador não encontrado.', 404);
-  }
 
   return {
     removed,
@@ -486,13 +799,20 @@ async function listTransactionsForAdmin({ search = '', status = '', limit = 25, 
 
 module.exports = {
   ROOT_ADMIN_EMAIL,
+  OPERATIONAL_TABS,
+  USERS_TAB,
+  ALL_TABS,
+  VALID_ROLES,
   normalizeEmail,
   isRootAdmin,
   getEnvAdminEmails,
+  parseAllowedTabs,
+  validateUserPermissions,
   ensureAdminTables,
   getAdminRecord,
   listAdmins,
   addAdmin,
+  updateAdmin,
   removeAdmin,
   getCobrancaByRedeTid,
   markRefundedInDatabase,
