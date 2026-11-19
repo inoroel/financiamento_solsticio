@@ -26,6 +26,12 @@ const {
   updateRewardDelivery,
   deleteRewardDelivery
 } = require('../services/rewardsService');
+const {
+  listGoals,
+  createGoal,
+  updateGoal,
+  deleteGoal
+} = require('../services/goalsService');
 
 function handleServiceError(res, error, fallbackMessage) {
   if (error && error.status && error.status < 500) {
@@ -392,6 +398,58 @@ router.delete('/rewards/deliveries/:id', adminActionLimiter, async (req, res) =>
     return res.status(200).json({ success: true, ...result });
   } catch (error) {
     return handleServiceError(res, error, 'Erro ao excluir entrega de recompensa.');
+  }
+});
+
+// =================================================================
+// METAS DE DOAÇÃO
+// =================================================================
+
+/**
+ * GET /api/admin/metas
+ */
+router.get('/metas', async (req, res) => {
+  try {
+    const data = await listGoals({ includeInactive: true, isPublic: false });
+    return res.status(200).json({ success: true, data });
+  } catch (error) {
+    return handleServiceError(res, error, 'Erro ao listar metas de doação.');
+  }
+});
+
+/**
+ * POST /api/admin/metas
+ */
+router.post('/metas', adminActionLimiter, async (req, res) => {
+  try {
+    const meta = await createGoal(req.body || {}, req.user.email);
+    return res.status(201).json({ success: true, meta });
+  } catch (error) {
+    return handleServiceError(res, error, 'Erro ao cadastrar meta de doação.');
+  }
+});
+
+/**
+ * PUT /api/admin/metas/:id
+ */
+router.put('/metas/:id', adminActionLimiter, async (req, res) => {
+  try {
+    const meta = await updateGoal(req.params.id, req.body || {}, req.user.email);
+    return res.status(200).json({ success: true, meta });
+  } catch (error) {
+    return handleServiceError(res, error, 'Erro ao atualizar meta de doação.');
+  }
+});
+
+/**
+ * DELETE /api/admin/metas/:id
+ */
+router.delete('/metas/:id', adminActionLimiter, async (req, res) => {
+  try {
+    const result = await deleteGoal(req.params.id);
+    return res.status(200).json({ success: true, ...result });
+  } catch (error) {
+    return handleServiceError(res, error, 'Erro ao excluir meta de doação.');
   }
 });
 

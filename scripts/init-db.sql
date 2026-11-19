@@ -153,6 +153,31 @@ CREATE INDEX IF NOT EXISTS idx_reward_deliveries_reward_id ON reward_deliveries(
 CREATE INDEX IF NOT EXISTS idx_reward_deliveries_doador_id ON reward_deliveries(doador_id);
 CREATE INDEX IF NOT EXISTS idx_reward_deliveries_data ON reward_deliveries(data_entrega DESC);
 
+-- Tabela de metas de doação
+CREATE TABLE IF NOT EXISTS metas_doacao (
+    id SERIAL PRIMARY KEY,
+    slug VARCHAR(60) UNIQUE NOT NULL,
+    titulo VARCHAR(150) NOT NULL,
+    descricao TEXT,
+    valor_meta DECIMAL(12, 2) NOT NULL,
+    valor_inicial DECIMAL(12, 2) NOT NULL DEFAULT 0,
+    campanha_id VARCHAR(50),
+    data_inicio DATE,
+    data_fim DATE,
+    ordem INTEGER NOT NULL DEFAULT 0,
+    destaque BOOLEAN NOT NULL DEFAULT false,
+    ativa BOOLEAN NOT NULL DEFAULT true,
+    atualizado_por VARCHAR(255),
+    criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    atualizado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT check_metas_valor_meta CHECK (valor_meta > 0),
+    CONSTRAINT check_metas_valor_inicial CHECK (valor_inicial >= 0),
+    CONSTRAINT check_metas_datas CHECK (data_inicio IS NULL OR data_fim IS NULL OR data_fim >= data_inicio)
+);
+
+CREATE INDEX IF NOT EXISTS idx_metas_doacao_ativa ON metas_doacao(ativa);
+CREATE INDEX IF NOT EXISTS idx_metas_doacao_campanha ON metas_doacao(campanha_id) WHERE campanha_id IS NOT NULL;
+
 -- Função para atualizar o campo atualizado_em automaticamente
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$

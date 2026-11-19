@@ -630,6 +630,75 @@ tbody th {
   --label-6: "Ações";
 }
 
+.table-metas {
+  --label-2: "Progresso";
+  --label-3: "Doações";
+  --label-4: "Status";
+  --label-5: "Ações";
+}
+
+.endpoint-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.endpoint-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-muted);
+}
+
+.goal-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-block-start: 0.25rem;
+}
+
+.goal-progress {
+  appearance: none;
+  border: 0 solid;
+  overflow: clip;
+  display: block;
+  width: 100%;
+  min-width: 140px;
+  height: 10px;
+  margin-block-start: 0.45rem;
+  border-radius: 1e5px;
+  background: var(--surface-muted);
+  box-shadow: inset 0 1px 2px rgb(0 0 0 / 0.1);
+}
+
+.goal-progress::-webkit-progress-bar {
+  background: transparent;
+}
+
+.goal-progress::-webkit-progress-value {
+  background: var(--text);
+  border-radius: 1e5px;
+  transition: inline-size 0.3s;
+}
+
+.goal-progress::-moz-progress-bar {
+  background: var(--text);
+  border-radius: 1e5px;
+  transition: inline-size 0.3s;
+}
+
+.goal-progress.is-reached::-webkit-progress-value {
+  background: var(--success);
+}
+
+.goal-progress.is-reached::-moz-progress-bar {
+  background: var(--success);
+}
+
 .table-gap-top {
   margin-block-start: 1.25rem;
 }

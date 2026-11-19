@@ -39,9 +39,11 @@
     confirmDialogSubmit: document.getElementById('confirm-dialog-submit'),
     tabEstornos: document.getElementById('tab-estornos'),
     tabRecompensas: document.getElementById('tab-recompensas'),
+    tabMetas: document.getElementById('tab-metas'),
     tabAdmins: document.getElementById('tab-admins'),
     panelEstornos: document.getElementById('panel-estornos'),
     panelRecompensas: document.getElementById('panel-recompensas'),
+    panelMetas: document.getElementById('panel-metas'),
     panelAdmins: document.getElementById('panel-admins'),
     subtabCatalogo: document.getElementById('subtab-catalogo'),
     subtabEntregas: document.getElementById('subtab-entregas'),
@@ -86,7 +88,27 @@
     deliveriesFilterForm: document.getElementById('deliveries-filter-form'),
     deliveriesFilterSearch: document.getElementById('deliveries-filter-search'),
     deliveriesFilterReward: document.getElementById('deliveries-filter-reward'),
-    deliveriesTbody: document.getElementById('deliveries-tbody')
+    deliveriesTbody: document.getElementById('deliveries-tbody'),
+    goalsPublicUrl: document.getElementById('goals-public-url'),
+    copyGoalsEndpointBtn: document.getElementById('copy-goals-endpoint-btn'),
+    goalsCopyStatus: document.getElementById('goals-copy-status'),
+    goalForm: document.getElementById('goal-form'),
+    goalTitulo: document.getElementById('goal-titulo'),
+    goalSlug: document.getElementById('goal-slug'),
+    goalValorMeta: document.getElementById('goal-valor-meta'),
+    goalValorInicial: document.getElementById('goal-valor-inicial'),
+    goalCampanhaId: document.getElementById('goal-campanha-id'),
+    goalOrdem: document.getElementById('goal-ordem'),
+    goalDataInicio: document.getElementById('goal-data-inicio'),
+    goalDataFim: document.getElementById('goal-data-fim'),
+    goalDescricao: document.getElementById('goal-descricao'),
+    goalDestaque: document.getElementById('goal-destaque'),
+    goalAtiva: document.getElementById('goal-ativa'),
+    goalSubmitBtn: document.getElementById('goal-submit-btn'),
+    goalCancelEditBtn: document.getElementById('goal-cancel-edit-btn'),
+    goalResult: document.getElementById('goal-result'),
+    refreshGoalsBtn: document.getElementById('refresh-goals-btn'),
+    goalsTbody: document.getElementById('goals-tbody')
   };
 
   let currentUser = null;
@@ -94,7 +116,9 @@
   let googleInitialized = false;
   let editingTierSlug = null;
   let editingRewardId = null;
+  let editingGoalId = null;
   let tierSlugManuallyEdited = false;
+  let goalSlugManuallyEdited = false;
   let allTiers = [];
   let allRewards = [];
   let allDonors = [];
@@ -848,7 +872,8 @@
       loadRewardTiers(),
       loadRewards(),
       loadDonors(),
-      loadDeliveries()
+      loadDeliveries(),
+      loadGoals()
     ]);
   }
 
@@ -1551,6 +1576,338 @@
   }
 
   // =========================================================
+  // Metas de Doação
+  // =========================================================
+  async function copyUrlWithFeedback(pathOrUrl, label) {
+    const fullUrl = pathOrUrl.startsWith('http')
+      ? pathOrUrl
+      : `${window.location.origin}${pathOrUrl}`;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(fullUrl);
+      } else {
+        throw new Error('Clipboard API indisponível');
+      }
+      showBanner(els.goalsCopyStatus, `${label}: ${fullUrl} copiado para a área de transferência.`, 'success');
+    } catch (_) {
+      showBanner(els.goalsCopyStatus, `URL disponível: ${fullUrl}`, 'info');
+    }
+  }
+
+  function validateGoalDatesInput() {
+    const start = els.goalDataInicio.value;
+    const end = els.goalDataFim.value;
+    if (start && end && end < start) {
+      els.goalDataFim.setCustomValidity('A data limite deve ser igual ou posterior à data inicial.');
+    } else {
+      els.goalDataFim.setCustomValidity('');
+    }
+  }
+
+  function validateGoalAmountsInput() {
+    const metaRaw = els.goalValorMeta.value.trim();
+    if (metaRaw) {
+      const metaVal = Number(metaRaw.replace(',', '.'));
+      if (!Number.isFinite(metaVal) || metaVal <= 0) {
+        els.goalValorMeta.setCustomValidity('Informe um valor maior que zero.');
+      } else {
+        els.goalValorMeta.setCustomValidity('');
+      }
+    } else {
+      els.goalValorMeta.setCustomValidity('');
+    }
+
+    const initRaw = els.goalValorInicial.value.trim();
+    if (initRaw) {
+      const initVal = Number(initRaw.replace(',', '.'));
+      if (!Number.isFinite(initVal) || initVal < 0) {
+        els.goalValorInicial.setCustomValidity('Informe um valor maior ou igual a zero.');
+      } else {
+        els.goalValorInicial.setCustomValidity('');
+      }
+    } else {
+      els.goalValorInicial.setCustomValidity('');
+    }
+  }
+
+  async function loadGoals() {
+    const { response, body } = await apiFetch('/api/admin/metas');
+    if (response.status === 401 || response.status === 403) {
+      handleUnauthorized(body?.error || 'Sessão expirada.');
+      return;
+    }
+    if (!response.ok) {
+      renderEmptyRow(els.goalsTbody, 5, body?.error || 'Erro ao carregar metas.');
+      return;
+    }
+
+    const goals = Array.isArray(body?.data) ? body.data : [];
+    if (goals.length === 0) {
+      renderEmptyRow(els.goalsTbody, 5, 'Nenhuma meta de doação cadastrada.');
+      return;
+    }
+
+    const fragment = document.createDocumentFragment();
+    for (const goal of goals) {
+      const tr = document.createElement('tr');
+
+      const th = document.createElement('th');
+      th.scope = 'row';
+      th.textContent = goal.titulo;
+
+      const subSlug = document.createElement('span');
+      subSlug.className = 'sub-meta mono-cell';
+      subSlug.textContent = `slug: ${goal.slug}`;
+      th.append(subSlug);
+
+      const details = [];
+      if (goal.campanha_id) details.push(`Campanha: ${goal.campanha_id}`);
+      if (goal.data_inicio || goal.data_fim) {
+        const ini = goal.data_inicio ? formatPlainDate(goal.data_inicio) : 'Início livre';
+        const fim = goal.data_fim ? formatPlainDate(goal.data_fim) : 'Sem limite';
+        details.push(`${ini} até ${fim}`);
+      }
+      if (details.length > 0) {
+        const subMeta = document.createElement('span');
+        subMeta.className = 'sub-meta';
+        subMeta.textContent = details.join(' · ');
+        th.append(subMeta);
+      }
+
+      if (goal.destaque) {
+        const badges = document.createElement('div');
+        badges.className = 'goal-badges';
+        const feat = document.createElement('span');
+        feat.className = 'role-badge is-root';
+        feat.textContent = 'Principal';
+        badges.append(feat);
+        th.append(badges);
+      }
+
+      const tdProgress = document.createElement('td');
+      tdProgress.textContent = `${formatCurrency(goal.valor_arrecadado)} / ${formatCurrency(goal.valor_meta)} (${goal.percentual.toFixed(1)}%)`;
+      if (goal.valor_inicial > 0) {
+        const subInit = document.createElement('span');
+        subInit.className = 'sub-meta';
+        subInit.textContent = `Online: ${formatCurrency(goal.valor_arrecadado_online)} · Inicial: ${formatCurrency(goal.valor_inicial)}`;
+        tdProgress.append(subInit);
+      }
+      const progressEl = document.createElement('progress');
+      progressEl.className = `goal-progress${goal.atingida ? ' is-reached' : ''}`;
+      progressEl.max = 100;
+      progressEl.value = Number(goal.percentual_barra || 0);
+      progressEl.setAttribute('aria-label', `${goal.titulo}: ${goal.percentual}% arrecadado`);
+      tdProgress.append(progressEl);
+
+      const tdDonations = document.createElement('td');
+      tdDonations.textContent = `${goal.total_doacoes} doações`;
+      const subDonors = document.createElement('span');
+      subDonors.className = 'sub-meta';
+      subDonors.textContent = `${goal.total_doadores} doadores`;
+      tdDonations.append(subDonors);
+
+      const tdStatus = document.createElement('td');
+      const statusWrap = document.createElement('div');
+      statusWrap.className = 'goal-badges';
+      const activePill = document.createElement('span');
+      activePill.className = `status-pill ${goal.ativa ? 'status-ok' : 'status-danger'}`;
+      activePill.textContent = goal.ativa ? 'Ativa' : 'Inativa';
+      statusWrap.append(activePill);
+      if (goal.atingida) {
+        const reachedPill = document.createElement('span');
+        reachedPill.className = 'status-pill status-ok';
+        reachedPill.textContent = 'Atingida';
+        statusWrap.append(reachedPill);
+      }
+      tdStatus.append(statusWrap);
+
+      const tdActions = document.createElement('td');
+      const actionsWrap = document.createElement('div');
+      actionsWrap.className = 'row-actions';
+
+      const editBtn = document.createElement('button');
+      editBtn.type = 'button';
+      editBtn.className = 'btn btn-secondary btn-sm';
+      editBtn.textContent = 'Editar';
+      editBtn.addEventListener('click', () => startEditGoal(goal));
+
+      const copyBtn = document.createElement('button');
+      copyBtn.type = 'button';
+      copyBtn.className = 'btn btn-secondary btn-sm';
+      copyBtn.textContent = 'Copiar link';
+      copyBtn.addEventListener('click', () => copyUrlWithFeedback(`/api/metas/${encodeURIComponent(goal.slug)}`, `Meta "${goal.titulo}"`));
+
+      const deleteBtn = document.createElement('button');
+      deleteBtn.type = 'button';
+      deleteBtn.className = 'btn btn-danger btn-sm';
+      deleteBtn.textContent = 'Excluir';
+      deleteBtn.addEventListener('click', () => handleDeleteGoal(goal));
+
+      actionsWrap.append(editBtn, copyBtn, deleteBtn);
+      tdActions.append(actionsWrap);
+
+      tr.append(th, tdProgress, tdDonations, tdStatus, tdActions);
+      fragment.append(tr);
+    }
+
+    els.goalsTbody.replaceChildren(fragment);
+  }
+
+  function resetGoalForm() {
+    editingGoalId = null;
+    goalSlugManuallyEdited = false;
+    els.goalForm.reset();
+    els.goalOrdem.value = '0';
+    els.goalDestaque.checked = false;
+    els.goalAtiva.checked = true;
+    els.goalSubmitBtn.textContent = 'Cadastrar meta';
+    els.goalCancelEditBtn.hidden = true;
+    [
+      els.goalTitulo,
+      els.goalSlug,
+      els.goalValorMeta,
+      els.goalValorInicial,
+      els.goalCampanhaId,
+      els.goalOrdem,
+      els.goalDataInicio,
+      els.goalDataFim,
+      els.goalDescricao
+    ].forEach((el) => {
+      el.setCustomValidity('');
+      syncAria(el);
+    });
+  }
+
+  function startEditGoal(goal) {
+    hideBanner(els.goalResult);
+    editingGoalId = goal.id;
+    goalSlugManuallyEdited = true;
+    els.goalTitulo.value = goal.titulo;
+    els.goalSlug.value = goal.slug;
+    els.goalValorMeta.value = String(goal.valor_meta);
+    els.goalValorInicial.value = goal.valor_inicial > 0 ? String(goal.valor_inicial) : '';
+    els.goalCampanhaId.value = goal.campanha_id || '';
+    els.goalOrdem.value = String(goal.ordem ?? 0);
+    els.goalDataInicio.value = goal.data_inicio || '';
+    els.goalDataFim.value = goal.data_fim || '';
+    els.goalDescricao.value = goal.descricao || '';
+    els.goalDestaque.checked = Boolean(goal.destaque);
+    els.goalAtiva.checked = Boolean(goal.ativa);
+    els.goalSubmitBtn.textContent = 'Salvar alterações';
+    els.goalCancelEditBtn.hidden = false;
+
+    [
+      els.goalTitulo,
+      els.goalSlug,
+      els.goalValorMeta,
+      els.goalValorInicial,
+      els.goalCampanhaId,
+      els.goalOrdem,
+      els.goalDataInicio,
+      els.goalDataFim,
+      els.goalDescricao
+    ].forEach((el) => {
+      el.setCustomValidity('');
+      syncAria(el);
+    });
+    els.goalForm.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    els.goalTitulo.focus();
+  }
+
+  async function handleGoalSubmit(event) {
+    event.preventDefault();
+    hideBanner(els.goalResult);
+
+    validateGoalAmountsInput();
+    validateGoalDatesInput();
+    if (!els.goalForm.reportValidity()) return;
+
+    const valorMetaNum = Number(els.goalValorMeta.value.trim().replace(',', '.'));
+    const initRaw = els.goalValorInicial.value.trim();
+    const valorInicialNum = initRaw ? Number(initRaw.replace(',', '.')) : 0;
+
+    const payload = {
+      titulo: els.goalTitulo.value.trim(),
+      slug: els.goalSlug.value.trim().toLowerCase(),
+      valor_meta: Math.round(valorMetaNum * 100) / 100,
+      valor_inicial: Math.round(valorInicialNum * 100) / 100,
+      campanha_id: els.goalCampanhaId.value.trim() || null,
+      ordem: parseInt(els.goalOrdem.value.trim() || '0', 10),
+      data_inicio: els.goalDataInicio.value || null,
+      data_fim: els.goalDataFim.value || null,
+      descricao: els.goalDescricao.value.trim() || null,
+      destaque: els.goalDestaque.checked,
+      ativa: els.goalAtiva.checked
+    };
+
+    els.goalSubmitBtn.disabled = true;
+    try {
+      const isEdit = editingGoalId !== null;
+      const url = isEdit ? `/api/admin/metas/${editingGoalId}` : '/api/admin/metas';
+      const { response, body } = await apiFetch(url, {
+        method: isEdit ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (response.status === 401 || response.status === 403) {
+        handleUnauthorized(body?.error || 'Sessão expirada.');
+        return;
+      }
+      if (!response.ok) {
+        showBanner(els.goalResult, body?.error || 'Não foi possível salvar a meta.', 'error');
+        return;
+      }
+
+      showBanner(
+        els.goalResult,
+        isEdit
+          ? `Meta "${body.meta.titulo}" atualizada com sucesso.`
+          : `Meta "${body.meta.titulo}" cadastrada com sucesso.`,
+        'success'
+      );
+      resetGoalForm();
+      await loadGoals();
+    } catch (_) {
+      showBanner(els.goalResult, 'Erro de comunicação ao salvar a meta.', 'error');
+    } finally {
+      els.goalSubmitBtn.disabled = false;
+    }
+  }
+
+  async function handleDeleteGoal(goal) {
+    hideBanner(els.goalResult);
+    const confirmed = await openConfirmDialog({
+      title: 'Excluir meta de doação',
+      message: 'A meta será removida permanentemente do painel e do endpoint público.',
+      confirmLabel: 'Excluir meta',
+      summaryItems: [
+        { label: 'Título', value: goal.titulo },
+        { label: 'Slug', value: goal.slug },
+        { label: 'Valor da meta', value: formatCurrency(goal.valor_meta) }
+      ]
+    });
+    if (!confirmed) return;
+
+    try {
+      const { response, body } = await apiFetch(`/api/admin/metas/${goal.id}`, { method: 'DELETE' });
+      if (response.status === 401) {
+        handleUnauthorized(body?.error || 'Sessão expirada.');
+        return;
+      }
+      if (!response.ok) {
+        showBanner(els.goalResult, body?.error || 'Não foi possível excluir a meta.', 'error');
+        return;
+      }
+      if (editingGoalId === goal.id) resetGoalForm();
+      showBanner(els.goalResult, `Meta "${goal.titulo}" excluída.`, 'success');
+      await loadGoals();
+    } catch (_) {
+      showBanner(els.goalResult, 'Erro de comunicação ao excluir a meta.', 'error');
+    }
+  }
+
+  // =========================================================
   // Ações de estorno e gestão de admins
   // =========================================================
   async function handleRefundSubmit(event) {
@@ -1714,14 +2071,18 @@
     els.tiersTbody.replaceChildren();
     els.rewardsTbody.replaceChildren();
     els.deliveriesTbody.replaceChildren();
+    els.goalsTbody.replaceChildren();
     resetTierForm();
     resetRewardForm();
     resetDeliveryForm();
+    resetGoalForm();
     hideBanner(els.refundResult);
     hideBanner(els.adminManageResult);
     hideBanner(els.tierResult);
     hideBanner(els.rewardResult);
     hideBanner(els.deliveryResult);
+    hideBanner(els.goalResult);
+    hideBanner(els.goalsCopyStatus);
     handleUnauthorized();
   }
 
@@ -1732,6 +2093,7 @@
     initTabGroup([
       { tab: els.tabEstornos, panel: els.panelEstornos },
       { tab: els.tabRecompensas, panel: els.panelRecompensas },
+      { tab: els.tabMetas, panel: els.panelMetas },
       { tab: els.tabAdmins, panel: els.panelAdmins }
     ]);
 
@@ -1740,7 +2102,33 @@
       { tab: els.subtabEntregas, panel: els.subpanelEntregas }
     ]);
 
+    els.goalsPublicUrl.textContent = `${window.location.origin}/api/metas`;
     els.deliveryDate.value = getTodayPlainDateISO();
+
+    els.copyGoalsEndpointBtn.addEventListener('click', () => {
+      copyUrlWithFeedback('/api/metas', 'Endpoint de metas');
+    });
+
+    els.goalTitulo.addEventListener('input', () => {
+      if (editingGoalId === null && !goalSlugManuallyEdited) {
+        els.goalSlug.value = slugifyLocal(els.goalTitulo.value).slice(0, 59);
+      }
+    });
+    els.goalSlug.addEventListener('input', () => {
+      goalSlugManuallyEdited = Boolean(els.goalSlug.value.trim());
+    });
+    els.goalValorMeta.addEventListener('input', validateGoalAmountsInput);
+    els.goalValorMeta.addEventListener('blur', validateGoalAmountsInput);
+    els.goalValorInicial.addEventListener('input', validateGoalAmountsInput);
+    els.goalValorInicial.addEventListener('blur', validateGoalAmountsInput);
+    els.goalDataInicio.addEventListener('change', validateGoalDatesInput);
+    els.goalDataFim.addEventListener('change', validateGoalDatesInput);
+    els.goalForm.addEventListener('submit', handleGoalSubmit);
+    els.goalCancelEditBtn.addEventListener('click', () => {
+      resetGoalForm();
+      hideBanner(els.goalResult);
+    });
+    els.refreshGoalsBtn.addEventListener('click', loadGoals);
 
     els.refundValor.addEventListener('input', validateRefundValorInput);
     els.refundValor.addEventListener('blur', validateRefundValorInput);

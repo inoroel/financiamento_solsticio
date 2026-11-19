@@ -9,6 +9,7 @@ const paymentRoutes = require('./routes/paymentRoutes');
 const authRoutes = require('./routes/authRoutes');
 const rewardsRoutes = require('./routes/rewardsRoutes');
 const adminRoutes = require('./routes/adminRoutes');
+const goalsRoutes = require('./routes/goalsRoutes');
 const { requestLogger, errorHandler, notFoundHandler } = require('./middleware/errorHandler');
 const { helmetConfig } = require('./middleware/security');
 
@@ -184,6 +185,7 @@ app.get('/', (req, res) => {
 app.use('/api', paymentRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/rewards', rewardsRoutes);
+app.use('/api/metas', goalsRoutes);
 app.use('/api/admin', adminRoutes);
 
 // Interface administrativa mínima (protegida no cliente e nas APIs por Google OAuth)

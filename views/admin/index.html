@@ -68,6 +68,7 @@
           >
             <button type="button" role="tab" id="tab-estornos" aria-selected="true" focusgroupstart>Estornos e Transações</button>
             <button type="button" role="tab" id="tab-recompensas" aria-selected="false" tabindex="-1">Recompensas</button>
+            <button type="button" role="tab" id="tab-metas" aria-selected="false" tabindex="-1">Metas</button>
             <button type="button" role="tab" id="tab-admins" aria-selected="false" tabindex="-1">Administradores</button>
           </div>
 
@@ -744,7 +745,285 @@
             </div>
           </div>
 
-          <!-- Aba 3: Administradores Autorizados -->
+          <!-- Aba 3: Metas de Doação -->
+          <div id="panel-metas" role="tabpanel" aria-labelledby="tab-metas" hidden>
+            <div class="tabpanel-content dashboard-grid">
+              <!-- Endpoint Público em Tempo Real -->
+              <section class="card" aria-labelledby="goals-endpoint-heading">
+                <div class="section-header">
+                  <h2 id="goals-endpoint-heading">Endpoint Público em Tempo Real</h2>
+                  <p class="muted">
+                    O site principal pode ler este endpoint continuamente (sem cache) para exibir o progresso real das doações confirmadas.
+                  </p>
+                </div>
+
+                <div class="endpoint-list">
+                  <div class="endpoint-row">
+                    <div>
+                      <strong>Lista de metas ativas e resumo geral</strong>
+                      <div class="mono-cell" id="goals-public-url">/api/metas</div>
+                    </div>
+                    <button type="button" id="copy-goals-endpoint-btn" class="btn btn-secondary btn-sm">Copiar URL</button>
+                  </div>
+                  <div class="endpoint-row">
+                    <div>
+                      <strong>Meta específica por slug</strong>
+                      <div class="mono-cell">/api/metas/:slug</div>
+                    </div>
+                  </div>
+                </div>
+
+                <p id="goals-copy-status" class="banner banner-success" role="status" aria-live="polite" hidden></p>
+              </section>
+
+              <!-- Criar / Editar Meta -->
+              <section class="card" aria-labelledby="goals-heading">
+                <div class="section-header">
+                  <h2 id="goals-heading">Criar / Editar Meta de Doação</h2>
+                  <p class="muted">
+                    Configure o valor alvo, campanha (opcional) e período. A arrecadação online é somada em tempo real a partir das transações confirmadas.
+                  </p>
+                </div>
+
+                <form id="goal-form" aria-labelledby="goals-heading">
+                  <div class="form-row">
+                    <div class="field">
+                      <label for="goal-titulo">Título da meta <span aria-hidden="true">*</span></label>
+                      <span id="goal-titulo-hint" class="hint">Ex: Meta Principal Festival 2026 (máx. 150 caracteres).</span>
+                      <input
+                        type="text"
+                        id="goal-titulo"
+                        name="titulo"
+                        required
+                        maxlength="150"
+                        enterkeyhint="next"
+                        aria-describedby="goal-titulo-hint"
+                        data-error="goal-titulo-error"
+                      >
+                      <div id="goal-titulo-error" class="error-msg">
+                        <span role="img" aria-label="Erro">!</span> Informe o título da meta (máx. 150 caracteres).
+                      </div>
+                    </div>
+
+                    <div class="field">
+                      <label for="goal-slug">Slug (identificador na URL) <span aria-hidden="true">*</span></label>
+                      <span id="goal-slug-hint" class="hint">Letras minúsculas, números, "-" ou "_" (ex: meta-principal).</span>
+                      <input
+                        type="text"
+                        id="goal-slug"
+                        name="slug"
+                        required
+                        maxlength="59"
+                        pattern="[a-z0-9][a-z0-9_-]{0,58}"
+                        autocorrect="off"
+                        autocapitalize="none"
+                        spellcheck="false"
+                        enterkeyhint="next"
+                        aria-describedby="goal-slug-hint"
+                        data-error="goal-slug-error"
+                      >
+                      <div id="goal-slug-error" class="error-msg">
+                        <span role="img" aria-label="Erro">!</span> Use apenas letras minúsculas, números, "-" ou "_".
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="form-row">
+                    <div class="field">
+                      <label for="goal-valor-meta">Valor da meta (R$) <span aria-hidden="true">*</span></label>
+                      <span id="goal-valor-meta-hint" class="hint">Valor positivo (ex: 15000,00).</span>
+                      <input
+                        type="text"
+                        id="goal-valor-meta"
+                        name="valor_meta"
+                        required
+                        inputmode="decimal"
+                        pattern="\s*\d+(?:[.,]\d{1,2})?\s*"
+                        autocorrect="off"
+                        autocapitalize="none"
+                        spellcheck="false"
+                        enterkeyhint="next"
+                        aria-describedby="goal-valor-meta-hint"
+                        data-error="goal-valor-meta-error"
+                      >
+                      <div id="goal-valor-meta-error" class="error-msg">
+                        <span role="img" aria-label="Erro">!</span> Informe um valor da meta maior que zero.
+                      </div>
+                    </div>
+
+                    <div class="field">
+                      <label for="goal-valor-inicial">Valor inicial / offline (R$)</label>
+                      <span id="goal-valor-inicial-hint" class="hint">Opcional. Somado ao total arrecadado online (padrão: 0).</span>
+                      <input
+                        type="text"
+                        id="goal-valor-inicial"
+                        name="valor_inicial"
+                        inputmode="decimal"
+                        pattern="\s*\d+(?:[.,]\d{1,2})?\s*"
+                        autocorrect="off"
+                        autocapitalize="none"
+                        spellcheck="false"
+                        enterkeyhint="next"
+                        aria-describedby="goal-valor-inicial-hint"
+                        data-error="goal-valor-inicial-error"
+                      >
+                      <div id="goal-valor-inicial-error" class="error-msg">
+                        <span role="img" aria-label="Erro">!</span> Informe um valor maior ou igual a zero ou deixe em branco.
+                      </div>
+                    </div>
+
+                    <div class="field">
+                      <label for="goal-campanha-id">ID da campanha (opcional)</label>
+                      <span id="goal-campanha-id-hint" class="hint">Vazio = soma todas as campanhas (ex: campanha-01).</span>
+                      <input
+                        type="text"
+                        id="goal-campanha-id"
+                        name="campanha_id"
+                        maxlength="50"
+                        pattern="[a-zA-Z0-9_-]{1,50}"
+                        autocorrect="off"
+                        autocapitalize="none"
+                        spellcheck="false"
+                        enterkeyhint="next"
+                        aria-describedby="goal-campanha-id-hint"
+                        data-error="goal-campanha-id-error"
+                      >
+                      <div id="goal-campanha-id-error" class="error-msg">
+                        <span role="img" aria-label="Erro">!</span> Use apenas letras, números, hífens ou underscores (máx. 50).
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="form-row">
+                    <div class="field">
+                      <label for="goal-ordem">Ordem de exibição</label>
+                      <span id="goal-ordem-hint" class="hint">Número inteiro para ordenação (padrão: 0).</span>
+                      <input
+                        type="text"
+                        id="goal-ordem"
+                        name="ordem"
+                        value="0"
+                        inputmode="numeric"
+                        pattern="-?\d{1,4}"
+                        autocorrect="off"
+                        autocapitalize="none"
+                        spellcheck="false"
+                        enterkeyhint="next"
+                        aria-describedby="goal-ordem-hint"
+                        data-error="goal-ordem-error"
+                      >
+                      <div id="goal-ordem-error" class="error-msg">
+                        <span role="img" aria-label="Erro">!</span> Informe um número inteiro para a ordem.
+                      </div>
+                    </div>
+
+                    <div class="field">
+                      <label for="goal-data-inicio">Data inicial (opcional)</label>
+                      <span id="goal-data-inicio-hint" class="hint">Filtra doações confirmadas a partir desta data.</span>
+                      <input
+                        type="date"
+                        id="goal-data-inicio"
+                        name="data_inicio"
+                        aria-describedby="goal-data-inicio-hint"
+                        data-error="goal-data-inicio-error"
+                      >
+                      <div id="goal-data-inicio-error" class="error-msg">
+                        <span role="img" aria-label="Erro">!</span> Informe uma data inicial válida.
+                      </div>
+                    </div>
+
+                    <div class="field">
+                      <label for="goal-data-fim">Data limite (opcional)</label>
+                      <span id="goal-data-fim-hint" class="hint">Deve ser igual ou posterior à data inicial.</span>
+                      <input
+                        type="date"
+                        id="goal-data-fim"
+                        name="data_fim"
+                        aria-describedby="goal-data-fim-hint"
+                        data-error="goal-data-fim-error"
+                      >
+                      <div id="goal-data-fim-error" class="error-msg">
+                        <span role="img" aria-label="Erro">!</span> Informe uma data limite igual ou posterior à data inicial.
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="field">
+                    <label for="goal-descricao">Descrição (opcional)</label>
+                    <span id="goal-descricao-hint" class="hint">Resumo exibido no endpoint público (máx. 500 caracteres).</span>
+                    <input
+                      type="text"
+                      id="goal-descricao"
+                      name="descricao"
+                      maxlength="500"
+                      enterkeyhint="done"
+                      aria-describedby="goal-descricao-hint"
+                      data-error="goal-descricao-error"
+                    >
+                    <div id="goal-descricao-error" class="error-msg">
+                      <span role="img" aria-label="Erro">!</span> A descrição deve ter no máximo 500 caracteres.
+                    </div>
+                  </div>
+
+                  <div class="form-row">
+                    <div class="field field-checkbox-wrap">
+                      <div class="checkbox-row">
+                        <input type="checkbox" id="goal-destaque" name="destaque">
+                        <label for="goal-destaque">Meta principal (destaque no site)</label>
+                      </div>
+                    </div>
+
+                    <div class="field field-checkbox-wrap">
+                      <div class="checkbox-row">
+                        <input type="checkbox" id="goal-ativa" name="ativa" checked>
+                        <label for="goal-ativa">Meta ativa (visível no endpoint público)</label>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="form-actions">
+                    <button type="submit" id="goal-submit-btn" class="btn btn-primary">Cadastrar meta</button>
+                    <button type="button" id="goal-cancel-edit-btn" class="btn btn-secondary" hidden>Cancelar edição</button>
+                  </div>
+                </form>
+
+                <div id="goal-result" class="banner" role="status" aria-live="polite" hidden></div>
+              </section>
+
+              <!-- Metas Cadastradas (Tempo Real) -->
+              <section class="card" aria-labelledby="goals-list-heading">
+                <div class="section-header section-header-row">
+                  <div>
+                    <h2 id="goals-list-heading">Metas Cadastradas (Tempo Real)</h2>
+                    <p class="muted">Progresso calculado diretamente a partir das transações confirmadas.</p>
+                  </div>
+                  <button type="button" id="refresh-goals-btn" class="btn btn-secondary btn-sm">Atualizar</button>
+                </div>
+
+                <div tabindex="0" role="region" aria-labelledby="goals-table-caption" class="table-wrapper">
+                  <table class="table-metas">
+                    <caption id="goals-table-caption" class="table-caption">Metas de arrecadação</caption>
+                    <thead>
+                      <tr>
+                        <th scope="col">Meta</th>
+                        <th scope="col">Progresso</th>
+                        <th scope="col">Doações</th>
+                        <th scope="col">Status</th>
+                        <th scope="col">Ações</th>
+                      </tr>
+                    </thead>
+                    <tbody id="goals-tbody">
+                      <tr>
+                        <td colspan="5" class="empty-cell">Carregando metas...</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            </div>
+          </div>
+
+          <!-- Aba 4: Administradores Autorizados -->
           <div id="panel-admins" role="tabpanel" aria-labelledby="tab-admins" hidden>
             <div class="tabpanel-content">
               <section class="card" aria-labelledby="admins-heading">
