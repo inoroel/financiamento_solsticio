@@ -86,10 +86,32 @@ const helmetConfig = helmet({
   }
 });
 
+/**
+ * Rate limiting para operações administrativas sensíveis (estornos e gestão de admins)
+ */
+const adminActionLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutos
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => {
+    return req.ip || req.socket.remoteAddress || 'unknown';
+  },
+  skip: (req) => {
+    return req.method === 'OPTIONS';
+  },
+  handler: (req, res) => {
+    res.status(429).json({
+      error: 'Muitas operações administrativas. Tente novamente em alguns minutos.'
+    });
+  }
+});
+
 module.exports = {
   createChargeLimiter,
   consultChargeLimiter,
   webhookLimiter,
+  adminActionLimiter,
   helmetConfig
 };
 

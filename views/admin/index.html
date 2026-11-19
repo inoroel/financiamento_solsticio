@@ -1,0 +1,820 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Administração — Financiamento Solstício</title>
+  <link rel="stylesheet" href="/admin/admin.css">
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+</head>
+<body>
+  <div class="page-shell">
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-badge">Solstício</span>
+        <div>
+          <h1>Painel Administrativo</h1>
+          <p class="subtitle">Financiamento Coletivo · Acesso restrito</p>
+        </div>
+      </div>
+
+      <div id="user-session-bar" class="session-bar" hidden>
+        <div class="user-chip">
+          <img id="user-avatar" class="user-avatar" src="" alt="" width="36" height="36" hidden>
+          <div class="user-meta">
+            <span id="user-email" class="user-email"></span>
+            <span id="user-role-badge" class="role-badge"></span>
+          </div>
+        </div>
+        <button type="button" id="logout-btn" class="btn btn-secondary btn-sm">Sair</button>
+      </div>
+    </header>
+
+    <div id="global-banner" class="banner" role="status" aria-live="polite" hidden></div>
+
+    <main>
+      <!-- Tela de Login -->
+      <section id="login-view" class="card login-card" aria-labelledby="login-heading">
+        <h2 id="login-heading">Entrar com conta Google autorizada</h2>
+        <p class="muted">
+          Apenas contas Gmail previamente cadastradas como administradoras podem consultar transações, executar estornos e gerenciar recompensas.
+        </p>
+
+        <div id="google-signin-container" class="google-signin-box"></div>
+
+        <div id="google-config-warning" class="banner banner-warning" hidden>
+          O login com Google ainda não está habilitado neste ambiente. Configure a variável <code>GOOGLE_CLIENT_ID</code> na Vercel com o Client ID do Google Cloud Console.
+        </div>
+
+        <p id="login-error" class="banner banner-error" role="alert" hidden></p>
+      </section>
+
+      <!-- Painel Autenticado -->
+      <div id="dashboard-view" hidden>
+        <div class="tabs-shell">
+          <div
+            class="tablist"
+            role="tablist"
+            focusgroup="tablist nomemory"
+            aria-label="Seções do painel administrativo"
+          >
+            <button type="button" role="tab" id="tab-estornos" aria-selected="true" focusgroupstart>Estornos e Transações</button>
+            <button type="button" role="tab" id="tab-recompensas" aria-selected="false" tabindex="-1">Recompensas</button>
+            <button type="button" role="tab" id="tab-admins" aria-selected="false" tabindex="-1">Administradores</button>
+          </div>
+
+          <!-- Aba 1: Estornos e Transações -->
+          <div id="panel-estornos" role="tabpanel" aria-labelledby="tab-estornos">
+            <div class="tabpanel-content dashboard-grid">
+              <!-- Formulário de Estorno -->
+              <section class="card" aria-labelledby="refund-heading">
+                <div class="section-header">
+                  <h2 id="refund-heading">Executar Estorno (e-Rede)</h2>
+                  <p class="muted">
+                    Crédito: até 90 dias · Débito: até 7 dias. Deixe o valor em branco para estorno total.
+                  </p>
+                </div>
+
+                <form id="refund-form" aria-labelledby="refund-heading">
+                  <div class="form-row">
+                    <div class="field">
+                      <label for="refund-tid">TID da transação <span aria-hidden="true">*</span></label>
+                      <span id="refund-tid-hint" class="hint">Código TID retornado pela e-Rede (ou selecione abaixo na tabela).</span>
+                      <input
+                        type="text"
+                        id="refund-tid"
+                        name="tid"
+                        required
+                        minlength="6"
+                        maxlength="100"
+                        pattern="[A-Za-z0-9._-]+"
+                        autocorrect="off"
+                        autocapitalize="none"
+                        spellcheck="false"
+                        enterkeyhint="next"
+                        aria-describedby="refund-tid-hint"
+                        data-error="refund-tid-error"
+                      >
+                      <div id="refund-tid-error" class="error-msg">
+                        <span role="img" aria-label="Erro">!</span> Informe um TID válido (mínimo de 6 caracteres alfanuméricos).
+                      </div>
+                    </div>
+
+                    <div class="field">
+                      <label for="refund-valor">Valor parcial em R$ (opcional)</label>
+                      <span id="refund-valor-hint" class="hint">Formato: 50,00 ou 50.00. Vazio = estorno total.</span>
+                      <input
+                        type="text"
+                        id="refund-valor"
+                        name="valor"
+                        inputmode="decimal"
+                        pattern="\s*\d+(?:[.,]\d{1,2})?\s*"
+                        autocorrect="off"
+                        autocapitalize="none"
+                        spellcheck="false"
+                        enterkeyhint="next"
+                        aria-describedby="refund-valor-hint"
+                        data-error="refund-valor-error"
+                      >
+                      <div id="refund-valor-error" class="error-msg">
+                        <span role="img" aria-label="Erro">!</span> Informe um valor positivo com até 2 casas decimais (ex: 25,50) ou deixe em branco.
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="field">
+                    <label for="refund-motivo">Motivo do estorno (opcional)</label>
+                    <span id="refund-motivo-hint" class="hint">Registrado no log de auditoria (máx. 500 caracteres).</span>
+                    <input
+                      type="text"
+                      id="refund-motivo"
+                      name="motivo"
+                      maxlength="500"
+                      enterkeyhint="done"
+                      aria-describedby="refund-motivo-hint"
+                      data-error="refund-motivo-error"
+                    >
+                    <div id="refund-motivo-error" class="error-msg">
+                      <span role="img" aria-label="Erro">!</span> O motivo deve ter no máximo 500 caracteres.
+                    </div>
+                  </div>
+
+                  <div class="form-actions">
+                    <button type="submit" id="refund-submit-btn" class="btn btn-danger">Solicitar estorno</button>
+                    <button type="button" id="refund-reset-btn" class="btn btn-secondary">Limpar campos</button>
+                  </div>
+                </form>
+
+                <div id="refund-result" class="banner" role="status" aria-live="polite" hidden></div>
+              </section>
+
+              <!-- Transações e-Rede -->
+              <section class="card" aria-labelledby="tx-heading">
+                <div class="section-header section-header-row">
+                  <div>
+                    <h2 id="tx-heading">Transações e-Rede</h2>
+                    <p class="muted">Últimas cobranças registradas no banco para consulta rápida de TID.</p>
+                  </div>
+                  <button type="button" id="refresh-tx-btn" class="btn btn-secondary btn-sm">Atualizar</button>
+                </div>
+
+                <search>
+                  <form id="filter-form" class="filter-bar" aria-labelledby="tx-heading">
+                    <div class="field field-compact">
+                      <label for="filter-search">Buscar por TID, TXID ou doador</label>
+                      <input
+                        type="search"
+                        id="filter-search"
+                        name="search"
+                        maxlength="100"
+                        autocorrect="off"
+                        autocapitalize="none"
+                        spellcheck="false"
+                        enterkeyhint="search"
+                      >
+                    </div>
+
+                    <div class="field field-compact">
+                      <label for="filter-status">Status</label>
+                      <select id="filter-status" name="status">
+                        <option value="">Todos</option>
+                        <option value="CONFIRMADA">CONFIRMADA</option>
+                        <option value="AGUARDANDO">AGUARDANDO</option>
+                        <option value="PENDENTE_3DS">PENDENTE_3DS</option>
+                        <option value="ESTORNADA">ESTORNADA</option>
+                        <option value="ESTORNO_PENDENTE">ESTORNO_PENDENTE</option>
+                        <option value="NEGADA">NEGADA</option>
+                      </select>
+                    </div>
+
+                    <div class="filter-actions">
+                      <button type="submit" class="btn btn-primary">Filtrar</button>
+                    </div>
+                  </form>
+                </search>
+
+                <div tabindex="0" role="region" aria-labelledby="tx-table-caption" class="table-wrapper">
+                  <table class="table-transacoes">
+                    <caption id="tx-table-caption" class="table-caption">Cobranças registradas via e-Rede</caption>
+                    <thead>
+                      <tr>
+                        <th scope="col">TID / TXID</th>
+                        <th scope="col">Valor</th>
+                        <th scope="col">Método</th>
+                        <th scope="col">Status</th>
+                        <th scope="col">Doador</th>
+                        <th scope="col">Data</th>
+                        <th scope="col">Ação</th>
+                      </tr>
+                    </thead>
+                    <tbody id="tx-tbody">
+                      <tr>
+                        <td colspan="7" class="empty-cell">Carregando transações...</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+
+              <!-- Histórico de Estornos -->
+              <section class="card" aria-labelledby="estornos-heading">
+                <div class="section-header section-header-row">
+                  <div>
+                    <h2 id="estornos-heading">Histórico de Estornos</h2>
+                    <p class="muted">Registro auditável de todas as solicitações de cancelamento.</p>
+                  </div>
+                  <button type="button" id="refresh-estornos-btn" class="btn btn-secondary btn-sm">Atualizar</button>
+                </div>
+
+                <div tabindex="0" role="region" aria-labelledby="estornos-table-caption" class="table-wrapper">
+                  <table class="table-estornos">
+                    <caption id="estornos-table-caption" class="table-caption">Auditoria de estornos executados</caption>
+                    <thead>
+                      <tr>
+                        <th scope="col">TID</th>
+                        <th scope="col">Valor</th>
+                        <th scope="col">Status</th>
+                        <th scope="col">Executado por</th>
+                        <th scope="col">Motivo</th>
+                        <th scope="col">Data</th>
+                      </tr>
+                    </thead>
+                    <tbody id="estornos-tbody">
+                      <tr>
+                        <td colspan="6" class="empty-cell">Carregando histórico...</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            </div>
+          </div>
+
+          <!-- Aba 2: Recompensas (com submenu) -->
+          <div id="panel-recompensas" role="tabpanel" aria-labelledby="tab-recompensas" hidden>
+            <div class="tabpanel-content">
+              <div class="subtabs-shell">
+                <div
+                  class="tablist subtablist"
+                  role="tablist"
+                  focusgroup="tablist nomemory"
+                  aria-label="Submenu de recompensas"
+                >
+                  <button type="button" role="tab" id="subtab-catalogo" aria-selected="true" focusgroupstart>Recompensas e Tiers</button>
+                  <button type="button" role="tab" id="subtab-entregas" aria-selected="false" tabindex="-1">Controle de Entregas</button>
+                </div>
+
+                <!-- Submenu 2.1: Recompensas e Tiers -->
+                <div id="subpanel-catalogo" role="tabpanel" aria-labelledby="subtab-catalogo">
+                  <div class="tabpanel-content dashboard-grid">
+                    <!-- Tiers de Recompensa -->
+                    <section class="card" aria-labelledby="tiers-heading">
+                      <div class="section-header section-header-row">
+                        <div>
+                          <h2 id="tiers-heading">Tiers de Recompensa</h2>
+                          <p class="muted">Defina as faixas de valor mínimo, cores e disponibilidade de cada tier.</p>
+                        </div>
+                        <button type="button" id="refresh-tiers-btn" class="btn btn-secondary btn-sm">Atualizar</button>
+                      </div>
+
+                      <form id="tier-form" aria-labelledby="tiers-heading">
+                        <div class="form-row">
+                          <div class="field">
+                            <label for="tier-name">Nome do tier <span aria-hidden="true">*</span></label>
+                            <span id="tier-name-hint" class="hint">Ex: Bronze, Silver, Gold, Apoiador VIP.</span>
+                            <input
+                              type="text"
+                              id="tier-name"
+                              name="name"
+                              required
+                              maxlength="100"
+                              enterkeyhint="next"
+                              aria-describedby="tier-name-hint"
+                              data-error="tier-name-error"
+                            >
+                            <div id="tier-name-error" class="error-msg">
+                              <span role="img" aria-label="Erro">!</span> Informe o nome do tier (máx. 100 caracteres).
+                            </div>
+                          </div>
+
+                          <div class="field">
+                            <label for="tier-slug">Identificador (slug) <span aria-hidden="true">*</span></label>
+                            <span id="tier-slug-hint" class="hint">Letras minúsculas, números, "-" ou "_" (ex: bronze).</span>
+                            <input
+                              type="text"
+                              id="tier-slug"
+                              name="slug"
+                              required
+                              maxlength="49"
+                              pattern="[a-z0-9][a-z0-9_-]{0,48}"
+                              autocorrect="off"
+                              autocapitalize="none"
+                              spellcheck="false"
+                              enterkeyhint="next"
+                              aria-describedby="tier-slug-hint"
+                              data-error="tier-slug-error"
+                            >
+                            <div id="tier-slug-error" class="error-msg">
+                              <span role="img" aria-label="Erro">!</span> Use apenas letras minúsculas, números, "-" ou "_".
+                            </div>
+                          </div>
+
+                          <div class="field">
+                            <label for="tier-min-amount">Valor mínimo (R$) <span aria-hidden="true">*</span></label>
+                            <span id="tier-min-amount-hint" class="hint">Valor acumulado para atingir este tier (ex: 50,00).</span>
+                            <input
+                              type="text"
+                              id="tier-min-amount"
+                              name="min_amount"
+                              required
+                              inputmode="decimal"
+                              pattern="\s*\d+(?:[.,]\d{1,2})?\s*"
+                              autocorrect="off"
+                              autocapitalize="none"
+                              spellcheck="false"
+                              enterkeyhint="next"
+                              aria-describedby="tier-min-amount-hint"
+                              data-error="tier-min-amount-error"
+                            >
+                            <div id="tier-min-amount-error" class="error-msg">
+                              <span role="img" aria-label="Erro">!</span> Informe um valor numérico maior ou igual a 0.
+                            </div>
+                          </div>
+                        </div>
+
+                        <div class="form-row">
+                          <div class="field">
+                            <label for="tier-color">Cor do tier</label>
+                            <span id="tier-color-hint" class="hint">Cor de destaque exibida nos badges.</span>
+                            <input type="color" id="tier-color" name="color" value="#cd7f32" aria-describedby="tier-color-hint">
+                          </div>
+
+                          <div class="field">
+                            <label for="tier-sort-order">Ordem de exibição</label>
+                            <span id="tier-sort-order-hint" class="hint">Número inteiro para ordenação (ex: 1, 2, 3).</span>
+                            <input
+                              type="text"
+                              id="tier-sort-order"
+                              name="sort_order"
+                              value="0"
+                              inputmode="numeric"
+                              pattern="-?\d{1,4}"
+                              autocorrect="off"
+                              autocapitalize="none"
+                              spellcheck="false"
+                              enterkeyhint="done"
+                              aria-describedby="tier-sort-order-hint"
+                              data-error="tier-sort-order-error"
+                            >
+                            <div id="tier-sort-order-error" class="error-msg">
+                              <span role="img" aria-label="Erro">!</span> Informe um número inteiro para a ordem.
+                            </div>
+                          </div>
+
+                          <div class="field field-checkbox-wrap">
+                            <div class="checkbox-row">
+                              <input type="checkbox" id="tier-active" name="active" checked>
+                              <label for="tier-active">Tier ativo</label>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div class="form-actions">
+                          <button type="submit" id="tier-submit-btn" class="btn btn-primary">Cadastrar tier</button>
+                          <button type="button" id="tier-cancel-edit-btn" class="btn btn-secondary" hidden>Cancelar edição</button>
+                        </div>
+                      </form>
+
+                      <div id="tier-result" class="banner" role="status" aria-live="polite" hidden></div>
+
+                      <div tabindex="0" role="region" aria-labelledby="tiers-table-caption" class="table-wrapper table-gap-top">
+                        <table class="table-tiers">
+                          <caption id="tiers-table-caption" class="table-caption">Tiers cadastrados</caption>
+                          <thead>
+                            <tr>
+                              <th scope="col">Tier</th>
+                              <th scope="col">Valor mínimo</th>
+                              <th scope="col">Recompensas</th>
+                              <th scope="col">Status</th>
+                              <th scope="col">Ações</th>
+                            </tr>
+                          </thead>
+                          <tbody id="tiers-tbody">
+                            <tr>
+                              <td colspan="5" class="empty-cell">Carregando tiers...</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </section>
+
+                    <!-- Recompensas e Quantidades Disponíveis -->
+                    <section class="card" aria-labelledby="rewards-heading">
+                      <div class="section-header section-header-row">
+                        <div>
+                          <h2 id="rewards-heading">Recompensas e Quantidades Disponíveis</h2>
+                          <p class="muted">Gerencie os itens por tier e controle o estoque disponível (deixe vazio para ilimitado).</p>
+                        </div>
+                        <button type="button" id="refresh-rewards-btn" class="btn btn-secondary btn-sm">Atualizar</button>
+                      </div>
+
+                      <form id="reward-form" aria-labelledby="rewards-heading">
+                        <div class="form-row">
+                          <div class="field">
+                            <label for="reward-name">Nome da recompensa <span aria-hidden="true">*</span></label>
+                            <span id="reward-name-hint" class="hint">Ex: Camiseta Exclusiva, VIP Pass.</span>
+                            <input
+                              type="text"
+                              id="reward-name"
+                              name="name"
+                              required
+                              maxlength="150"
+                              enterkeyhint="next"
+                              aria-describedby="reward-name-hint"
+                              data-error="reward-name-error"
+                            >
+                            <div id="reward-name-error" class="error-msg">
+                              <span role="img" aria-label="Erro">!</span> Informe o nome da recompensa (máx. 150 caracteres).
+                            </div>
+                          </div>
+
+                          <div class="field">
+                            <label for="reward-tier">Tier <span aria-hidden="true">*</span></label>
+                            <span id="reward-tier-hint" class="hint">Faixa de doação associada.</span>
+                            <select
+                              id="reward-tier"
+                              name="tier_slug"
+                              required
+                              aria-describedby="reward-tier-hint"
+                              data-error="reward-tier-error"
+                            >
+                              <option value="">Selecione um tier</option>
+                            </select>
+                            <div id="reward-tier-error" class="error-msg">
+                              <span role="img" aria-label="Erro">!</span> Selecione o tier da recompensa.
+                            </div>
+                          </div>
+
+                          <div class="field">
+                            <label for="reward-stock">Quantidade disponível (opcional)</label>
+                            <span id="reward-stock-hint" class="hint">Número inteiro ≥ 0. Deixe vazio para ilimitada.</span>
+                            <input
+                              type="text"
+                              id="reward-stock"
+                              name="quantidade_disponivel"
+                              inputmode="numeric"
+                              pattern="\s*\d+\s*"
+                              autocorrect="off"
+                              autocapitalize="none"
+                              spellcheck="false"
+                              enterkeyhint="next"
+                              aria-describedby="reward-stock-hint"
+                              data-error="reward-stock-error"
+                            >
+                            <div id="reward-stock-error" class="error-msg">
+                              <span role="img" aria-label="Erro">!</span> Informe um número inteiro ≥ 0 ou deixe vazio para ilimitada.
+                            </div>
+                          </div>
+                        </div>
+
+                        <div class="form-row">
+                          <div class="field">
+                            <label for="reward-description">Descrição (opcional)</label>
+                            <span id="reward-description-hint" class="hint">Detalhes exibidos na listagem (máx. 500 caracteres).</span>
+                            <input
+                              type="text"
+                              id="reward-description"
+                              name="description"
+                              maxlength="500"
+                              enterkeyhint="done"
+                              aria-describedby="reward-description-hint"
+                              data-error="reward-description-error"
+                            >
+                            <div id="reward-description-error" class="error-msg">
+                              <span role="img" aria-label="Erro">!</span> A descrição deve ter no máximo 500 caracteres.
+                            </div>
+                          </div>
+
+                          <div class="field field-checkbox-wrap">
+                            <div class="checkbox-row">
+                              <input type="checkbox" id="reward-active" name="active" checked>
+                              <label for="reward-active">Recompensa ativa</label>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div class="form-actions">
+                          <button type="submit" id="reward-submit-btn" class="btn btn-primary">Cadastrar recompensa</button>
+                          <button type="button" id="reward-cancel-edit-btn" class="btn btn-secondary" hidden>Cancelar edição</button>
+                        </div>
+                      </form>
+
+                      <div id="reward-result" class="banner" role="status" aria-live="polite" hidden></div>
+
+                      <div tabindex="0" role="region" aria-labelledby="rewards-table-caption" class="table-wrapper table-gap-top">
+                        <table class="table-rewards">
+                          <caption id="rewards-table-caption" class="table-caption">Recompensas cadastradas e saldo em estoque</caption>
+                          <thead>
+                            <tr>
+                              <th scope="col">Recompensa</th>
+                              <th scope="col">Tier</th>
+                              <th scope="col">Disponível</th>
+                              <th scope="col">Entregues</th>
+                              <th scope="col">Status</th>
+                              <th scope="col">Ações</th>
+                            </tr>
+                          </thead>
+                          <tbody id="rewards-tbody">
+                            <tr>
+                              <td colspan="6" class="empty-cell">Carregando recompensas...</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </section>
+                  </div>
+                </div>
+
+                <!-- Submenu 2.2: Controle de Entregas -->
+                <div id="subpanel-entregas" role="tabpanel" aria-labelledby="subtab-entregas" hidden>
+                  <div class="tabpanel-content dashboard-grid">
+                    <!-- Registrar Entrega -->
+                    <section class="card" aria-labelledby="delivery-form-heading">
+                      <div class="section-header section-header-row">
+                        <div>
+                          <h2 id="delivery-form-heading">Registrar Entrega de Recompensa</h2>
+                          <p class="muted">
+                            Selecione o recipiente diretamente da tabela de doadores, a recompensa entregue e a data da entrega. Entregas de itens com estoque finito atualizam a quantidade disponível automaticamente.
+                          </p>
+                        </div>
+                        <button type="button" id="refresh-donors-btn" class="btn btn-secondary btn-sm">Atualizar doadores</button>
+                      </div>
+
+                      <form id="delivery-form" aria-labelledby="delivery-form-heading">
+                        <div class="form-row">
+                          <div class="field">
+                            <label for="delivery-donor-filter">Filtrar lista de recipientes</label>
+                            <span id="delivery-donor-filter-hint" class="hint">Busque por nome, WhatsApp ou ID para localizar no seletor ao lado.</span>
+                            <input
+                              type="search"
+                              id="delivery-donor-filter"
+                              name="donor_filter"
+                              maxlength="100"
+                              autocorrect="off"
+                              autocapitalize="none"
+                              spellcheck="false"
+                              enterkeyhint="next"
+                              aria-describedby="delivery-donor-filter-hint"
+                            >
+                          </div>
+
+                          <div class="field">
+                            <label for="delivery-doador">Recipiente (tabela doadores) <span aria-hidden="true">*</span></label>
+                            <span id="delivery-doador-hint" class="hint">Carregando recipientes da tabela doadores...</span>
+                            <select
+                              id="delivery-doador"
+                              name="doador_id"
+                              required
+                              aria-describedby="delivery-doador-hint"
+                              data-error="delivery-doador-error"
+                            >
+                              <option value="">Selecione um doador</option>
+                            </select>
+                            <div id="delivery-doador-error" class="error-msg">
+                              <span role="img" aria-label="Erro">!</span> Selecione o doador recipiente da entrega.
+                            </div>
+                          </div>
+                        </div>
+
+                        <div class="form-row">
+                          <div class="field">
+                            <label for="delivery-reward">Recompensa <span aria-hidden="true">*</span></label>
+                            <span id="delivery-reward-hint" class="hint">Mostra o tier e a quantidade disponível atual.</span>
+                            <select
+                              id="delivery-reward"
+                              name="reward_id"
+                              required
+                              aria-describedby="delivery-reward-hint"
+                              data-error="delivery-reward-error"
+                            >
+                              <option value="">Selecione uma recompensa</option>
+                            </select>
+                            <div id="delivery-reward-error" class="error-msg">
+                              <span role="img" aria-label="Erro">!</span> Selecione a recompensa entregue.
+                            </div>
+                          </div>
+
+                          <div class="field">
+                            <label for="delivery-qty">Quantidade <span aria-hidden="true">*</span></label>
+                            <span id="delivery-qty-hint" class="hint">Número inteiro positivo (padrão: 1).</span>
+                            <input
+                              type="text"
+                              id="delivery-qty"
+                              name="quantidade"
+                              value="1"
+                              required
+                              inputmode="numeric"
+                              pattern="[1-9]\d*"
+                              autocorrect="off"
+                              autocapitalize="none"
+                              spellcheck="false"
+                              enterkeyhint="next"
+                              aria-describedby="delivery-qty-hint"
+                              data-error="delivery-qty-error"
+                            >
+                            <div id="delivery-qty-error" class="error-msg">
+                              <span role="img" aria-label="Erro">!</span> Informe uma quantidade inteira maior que zero.
+                            </div>
+                          </div>
+
+                          <div class="field">
+                            <label for="delivery-date">Data de entrega <span aria-hidden="true">*</span></label>
+                            <span id="delivery-date-hint" class="hint">Data exata da entrega no calendário.</span>
+                            <input
+                              type="date"
+                              id="delivery-date"
+                              name="data_entrega"
+                              required
+                              aria-describedby="delivery-date-hint"
+                              data-error="delivery-date-error"
+                            >
+                            <div id="delivery-date-error" class="error-msg">
+                              <span role="img" aria-label="Erro">!</span> Informe uma data de entrega válida.
+                            </div>
+                          </div>
+                        </div>
+
+                        <div class="field">
+                          <label for="delivery-notes">Observações (opcional)</label>
+                          <span id="delivery-notes-hint" class="hint">Ex: tamanho da camiseta, local de retirada ou código de rastreio (máx. 500 caracteres).</span>
+                          <input
+                            type="text"
+                            id="delivery-notes"
+                            name="observacoes"
+                            maxlength="500"
+                            enterkeyhint="done"
+                            aria-describedby="delivery-notes-hint"
+                            data-error="delivery-notes-error"
+                          >
+                          <div id="delivery-notes-error" class="error-msg">
+                            <span role="img" aria-label="Erro">!</span> As observações devem ter no máximo 500 caracteres.
+                          </div>
+                        </div>
+
+                        <div class="form-actions">
+                          <button type="submit" id="delivery-submit-btn" class="btn btn-primary">Registrar entrega</button>
+                          <button type="button" id="delivery-reset-btn" class="btn btn-secondary">Limpar campos</button>
+                        </div>
+                      </form>
+
+                      <div id="delivery-result" class="banner" role="status" aria-live="polite" hidden></div>
+                    </section>
+
+                    <!-- Recompensas Entregues -->
+                    <section class="card" aria-labelledby="deliveries-list-heading">
+                      <div class="section-header section-header-row">
+                        <div>
+                          <h2 id="deliveries-list-heading">Recompensas Entregues</h2>
+                          <p class="muted">Histórico de entregas com recipiente, recompensa, quantidade e data.</p>
+                        </div>
+                        <button type="button" id="refresh-deliveries-btn" class="btn btn-secondary btn-sm">Atualizar</button>
+                      </div>
+
+                      <search>
+                        <form id="deliveries-filter-form" class="filter-bar" aria-labelledby="deliveries-list-heading">
+                          <div class="field field-compact">
+                            <label for="deliveries-filter-search">Buscar recipiente, recompensa ou observação</label>
+                            <input
+                              type="search"
+                              id="deliveries-filter-search"
+                              name="search"
+                              maxlength="100"
+                              autocorrect="off"
+                              autocapitalize="none"
+                              spellcheck="false"
+                              enterkeyhint="search"
+                            >
+                          </div>
+
+                          <div class="field field-compact">
+                            <label for="deliveries-filter-reward">Filtrar por recompensa</label>
+                            <select id="deliveries-filter-reward" name="reward_id">
+                              <option value="">Todas as recompensas</option>
+                            </select>
+                          </div>
+
+                          <div class="filter-actions">
+                            <button type="submit" class="btn btn-primary">Filtrar</button>
+                          </div>
+                        </form>
+                      </search>
+
+                      <div tabindex="0" role="region" aria-labelledby="deliveries-table-caption" class="table-wrapper">
+                        <table class="table-deliveries">
+                          <caption id="deliveries-table-caption" class="table-caption">Registros de recompensas entregues</caption>
+                          <thead>
+                            <tr>
+                              <th scope="col">Data de entrega</th>
+                              <th scope="col">Recipiente</th>
+                              <th scope="col">Recompensa</th>
+                              <th scope="col">Qtd</th>
+                              <th scope="col">Observações</th>
+                              <th scope="col">Ações</th>
+                            </tr>
+                          </thead>
+                          <tbody id="deliveries-tbody">
+                            <tr>
+                              <td colspan="6" class="empty-cell">Carregando entregas...</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </section>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Aba 3: Administradores Autorizados -->
+          <div id="panel-admins" role="tabpanel" aria-labelledby="tab-admins" hidden>
+            <div class="tabpanel-content">
+              <section class="card" aria-labelledby="admins-heading">
+                <div class="section-header">
+                  <h2 id="admins-heading">Administradores Autorizados</h2>
+                  <p class="muted">
+                    O administrador <strong>root</strong> (<code>inoroel@gmail.com</code>) é permanente e gerencia quem pode acessar este painel.
+                  </p>
+                </div>
+
+                <form id="add-admin-form" class="inline-form" aria-labelledby="admins-heading" hidden>
+                  <div class="field field-grow">
+                    <label for="new-admin-email">Cadastrar novo e-mail administrador <span aria-hidden="true">*</span></label>
+                    <span id="new-admin-email-hint" class="hint">Formato: nome@gmail.com</span>
+                    <input
+                      type="email"
+                      id="new-admin-email"
+                      name="email"
+                      required
+                      maxlength="255"
+                      autocomplete="email"
+                      autocorrect="off"
+                      autocapitalize="none"
+                      spellcheck="false"
+                      enterkeyhint="done"
+                      aria-describedby="new-admin-email-hint"
+                      data-error="new-admin-email-error"
+                    >
+                    <div id="new-admin-email-error" class="error-msg">
+                      <span role="img" aria-label="Erro">!</span> Informe um endereço de e-mail válido no formato nome@dominio.com.
+                    </div>
+                  </div>
+                  <div class="inline-form-actions">
+                    <button type="submit" id="add-admin-btn" class="btn btn-primary">Adicionar admin</button>
+                  </div>
+                </form>
+
+                <div id="admin-manage-result" class="banner" role="status" aria-live="polite" hidden></div>
+
+                <div tabindex="0" role="region" aria-labelledby="admins-table-caption" class="table-wrapper">
+                  <table class="table-admins">
+                    <caption id="admins-table-caption" class="table-caption">Contas autorizadas</caption>
+                    <thead>
+                      <tr>
+                        <th scope="col">E-mail</th>
+                        <th scope="col">Perfil</th>
+                        <th scope="col">Origem</th>
+                        <th scope="col">Cadastrado por</th>
+                        <th scope="col">Ação</th>
+                      </tr>
+                    </thead>
+                    <tbody id="admins-tbody">
+                      <tr>
+                        <td colspan="5" class="empty-cell">Carregando administradores...</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Modal nativo de confirmação (sem role="dialog" nem aria-modal) -->
+  <dialog id="confirm-dialog" aria-labelledby="confirm-dialog-title">
+    <h2 id="confirm-dialog-title">Confirmar ação</h2>
+    <p id="confirm-dialog-message" class="dialog-message"></p>
+    <dl id="confirm-dialog-summary" class="dialog-summary"></dl>
+    <form method="dialog" class="dialog-actions">
+      <button type="submit" value="cancel" class="btn btn-secondary" autofocus>Cancelar</button>
+      <button type="submit" value="confirm" id="confirm-dialog-submit" class="btn btn-danger">Confirmar</button>
+    </form>
+  </dialog>
+
+  <script src="/admin/admin.js" defer></script>
+</body>
+</html>

@@ -21,7 +21,9 @@ const {
 const { saveCobranca, getCobranca, processConfirmedTransaction, getDoadoresIdentificados, getDoadoresComTickets, updateCobrancaStatus } = require('../services/dbService');
 const { processWebhook } = require('../services/redeWebhookService');
 const { processWebhook: processStellarWebhook } = require('../services/stellarWebhookService');
-const { createChargeLimiter, consultChargeLimiter, webhookLimiter } = require('../middleware/security');
+const { createChargeLimiter, consultChargeLimiter, webhookLimiter, adminActionLimiter } = require('../middleware/security');
+const { requireAdmin } = require('../middleware/authMiddleware');
+const { getCobrancaByRedeTid, markRefundedInDatabase, logEstorno } = require('../services/adminService');
 const {
   validateValor,
   validateTxid,
@@ -1842,22 +1844,24 @@ router.post('/validar-cartao', createChargeLimiter, async (req, res) => {
  * - Após 21:30: processamento no dia seguinte
  * - Maestro: apenas UMA parcial permitida
  */
-router.post('/cancelar-cobranca', async (req, res) => {
+router.post('/cancelar-cobranca', adminActionLimiter, requireAdmin, async (req, res) => {
   try {
-    const { tid, valor, callbackUrl } = req.body;
+    const { tid, valor, callbackUrl, motivo } = req.body || {};
 
     // Validações
-    if (!tid || typeof tid !== 'string') {
+    if (!tid || typeof tid !== 'string' || !tid.trim()) {
       return res.status(400).json({
         error: 'TID é obrigatório',
         message: 'Informe o TID da transação a ser cancelada'
       });
     }
 
+    const tidLimpo = tid.trim();
+
     // Valor opcional (se não informado, cancela totalmente)
     let valorCentavos = null;
-    if (valor !== undefined && valor !== null) {
-      if (typeof valor !== 'number' || valor <= 0) {
+    if (valor !== undefined && valor !== null && valor !== '') {
+      if (typeof valor !== 'number' || !Number.isFinite(valor) || valor <= 0) {
         return res.status(400).json({
           error: 'Valor inválido',
           message: 'O valor deve ser um número positivo'
@@ -1866,21 +1870,83 @@ router.post('/cancelar-cobranca', async (req, res) => {
       valorCentavos = Math.round(valor * 100); // Converte para centavos
     }
 
-    console.log(`\n🔄 Cancelamento solicitado para TID: ${tid}${valorCentavos ? ` - Valor: R$ ${(valorCentavos / 100).toFixed(2)}` : ' (total)'}`);
+    const motivoSanitizado = typeof motivo === 'string' && motivo.trim()
+      ? sanitizeString(motivo.trim()).slice(0, 500)
+      : null;
+    const estornoTotal = valorCentavos === null;
+
+    let cobrancaLocal = null;
+    try {
+      cobrancaLocal = await getCobrancaByRedeTid(tidLimpo);
+    } catch (lookupError) {
+      console.warn('⚠️  Erro não-bloqueante ao consultar cobrança local:', lookupError.message);
+    }
+
+    console.log(`\n🔄 Cancelamento solicitado por ${req.user.email} para TID: ${tidLimpo}${valorCentavos ? ` - Valor: R$ ${(valorCentavos / 100).toFixed(2)}` : ' (total)'}`);
 
     // Executa cancelamento
-    const resultado = await cancelTransaction(tid, valorCentavos, callbackUrl);
+    const resultado = await cancelTransaction(tidLimpo, valorCentavos, callbackUrl);
 
     if (!resultado) {
+      try {
+        await logEstorno({
+          tid: tidLimpo,
+          cobrancaTxid: cobrancaLocal?.txid || null,
+          valorEstornado: valorCentavos ? (valorCentavos / 100) : (cobrancaLocal?.valor ? parseFloat(cobrancaLocal.valor) : null),
+          estornoTotal,
+          status: 'FAILED',
+          returnMessage: 'Falha ao solicitar cancelamento na e-Rede',
+          adminEmail: req.user.email,
+          motivo: motivoSanitizado
+        });
+      } catch (logError) {
+        console.warn('⚠️  Erro ao registrar falha de estorno no log:', logError.message);
+      }
+
       return res.status(422).json({
         error: 'Falha ao cancelar transação',
         message: 'Verifique os logs para mais detalhes'
       });
     }
 
+    const valorEstornadoFinal = valorCentavos
+      ? (valorCentavos / 100)
+      : (cobrancaLocal?.valor ? parseFloat(cobrancaLocal.valor) : null);
+
+    try {
+      await logEstorno({
+        tid: resultado.tid || tidLimpo,
+        cobrancaTxid: cobrancaLocal?.txid || null,
+        valorEstornado: valorEstornadoFinal,
+        estornoTotal,
+        refundId: resultado.refundId || null,
+        cancelId: resultado.cancelId || null,
+        nsu: resultado.nsu || null,
+        status: resultado.status || 'Processing',
+        returnCode: resultado.returnCode || null,
+        returnMessage: resultado.returnMessage || null,
+        adminEmail: req.user.email,
+        motivo: motivoSanitizado
+      });
+    } catch (logError) {
+      console.warn('⚠️  Erro não-bloqueante ao registrar auditoria de estorno:', logError.message);
+    }
+
+    if (estornoTotal && cobrancaLocal?.txid) {
+      try {
+        await markRefundedInDatabase(cobrancaLocal.txid, {
+          estornoTotal: true,
+          status: resultado.status
+        });
+      } catch (statusError) {
+        console.warn('⚠️  Erro não-bloqueante ao atualizar status da cobrança:', statusError.message);
+      }
+    }
+
     // Retorna resultado do cancelamento
     res.status(200).json({
       sucesso: true,
+      executadoPor: req.user.email,
       cancelamento: {
         refundId: resultado.refundId,
         tid: resultado.tid,

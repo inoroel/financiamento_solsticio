@@ -6,6 +6,14 @@
       "destination": "/api/index"
     },
     {
+      "source": "/admin",
+      "destination": "/api/index"
+    },
+    {
+      "source": "/admin/(.*)",
+      "destination": "/api/index"
+    },
+    {
       "source": "/health",
       "destination": "/api/index"
     },

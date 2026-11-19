@@ -1,13 +1,21 @@
 // Servidor Express - Backend de Pagamentos (e-Rede + Stellar)
 require('dotenv').config();
+const fs = require('fs');
+const path = require('path');
 const express = require('express');
 const cors = require('cors');
 const { testConnection, initializeDatabase, getDatabaseDiagnostics } = require('./config/database');
 const paymentRoutes = require('./routes/paymentRoutes');
 const authRoutes = require('./routes/authRoutes');
 const rewardsRoutes = require('./routes/rewardsRoutes');
+const adminRoutes = require('./routes/adminRoutes');
 const { requestLogger, errorHandler, notFoundHandler } = require('./middleware/errorHandler');
 const { helmetConfig } = require('./middleware/security');
+
+// Carrega arquivos da interface administrativa com caminhos estáticos para empacotamento na Vercel
+const ADMIN_HTML = fs.readFileSync(path.join(__dirname, 'views', 'admin', 'index.html'), 'utf8');
+const ADMIN_CSS = fs.readFileSync(path.join(__dirname, 'views', 'admin', 'admin.css'), 'utf8');
+const ADMIN_JS = fs.readFileSync(path.join(__dirname, 'views', 'admin', 'admin.js'), 'utf8');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -78,23 +86,14 @@ function isOriginAllowed(origin) {
   }
 }
 
-// CORS configurado de forma segura
-const corsOptions = {
-  origin: function (origin, callback) {
-    if (isOriginAllowed(origin)) {
-      callback(null, true);
-    } else {
-      console.warn(`⚠️  CORS: Origem bloqueada: ${origin}`);
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
-  credentials: true,
-  optionsSuccessStatus: 200,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-Id', 'Accept'],
-  exposedHeaders: ['Content-Type', 'X-Request-Id'],
-  preflightContinue: false
-};
+// Obtém a própria origem da requisição (para permitir same-origin mesmo com ALLOWED_ORIGINS restritivo)
+function getSelfOrigin(req) {
+  const host = req.get('host');
+  if (!host) return null;
+  const forwardedProto = (req.headers['x-forwarded-proto'] || '').split(',')[0].trim();
+  const proto = forwardedProto || req.protocol || 'http';
+  return normalizeOrigin(`${proto}://${host}`);
+}
 
 // Handler explícito para OPTIONS (preflight) - DEVE VIR ANTES DE TUDO
 // Este handler precisa retornar imediatamente, sem passar por outros middlewares
@@ -109,7 +108,7 @@ app.use((req, res, next) => {
     // Isso evita problemas com CORS preflight na Vercel
     res.setHeader('Access-Control-Allow-Origin', origin || '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Request-Id, Accept');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Request-Id, Accept, X-Admin-Request');
     res.setHeader('Access-Control-Allow-Credentials', 'true');
     res.setHeader('Access-Control-Max-Age', '86400'); // 24 horas
     return res.status(200).end();
@@ -118,7 +117,26 @@ app.use((req, res, next) => {
 });
 
 // Aplica CORS para todas as rotas (para requisições não-OPTIONS)
-app.use(cors(corsOptions));
+app.use(cors((req, callback) => {
+  const selfOrigin = getSelfOrigin(req);
+  const corsOptions = {
+    origin: function (origin, originCallback) {
+      if (!origin || (selfOrigin && normalizeOrigin(origin) === selfOrigin) || isOriginAllowed(origin)) {
+        originCallback(null, true);
+      } else {
+        console.warn(`⚠️  CORS: Origem bloqueada: ${origin}`);
+        originCallback(new Error('Not allowed by CORS'));
+      }
+    },
+    credentials: true,
+    optionsSuccessStatus: 200,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-Id', 'Accept', 'X-Admin-Request'],
+    exposedHeaders: ['Content-Type', 'X-Request-Id'],
+    preflightContinue: false
+  };
+  callback(null, corsOptions);
+}));
 
 // =================================================================
 // MIDDLEWARES GLOBAIS DE SEGURANÇA
@@ -165,6 +183,47 @@ app.get('/', (req, res) => {
 app.use('/api', paymentRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/rewards', rewardsRoutes);
+app.use('/api/admin', adminRoutes);
+
+// Interface administrativa mínima (protegida no cliente e nas APIs por Google OAuth)
+const ADMIN_CSP = [
+  "default-src 'self'",
+  "script-src 'self' https://accounts.google.com/gsi/client",
+  "style-src 'self' https://accounts.google.com/gsi/style",
+  "frame-src https://accounts.google.com/gsi/",
+  "connect-src 'self' https://accounts.google.com/gsi/",
+  "img-src 'self' https://*.googleusercontent.com data:",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "frame-ancestors 'none'"
+].join('; ');
+
+function serveAdminHtml(req, res) {
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Content-Security-Policy', ADMIN_CSP);
+  return res.status(200).send(ADMIN_HTML);
+}
+
+app.get('/admin', serveAdminHtml);
+app.get('/admin/', serveAdminHtml);
+
+app.get('/admin/admin.css', (req, res) => {
+  res.setHeader('Content-Type', 'text/css; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+  return res.status(200).send(ADMIN_CSS);
+});
+
+app.get('/admin/admin.js', (req, res) => {
+  res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+  return res.status(200).send(ADMIN_JS);
+});
 
 // Rota de health check
 app.get('/health', async (req, res) => {

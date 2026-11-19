@@ -74,6 +74,85 @@ CREATE INDEX IF NOT EXISTS idx_transacoes_provider_tid ON transacoes(provider_ti
 CREATE INDEX IF NOT EXISTS idx_transacoes_crypto_currency ON transacoes(crypto_currency) WHERE crypto_currency IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_doadores_whatsapp ON doadores(whatsapp) WHERE whatsapp IS NOT NULL;
 
+-- Tabela de administradores autorizados (Google OAuth)
+CREATE TABLE IF NOT EXISTS admin_users (
+    email VARCHAR(255) PRIMARY KEY,
+    role VARCHAR(20) NOT NULL DEFAULT 'admin',
+    active BOOLEAN NOT NULL DEFAULT true,
+    created_by VARCHAR(255),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT check_admin_role CHECK (role IN ('root', 'admin'))
+);
+
+-- Tabela de auditoria de estornos
+CREATE TABLE IF NOT EXISTS estornos_log (
+    id SERIAL PRIMARY KEY,
+    tid VARCHAR(100) NOT NULL,
+    cobranca_txid VARCHAR(35),
+    valor_estornado DECIMAL(10, 2),
+    estorno_total BOOLEAN NOT NULL DEFAULT true,
+    refund_id VARCHAR(100),
+    cancel_id VARCHAR(100),
+    nsu VARCHAR(100),
+    status VARCHAR(40) NOT NULL,
+    return_code VARCHAR(20),
+    return_message TEXT,
+    admin_email VARCHAR(255) NOT NULL,
+    motivo TEXT,
+    criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_estornos_log_tid ON estornos_log(tid);
+CREATE INDEX IF NOT EXISTS idx_estornos_log_admin ON estornos_log(admin_email);
+CREATE INDEX IF NOT EXISTS idx_estornos_log_criado_em ON estornos_log(criado_em DESC);
+
+-- Tabela de tiers de recompensa
+CREATE TABLE IF NOT EXISTS reward_tiers (
+    slug VARCHAR(50) PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    min_amount DECIMAL(10, 2) NOT NULL DEFAULT 0,
+    color VARCHAR(20) NOT NULL DEFAULT '#6b7280',
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    active BOOLEAN NOT NULL DEFAULT true,
+    criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    atualizado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT check_reward_tier_min_amount CHECK (min_amount >= 0)
+);
+
+-- Tabela de recompensas e estoque disponível
+CREATE TABLE IF NOT EXISTS rewards (
+    id SERIAL PRIMARY KEY,
+    code VARCHAR(60) UNIQUE,
+    tier_slug VARCHAR(50) NOT NULL REFERENCES reward_tiers(slug) ON UPDATE CASCADE ON DELETE RESTRICT,
+    name VARCHAR(150) NOT NULL,
+    description TEXT,
+    quantidade_disponivel INTEGER,
+    active BOOLEAN NOT NULL DEFAULT true,
+    criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    atualizado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT check_rewards_quantidade CHECK (quantidade_disponivel IS NULL OR quantidade_disponivel >= 0)
+);
+
+CREATE INDEX IF NOT EXISTS idx_rewards_tier_slug ON rewards(tier_slug);
+
+-- Tabela de controle de entregas de recompensas aos doadores
+CREATE TABLE IF NOT EXISTS reward_deliveries (
+    id SERIAL PRIMARY KEY,
+    reward_id INTEGER NOT NULL REFERENCES rewards(id) ON DELETE RESTRICT,
+    doador_id INTEGER NOT NULL REFERENCES doadores(id) ON DELETE RESTRICT,
+    quantidade INTEGER NOT NULL DEFAULT 1,
+    data_entrega DATE NOT NULL,
+    observacoes TEXT,
+    registrado_por VARCHAR(255) NOT NULL,
+    criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT check_reward_delivery_qty CHECK (quantidade > 0)
+);
+
+CREATE INDEX IF NOT EXISTS idx_reward_deliveries_reward_id ON reward_deliveries(reward_id);
+CREATE INDEX IF NOT EXISTS idx_reward_deliveries_doador_id ON reward_deliveries(doador_id);
+CREATE INDEX IF NOT EXISTS idx_reward_deliveries_data ON reward_deliveries(data_entrega DESC);
+
 -- Função para atualizar o campo atualizado_em automaticamente
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
@@ -84,6 +163,7 @@ END;
 $$ language 'plpgsql';
 
 -- Trigger para atualizar atualizado_em na tabela cobrancas
+DROP TRIGGER IF EXISTS update_cobrancas_updated_at ON cobrancas;
 CREATE TRIGGER update_cobrancas_updated_at 
     BEFORE UPDATE ON cobrancas 
     FOR EACH ROW 

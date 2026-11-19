@@ -1,7 +1,11 @@
 // Rotas de rewards (sistema de recompensas por doações)
 const express = require('express');
 const router = express.Router();
-const { getRewardsStatus, getAvailableRewards, TIERS } = require('../services/rewardsService');
+const {
+  getRewardsStatus,
+  getAvailableRewardsAsync,
+  getTiersMap
+} = require('../services/rewardsService');
 const { requireAuth } = require('../middleware/authMiddleware');
 
 /**
@@ -27,11 +31,17 @@ router.get('/status', requireAuth, async (req, res) => {
 
 /**
  * GET /api/rewards/tiers
- * Retorna todos os tiers com seus limites
+ * Retorna todos os tiers ativos com seus limites
  * Público
  */
-router.get('/tiers', (req, res) => {
-  return res.status(200).json({ tiers: TIERS });
+router.get('/tiers', async (req, res) => {
+  try {
+    const tiers = await getTiersMap();
+    return res.status(200).json({ tiers });
+  } catch (error) {
+    console.error('❌ Erro ao buscar tiers de rewards:', error.message);
+    return res.status(500).json({ error: 'Erro interno do servidor' });
+  }
 });
 
 /**
@@ -39,7 +49,7 @@ router.get('/tiers', (req, res) => {
  * Retorna as recompensas disponíveis para um tier específico
  * Requer autenticação
  */
-router.get('/available', requireAuth, (req, res) => {
+router.get('/available', requireAuth, async (req, res) => {
   try {
     const { tier } = req.query;
 
@@ -47,14 +57,17 @@ router.get('/available', requireAuth, (req, res) => {
       return res.status(400).json({ error: 'Tier é obrigatório' });
     }
 
-    const validTiers = ['bronze', 'silver', 'gold', 'platinum'];
-    const tierLower = tier.toLowerCase();
+    const tiersMap = await getTiersMap();
+    const validTiers = Object.keys(tiersMap);
+    const tierLower = String(tier).trim().toLowerCase();
 
     if (!validTiers.includes(tierLower)) {
-      return res.status(400).json({ error: 'Tier inválido. Valores válidos: bronze, silver, gold, platinum' });
+      return res.status(400).json({
+        error: `Tier inválido. Valores válidos: ${validTiers.join(', ')}`
+      });
     }
 
-    const rewards = getAvailableRewards(tierLower);
+    const rewards = await getAvailableRewardsAsync(tierLower);
     return res.status(200).json({ tier: tierLower, rewards });
   } catch (error) {
     console.error('❌ Erro ao buscar recompensas:', error.message);
