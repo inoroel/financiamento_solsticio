@@ -40,10 +40,12 @@
     tabEstornos: document.getElementById('tab-estornos'),
     tabRecompensas: document.getElementById('tab-recompensas'),
     tabMetas: document.getElementById('tab-metas'),
+    tabDoacao: document.getElementById('tab-doacao'),
     tabAdmins: document.getElementById('tab-admins'),
     panelEstornos: document.getElementById('panel-estornos'),
     panelRecompensas: document.getElementById('panel-recompensas'),
     panelMetas: document.getElementById('panel-metas'),
+    panelDoacao: document.getElementById('panel-doacao'),
     panelAdmins: document.getElementById('panel-admins'),
     subtabCatalogo: document.getElementById('subtab-catalogo'),
     subtabEntregas: document.getElementById('subtab-entregas'),
@@ -108,7 +110,55 @@
     goalCancelEditBtn: document.getElementById('goal-cancel-edit-btn'),
     goalResult: document.getElementById('goal-result'),
     refreshGoalsBtn: document.getElementById('refresh-goals-btn'),
-    goalsTbody: document.getElementById('goals-tbody')
+    goalsTbody: document.getElementById('goals-tbody'),
+    donateForm: document.getElementById('donate-form'),
+    donateValorReq: document.getElementById('donate-valor-req'),
+    donateValor: document.getElementById('donate-valor'),
+    donateCid: document.getElementById('donate-cid'),
+    donateAnonimo: document.getElementById('donate-anonimo'),
+    donateDonorFields: document.getElementById('donate-donor-fields'),
+    donateNome: document.getElementById('donate-nome'),
+    donateWhatsapp: document.getElementById('donate-whatsapp'),
+    donateMensagem: document.getElementById('donate-mensagem'),
+    donateCardSection: document.getElementById('donate-card-section'),
+    donateCardNumber: document.getElementById('donate-card-number'),
+    donateCardName: document.getElementById('donate-card-name'),
+    donateCardExp: document.getElementById('donate-card-exp'),
+    donateCardCsc: document.getElementById('donate-card-csc'),
+    donateCardEmail: document.getElementById('donate-card-email'),
+    donateCardBrand: document.getElementById('donate-card-brand'),
+    donateInstallmentsWrap: document.getElementById('donate-installments-wrap'),
+    donateParcelas: document.getElementById('donate-parcelas'),
+    donateBillingAddress: document.getElementById('donate-billing-address'),
+    donateBillingCity: document.getElementById('donate-billing-city'),
+    donateBillingState: document.getElementById('donate-billing-state'),
+    donateBillingPostal: document.getElementById('donate-billing-postal'),
+    donateCryptoSection: document.getElementById('donate-crypto-section'),
+    donateSubmitBtn: document.getElementById('donate-submit-btn'),
+    donateResetBtn: document.getElementById('donate-reset-btn'),
+    donateResult: document.getElementById('donate-result'),
+    donateOutputCard: document.getElementById('donate-output-card'),
+    donateOutputMessage: document.getElementById('donate-output-message'),
+    donateCheckStatusBtn: document.getElementById('donate-check-status-btn'),
+    donateSummary: document.getElementById('donate-summary'),
+    donatePixBox: document.getElementById('donate-pix-box'),
+    donatePixQr: document.getElementById('donate-pix-qr'),
+    donatePixBrcode: document.getElementById('donate-pix-brcode'),
+    donateCopyPixBtn: document.getElementById('donate-copy-pix-btn'),
+    donate3dsBox: document.getElementById('donate-3ds-box'),
+    donateOpen3dsBtn: document.getElementById('donate-open-3ds-btn'),
+    donateCryptoBox: document.getElementById('donate-crypto-box'),
+    donateCryptoNetwork: document.getElementById('donate-crypto-network'),
+    donateCryptoQr: document.getElementById('donate-crypto-qr'),
+    donateCryptoAddress: document.getElementById('donate-crypto-address'),
+    donateCopyAddressBtn: document.getElementById('donate-copy-address-btn'),
+    donateCryptoMemo: document.getElementById('donate-crypto-memo'),
+    donateCopyMemoBtn: document.getElementById('donate-copy-memo-btn'),
+    donateCheckMemoBtn: document.getElementById('donate-check-memo-btn'),
+    donateHashForm: document.getElementById('donate-hash-form'),
+    donateStellarHash: document.getElementById('donate-stellar-hash'),
+    donateConfirmHashBtn: document.getElementById('donate-confirm-hash-btn'),
+    donatePollStatus: document.getElementById('donate-poll-status')
   };
 
   let currentUser = null;
@@ -122,6 +172,9 @@
   let allTiers = [];
   let allRewards = [];
   let allDonors = [];
+  let currentDonation = null;
+  let donationPollTimer = null;
+  let donationPopupTimer = null;
 
   // =========================================================
   // Acessibilidade de validação (ARIA + fallback :user-invalid)
@@ -1908,6 +1961,462 @@
   }
 
   // =========================================================
+  // Realizar Doação (PIX, Crédito, Débito e Cripto)
+  // =========================================================
+  function stopDonationTimers() {
+    if (donationPollTimer) {
+      clearInterval(donationPollTimer);
+      donationPollTimer = null;
+    }
+    if (donationPopupTimer) {
+      clearInterval(donationPopupTimer);
+      donationPopupTimer = null;
+    }
+  }
+
+  function toImageDataUri(raw) {
+    if (!raw || typeof raw !== 'string') return '';
+    const trimmed = raw.trim();
+    if (!trimmed) return '';
+    return trimmed.startsWith('data:image/') ? trimmed : `data:image/png;base64,${trimmed}`;
+  }
+
+  function getSelectedPaymentMethod() {
+    const checked = els.donateForm.querySelector('input[name="tipo_pagamento"]:checked');
+    return checked ? checked.value : 'PIX';
+  }
+
+  function getSelectedCryptoCurrency() {
+    const checked = els.donateForm.querySelector('input[name="currency"]:checked');
+    return checked ? checked.value : 'USDC';
+  }
+
+  function parseCardExpiry(raw) {
+    if (typeof raw !== 'string') return null;
+    const match = raw.trim().match(/^(0[1-9]|1[0-2])\s*\/\s*(\d{2}|\d{4})$/);
+    if (!match) return null;
+    const month = parseInt(match[1], 10);
+    let year = parseInt(match[2], 10);
+    if (match[2].length === 2) {
+      year += 2000;
+    }
+    if (year < 2000 || year > 2100) return null;
+    return { month, year };
+  }
+
+  function validateDonationFields() {
+    const method = getSelectedPaymentMethod();
+    const isCard = method === 'CREDITO' || method === 'DEBITO';
+    const isAnonymous = els.donateAnonimo.checked;
+
+    const valorRaw = els.donateValor.value.trim();
+    if (valorRaw) {
+      const valNum = Number(valorRaw.replace(',', '.'));
+      if (!Number.isFinite(valNum) || valNum < 0.01 || valNum > 100000) {
+        els.donateValor.setCustomValidity('Informe um valor entre R$ 0,01 e R$ 100.000,00.');
+      } else {
+        els.donateValor.setCustomValidity('');
+      }
+    } else {
+      els.donateValor.setCustomValidity('');
+    }
+
+    if (!isAnonymous) {
+      const digits = els.donateWhatsapp.value.replace(/[\s().-]/g, '');
+      if (!/^[0-9]{10,15}$/.test(digits)) {
+        els.donateWhatsapp.setCustomValidity('Informe um WhatsApp com 10 a 15 dígitos.');
+      } else {
+        els.donateWhatsapp.setCustomValidity('');
+      }
+    } else {
+      els.donateWhatsapp.setCustomValidity('');
+    }
+
+    if (isCard) {
+      const cardDigits = els.donateCardNumber.value.replace(/\s+/g, '');
+      if (!/^\d{13,19}$/.test(cardDigits)) {
+        els.donateCardNumber.setCustomValidity('Informe de 13 a 19 dígitos numéricos.');
+      } else {
+        els.donateCardNumber.setCustomValidity('');
+      }
+
+      if (!parseCardExpiry(els.donateCardExp.value)) {
+        els.donateCardExp.setCustomValidity('Informe a validade no formato MM/AA ou MM/AAAA.');
+      } else {
+        els.donateCardExp.setCustomValidity('');
+      }
+    } else {
+      els.donateCardNumber.setCustomValidity('');
+      els.donateCardExp.setCustomValidity('');
+    }
+  }
+
+  function syncDonationFormState() {
+    const method = getSelectedPaymentMethod();
+    const isCard = method === 'CREDITO' || method === 'DEBITO';
+    const isCredit = method === 'CREDITO';
+    const isCrypto = method === 'CRIPTO';
+    const isAnonymous = els.donateAnonimo.checked;
+
+    els.donateValor.required = !isCrypto;
+    els.donateValorReq.hidden = isCrypto;
+
+    els.donateDonorFields.hidden = isAnonymous;
+    els.donateNome.required = !isAnonymous;
+    els.donateWhatsapp.required = !isAnonymous;
+
+    els.donateCardSection.hidden = !isCard;
+    els.donateCardNumber.required = isCard;
+    els.donateCardName.required = isCard;
+    els.donateCardExp.required = isCard;
+    els.donateCardCsc.required = isCard;
+    els.donateCardEmail.required = isCard;
+    els.donateInstallmentsWrap.hidden = !isCredit;
+
+    els.donateCryptoSection.hidden = !isCrypto;
+
+    const submitLabels = {
+      PIX: 'Gerar cobrança PIX',
+      CREDITO: 'Pagar com cartão de crédito',
+      DEBITO: 'Pagar com cartão de débito',
+      CRIPTO: 'Gerar pagamento Cripto'
+    };
+    els.donateSubmitBtn.textContent = submitLabels[method] || 'Gerar pagamento';
+
+    validateDonationFields();
+    [
+      els.donateValor,
+      els.donateNome,
+      els.donateWhatsapp,
+      els.donateCardNumber,
+      els.donateCardName,
+      els.donateCardExp,
+      els.donateCardCsc,
+      els.donateCardEmail
+    ].forEach((el) => syncAria(el));
+  }
+
+  function renderDonationSummary(data) {
+    els.donateSummary.replaceChildren();
+    const items = [
+      { label: 'TXID', value: data.txid || '-' },
+      { label: 'Meio', value: data.tipo_pagamento || '-' },
+      { label: 'Status', value: data.status || '-' }
+    ];
+    if (data.rede_tid) items.push({ label: 'TID (e-Rede)', value: data.rede_tid });
+    if (data.valor !== null && data.valor !== undefined && Number(data.valor) > 0) {
+      items.push({ label: 'Valor', value: formatCurrency(data.valor) });
+    }
+    if (data.autorizacao?.status) {
+      items.push({
+        label: 'Autorização',
+        value: `${data.autorizacao.status}${data.autorizacao.codigo ? ` (${data.autorizacao.codigo})` : ''}`
+      });
+    }
+
+    for (const item of items) {
+      const row = document.createElement('div');
+      row.className = 'dialog-summary-row';
+      const dt = document.createElement('dt');
+      dt.textContent = item.label;
+      const dd = document.createElement('dd');
+      dd.textContent = item.value;
+      row.append(dt, dd);
+      els.donateSummary.append(row);
+    }
+  }
+
+  function renderDonationOutput(data) {
+    currentDonation = data;
+    els.donateOutputCard.hidden = false;
+    els.donateOutputMessage.textContent = data.mensagem || '';
+    renderDonationSummary(data);
+
+    els.donatePixBox.hidden = true;
+    els.donate3dsBox.hidden = true;
+    els.donateCryptoBox.hidden = true;
+    els.donatePixQr.hidden = true;
+    els.donatePixQr.removeAttribute('src');
+    els.donateCryptoQr.hidden = true;
+    els.donateCryptoQr.removeAttribute('src');
+    hideBanner(els.donatePollStatus);
+
+    if (data.tipo_pagamento === 'PIX') {
+      els.donatePixBox.hidden = false;
+      els.donatePixBrcode.textContent = data.brCode || '';
+      const qrSrc = toImageDataUri(data.qrCodeImage);
+      if (qrSrc) {
+        els.donatePixQr.src = qrSrc;
+        els.donatePixQr.hidden = false;
+      }
+      startDonationPolling();
+    } else if (data.tipo_pagamento === 'CRIPTO') {
+      els.donateCryptoBox.hidden = false;
+      els.donateCryptoNetwork.textContent = `${data.currency || 'USDC'} · ${data.network || 'stellar'}`;
+      els.donateCryptoAddress.textContent = data.recipient_address || '';
+      els.donateCryptoMemo.textContent = data.memo || data.txid || '';
+      const qrSrc = toImageDataUri(data.qr_code);
+      if (qrSrc) {
+        els.donateCryptoQr.src = qrSrc;
+        els.donateCryptoQr.hidden = false;
+      }
+    } else if (data.requires3DS && data.threeDSecureUrl) {
+      els.donate3dsBox.hidden = false;
+      startDonationPolling();
+    }
+  }
+
+  async function checkDonationStatus({ silent = false } = {}) {
+    if (!currentDonation?.txid) return;
+    try {
+      const { response, body } = await apiFetch(`/api/cobranca/txid/${encodeURIComponent(currentDonation.txid)}`);
+      if (!response.ok || !body) {
+        if (!silent) {
+          showBanner(els.donatePollStatus, body?.error || 'Não foi possível consultar o status.', 'error');
+        }
+        return;
+      }
+
+      currentDonation.status = body.status;
+      if (body.rede_tid) currentDonation.rede_tid = body.rede_tid;
+      renderDonationSummary(currentDonation);
+
+      if (body.status === 'CONFIRMADA') {
+        stopDonationTimers();
+        showBanner(els.donatePollStatus, 'Pagamento confirmado com sucesso!', 'success');
+        await Promise.all([loadTransactions(), loadGoals(), loadDonors()]);
+      } else if (['NEGADA', 'CANCELADA', 'EXPIRADA'].includes(body.status)) {
+        stopDonationTimers();
+        showBanner(els.donatePollStatus, `Status final da cobrança: ${body.status}.`, 'error');
+      } else if (!silent) {
+        showBanner(els.donatePollStatus, `Status atual: ${body.status}.`, 'info');
+      }
+    } catch (_) {
+      if (!silent) {
+        showBanner(els.donatePollStatus, 'Erro de conexão ao consultar status da cobrança.', 'error');
+      }
+    }
+  }
+
+  function startDonationPolling() {
+    stopDonationTimers();
+    let attempts = 0;
+    donationPollTimer = setInterval(() => {
+      attempts += 1;
+      if (attempts > 30 || !currentDonation?.txid) {
+        stopDonationTimers();
+        return;
+      }
+      checkDonationStatus({ silent: true });
+    }, 4000);
+  }
+
+  async function copyDonationText(text, label) {
+    if (!text) return;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+        showBanner(els.donatePollStatus, `${label} copiado para a área de transferência.`, 'success');
+      } else {
+        showBanner(els.donatePollStatus, `${label}: ${text}`, 'info');
+      }
+    } catch (_) {
+      showBanner(els.donatePollStatus, `${label}: ${text}`, 'info');
+    }
+  }
+
+  async function handleDonateSubmit(event) {
+    event.preventDefault();
+    hideBanner(els.donateResult);
+    validateDonationFields();
+    if (!els.donateForm.reportValidity()) return;
+
+    const method = getSelectedPaymentMethod();
+    const isCard = method === 'CREDITO' || method === 'DEBITO';
+    const isCrypto = method === 'CRIPTO';
+    const isAnonymous = els.donateAnonimo.checked;
+
+    const payload = {
+      tipo_pagamento: method,
+      cid: els.donateCid.value.trim()
+    };
+
+    const valorRaw = els.donateValor.value.trim();
+    if (valorRaw) {
+      payload.valor = Math.round(Number(valorRaw.replace(',', '.')) * 100) / 100;
+    }
+
+    if (isAnonymous) {
+      payload.doador = { anonimo: true };
+    } else {
+      payload.doador = {
+        anonimo: false,
+        nome: els.donateNome.value.trim(),
+        whatsapp: els.donateWhatsapp.value.replace(/[\s().-]/g, '')
+      };
+      const msg = els.donateMensagem.value.trim();
+      if (msg) payload.doador.mensagem = msg;
+    }
+
+    if (isCrypto) {
+      payload.currency = getSelectedCryptoCurrency();
+    }
+
+    if (isCard) {
+      const expiry = parseCardExpiry(els.donateCardExp.value);
+      const cardEmail = els.donateCardEmail.value.trim();
+      payload.cartao = {
+        cardNumber: els.donateCardNumber.value.replace(/\s+/g, ''),
+        cardholderName: els.donateCardName.value.trim(),
+        expirationMonth: expiry.month,
+        expirationYear: expiry.year,
+        securityCode: els.donateCardCsc.value.trim(),
+        email: cardEmail
+      };
+      if (els.donateCardBrand.value) {
+        payload.cartao.bandeira = els.donateCardBrand.value;
+      }
+      if (method === 'CREDITO') {
+        payload.parcelas = parseInt(els.donateParcelas.value || '1', 10);
+      }
+
+      const tzOffset = String(Math.abs(Math.round(new Date().getTimezoneOffset() / -60)) || 3);
+      payload.threeDSecure = {
+        userAgent: navigator.userAgent,
+        device: {
+          colorDepth: window.screen?.colorDepth || 24,
+          deviceType3ds: 'BROWSER',
+          javaEnabled: false,
+          language: (navigator.language || 'pt').split('-')[0],
+          screenHeight: window.screen?.height || 1080,
+          screenWidth: window.screen?.width || 1920,
+          timeZoneOffset: tzOffset
+        }
+      };
+
+      const billingAddr = els.donateBillingAddress.value.trim();
+      const billingCity = els.donateBillingCity.value.trim();
+      const billingState = els.donateBillingState.value.trim();
+      const billingPostal = els.donateBillingPostal.value.trim();
+      if (billingAddr || billingCity || billingState || billingPostal) {
+        payload.threeDSecure.billing = {
+          address: billingAddr || 'Não informado',
+          city: billingCity || 'Não informado',
+          state: billingState || 'SP',
+          postalcode: billingPostal || '00000-000',
+          country: 'Brasil',
+          emailAddress: cardEmail,
+          phoneNumber: payload.doador?.whatsapp || '00000000000'
+        };
+      }
+    }
+
+    els.donateSubmitBtn.disabled = true;
+    try {
+      const { response, body } = await apiFetch('/api/gerar-pagamento', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      // Remove imediatamente PAN e CVV do DOM após envio de cartão
+      if (isCard) {
+        els.donateCardNumber.value = '';
+        els.donateCardCsc.value = '';
+        syncAria(els.donateCardNumber);
+        syncAria(els.donateCardCsc);
+      }
+
+      if (!response.ok || !body?.success) {
+        showBanner(els.donateResult, body?.error || 'Não foi possível gerar o pagamento.', 'error');
+        return;
+      }
+
+      const isDenied = body.autorizacao?.status === 'NEGADA';
+      showBanner(
+        els.donateResult,
+        body.mensagem || `Cobrança ${body.txid} gerada (${body.status}).`,
+        isDenied ? 'error' : 'success'
+      );
+      renderDonationOutput(body);
+      await Promise.all([loadTransactions(), loadGoals(), loadDonors()]);
+    } catch (_) {
+      showBanner(els.donateResult, 'Erro de conexão ao gerar o pagamento.', 'error');
+    } finally {
+      els.donateSubmitBtn.disabled = false;
+    }
+  }
+
+  async function handleCheckMemo() {
+    const memo = currentDonation?.memo || currentDonation?.txid;
+    if (!memo) return;
+    els.donateCheckMemoBtn.disabled = true;
+    try {
+      const { response, body } = await apiFetch('/api/check-payment-by-memo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ memo })
+      });
+      if (!response.ok || !body?.success) {
+        showBanner(els.donatePollStatus, body?.message || body?.error || 'Pagamento ainda não encontrado.', 'warning');
+        return;
+      }
+      currentDonation.status = 'CONFIRMADA';
+      renderDonationSummary(currentDonation);
+      showBanner(els.donatePollStatus, body.message || 'Pagamento Stellar confirmado!', 'success');
+      await Promise.all([loadTransactions(), loadGoals(), loadDonors()]);
+    } catch (_) {
+      showBanner(els.donatePollStatus, 'Erro de conexão ao verificar pagamento pelo memo.', 'error');
+    } finally {
+      els.donateCheckMemoBtn.disabled = false;
+    }
+  }
+
+  async function handleConfirmHash(event) {
+    event.preventDefault();
+    const hash = els.donateStellarHash.value.trim();
+    if (!hash) return;
+    els.donateConfirmHashBtn.disabled = true;
+    try {
+      const { response, body } = await apiFetch('/api/confirm-donation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hash, txid: currentDonation?.txid })
+      });
+      if (!response.ok || !body?.success) {
+        showBanner(els.donatePollStatus, body?.error || 'Não foi possível confirmar pelo hash.', 'error');
+        return;
+      }
+      currentDonation.status = 'CONFIRMADA';
+      renderDonationSummary(currentDonation);
+      showBanner(els.donatePollStatus, body.message || 'Pagamento Stellar confirmado!', 'success');
+      els.donateHashForm.reset();
+      await Promise.all([loadTransactions(), loadGoals(), loadDonors()]);
+    } catch (_) {
+      showBanner(els.donatePollStatus, 'Erro de conexão ao confirmar hash Stellar.', 'error');
+    } finally {
+      els.donateConfirmHashBtn.disabled = false;
+    }
+  }
+
+  function resetDonateForm() {
+    stopDonationTimers();
+    currentDonation = null;
+    els.donateForm.reset();
+    const pixRadio = document.getElementById('donate-method-pix');
+    if (pixRadio) pixRadio.checked = true;
+    const usdcRadio = document.getElementById('donate-currency-usdc');
+    if (usdcRadio) usdcRadio.checked = true;
+    els.donateCid.value = 'campanha-01';
+    els.donateAnonimo.checked = false;
+    els.donateOutputCard.hidden = true;
+    els.donateSummary.replaceChildren();
+    hideBanner(els.donateResult);
+    hideBanner(els.donatePollStatus);
+    syncDonationFormState();
+  }
+
+  // =========================================================
   // Ações de estorno e gestão de admins
   // =========================================================
   async function handleRefundSubmit(event) {
@@ -2065,6 +2574,7 @@
     allTiers = [];
     allRewards = [];
     allDonors = [];
+    stopDonationTimers();
     els.txTbody.replaceChildren();
     els.estornosTbody.replaceChildren();
     els.adminsTbody.replaceChildren();
@@ -2076,6 +2586,7 @@
     resetRewardForm();
     resetDeliveryForm();
     resetGoalForm();
+    resetDonateForm();
     hideBanner(els.refundResult);
     hideBanner(els.adminManageResult);
     hideBanner(els.tierResult);
@@ -2094,6 +2605,7 @@
       { tab: els.tabEstornos, panel: els.panelEstornos },
       { tab: els.tabRecompensas, panel: els.panelRecompensas },
       { tab: els.tabMetas, panel: els.panelMetas },
+      { tab: els.tabDoacao, panel: els.panelDoacao },
       { tab: els.tabAdmins, panel: els.panelAdmins }
     ]);
 
@@ -2101,6 +2613,44 @@
       { tab: els.subtabCatalogo, panel: els.subpanelCatalogo },
       { tab: els.subtabEntregas, panel: els.subpanelEntregas }
     ]);
+
+    syncDonationFormState();
+    els.donateForm.querySelectorAll('input[name="tipo_pagamento"]').forEach((radio) => {
+      radio.addEventListener('change', syncDonationFormState);
+    });
+    els.donateAnonimo.addEventListener('change', syncDonationFormState);
+    [els.donateValor, els.donateWhatsapp, els.donateCardNumber, els.donateCardExp].forEach((input) => {
+      input.addEventListener('input', validateDonationFields);
+      input.addEventListener('blur', validateDonationFields);
+    });
+    els.donateForm.addEventListener('submit', handleDonateSubmit);
+    els.donateResetBtn.addEventListener('click', resetDonateForm);
+    els.donateCheckStatusBtn.addEventListener('click', () => checkDonationStatus({ silent: false }));
+    els.donateCopyPixBtn.addEventListener('click', () => copyDonationText(els.donatePixBrcode.textContent, 'Código Pix'));
+    els.donateCopyAddressBtn.addEventListener('click', () => copyDonationText(els.donateCryptoAddress.textContent, 'Endereço Stellar'));
+    els.donateCopyMemoBtn.addEventListener('click', () => copyDonationText(els.donateCryptoMemo.textContent, 'Memo'));
+    els.donateOpen3dsBtn.addEventListener('click', () => {
+      if (!currentDonation?.threeDSecureUrl) return;
+      const popup = window.open(
+        currentDonation.threeDSecureUrl,
+        '3DS Authentication',
+        'width=500,height=600,scrollbars=yes,resizable=yes'
+      );
+      if (!popup) {
+        showBanner(els.donatePollStatus, 'Pop-up bloqueado pelo navegador. Libere pop-ups para concluir o 3DS.', 'warning');
+        return;
+      }
+      if (donationPopupTimer) clearInterval(donationPopupTimer);
+      donationPopupTimer = setInterval(() => {
+        if (popup.closed) {
+          clearInterval(donationPopupTimer);
+          donationPopupTimer = null;
+          checkDonationStatus({ silent: false });
+        }
+      }, 1000);
+    });
+    els.donateCheckMemoBtn.addEventListener('click', handleCheckMemo);
+    els.donateHashForm.addEventListener('submit', handleConfirmHash);
 
     els.goalsPublicUrl.textContent = `${window.location.origin}/api/metas`;
     els.deliveryDate.value = getTodayPlainDateISO();

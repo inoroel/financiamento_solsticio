@@ -69,7 +69,8 @@
             <button type="button" role="tab" id="tab-estornos" aria-selected="true" focusgroupstart>Estornos e Transações</button>
             <button type="button" role="tab" id="tab-recompensas" aria-selected="false" tabindex="-1">Recompensas</button>
             <button type="button" role="tab" id="tab-metas" aria-selected="false" tabindex="-1">Metas</button>
-            <button type="button" role="tab" id="tab-admins" aria-selected="false" tabindex="-1">Administradores</button>
+            <button type="button" role="tab" id="tab-doacao" aria-selected="false" tabindex="-1">Doação</button>
+            <button type="button" role="tab" id="tab-admins" aria-selected="false" tabindex="-1">Usuários</button>
           </div>
 
           <!-- Aba 1: Estornos e Transações -->
@@ -1023,16 +1024,480 @@
             </div>
           </div>
 
-          <!-- Aba 4: Administradores Autorizados -->
+          <!-- Aba 4: Realizar Doação -->
+          <div id="panel-doacao" role="tabpanel" aria-labelledby="tab-doacao" hidden>
+            <div class="tabpanel-content dashboard-grid">
+              <section class="card" aria-labelledby="donate-heading">
+                <div class="section-header">
+                  <h2 id="donate-heading">Realizar Doação</h2>
+                  <p class="muted">
+                    Gere pagamentos reais via PIX, Cartão de Crédito, Cartão de Débito ou Cripto (Stellar).
+                  </p>
+                </div>
+
+                <form id="donate-form" aria-labelledby="donate-heading">
+                  <fieldset class="radio-fieldset">
+                    <legend>Meio de pagamento</legend>
+                    <div class="radio-group">
+                      <div class="radio-option">
+                        <input type="radio" id="donate-method-pix" name="tipo_pagamento" value="PIX" checked>
+                        <label for="donate-method-pix">PIX</label>
+                      </div>
+                      <div class="radio-option">
+                        <input type="radio" id="donate-method-credito" name="tipo_pagamento" value="CREDITO">
+                        <label for="donate-method-credito">Cartão de Crédito</label>
+                      </div>
+                      <div class="radio-option">
+                        <input type="radio" id="donate-method-debito" name="tipo_pagamento" value="DEBITO">
+                        <label for="donate-method-debito">Cartão de Débito</label>
+                      </div>
+                      <div class="radio-option">
+                        <input type="radio" id="donate-method-cripto" name="tipo_pagamento" value="CRIPTO">
+                        <label for="donate-method-cripto">Cripto (Stellar)</label>
+                      </div>
+                    </div>
+                  </fieldset>
+
+                  <div class="form-row">
+                    <div class="field">
+                      <label for="donate-valor">Valor (R$) <span id="donate-valor-req" aria-hidden="true">*</span></label>
+                      <span id="donate-valor-hint" class="hint">Entre R$ 0,01 e R$ 100.000,00 (ex: 50,00). Opcional para Cripto.</span>
+                      <input
+                        type="text"
+                        id="donate-valor"
+                        name="valor"
+                        required
+                        inputmode="decimal"
+                        pattern="\s*\d+(?:[.,]\d{1,2})?\s*"
+                        autocorrect="off"
+                        autocapitalize="none"
+                        spellcheck="false"
+                        enterkeyhint="next"
+                        aria-describedby="donate-valor-hint"
+                        data-error="donate-valor-error"
+                      >
+                      <div id="donate-valor-error" class="error-msg">
+                        <span role="img" aria-label="Erro">!</span> Informe um valor entre R$ 0,01 e R$ 100.000,00.
+                      </div>
+                    </div>
+
+                    <div class="field">
+                      <label for="donate-cid">ID da campanha <span aria-hidden="true">*</span></label>
+                      <span id="donate-cid-hint" class="hint">Letras, números, hífens ou underscores (padrão: campanha-01).</span>
+                      <input
+                        type="text"
+                        id="donate-cid"
+                        name="cid"
+                        value="campanha-01"
+                        required
+                        maxlength="50"
+                        pattern="[a-zA-Z0-9_-]{1,50}"
+                        autocorrect="off"
+                        autocapitalize="none"
+                        spellcheck="false"
+                        enterkeyhint="next"
+                        aria-describedby="donate-cid-hint"
+                        data-error="donate-cid-error"
+                      >
+                      <div id="donate-cid-error" class="error-msg">
+                        <span role="img" aria-label="Erro">!</span> Informe um ID de campanha válido (máx. 50 caracteres).
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="field">
+                    <div class="checkbox-row">
+                      <input type="checkbox" id="donate-anonimo" name="anonimo">
+                      <label for="donate-anonimo">Fazer doação anônima (opcional)</label>
+                    </div>
+                  </div>
+
+                  <div id="donate-donor-fields" class="sub-box">
+                    <div class="form-row">
+                      <div class="field">
+                        <label for="donate-nome">Nome do doador <span aria-hidden="true">*</span></label>
+                        <span id="donate-nome-hint" class="hint">Nome completo como aparecerá nos registros.</span>
+                        <input
+                          type="text"
+                          id="donate-nome"
+                          name="nome"
+                          required
+                          maxlength="255"
+                          autocomplete="name"
+                          enterkeyhint="next"
+                          aria-describedby="donate-nome-hint"
+                          data-error="donate-nome-error"
+                        >
+                        <div id="donate-nome-error" class="error-msg">
+                          <span role="img" aria-label="Erro">!</span> Informe o nome do doador (letras, números, espaços, ponto ou hífen).
+                        </div>
+                      </div>
+
+                      <div class="field">
+                        <label for="donate-whatsapp">WhatsApp <span aria-hidden="true">*</span></label>
+                        <span id="donate-whatsapp-hint" class="hint">DDD + número, 10 a 15 dígitos (ex: 5511999999999).</span>
+                        <input
+                          type="tel"
+                          id="donate-whatsapp"
+                          name="whatsapp"
+                          required
+                          maxlength="20"
+                          autocomplete="tel"
+                          inputmode="tel"
+                          enterkeyhint="next"
+                          aria-describedby="donate-whatsapp-hint"
+                          data-error="donate-whatsapp-error"
+                        >
+                        <div id="donate-whatsapp-error" class="error-msg">
+                          <span role="img" aria-label="Erro">!</span> Informe um WhatsApp válido com 10 a 15 dígitos.
+                        </div>
+                      </div>
+                    </div>
+
+                    <div class="field field-compact">
+                      <label for="donate-mensagem">Mensagem (opcional)</label>
+                      <span id="donate-mensagem-hint" class="hint">Mensagem opcional para a campanha (máx. 500 caracteres).</span>
+                      <input
+                        type="text"
+                        id="donate-mensagem"
+                        name="mensagem"
+                        maxlength="500"
+                        enterkeyhint="next"
+                        aria-describedby="donate-mensagem-hint"
+                        data-error="donate-mensagem-error"
+                      >
+                      <div id="donate-mensagem-error" class="error-msg">
+                        <span role="img" aria-label="Erro">!</span> A mensagem deve ter no máximo 500 caracteres.
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Campos para Cartão (Crédito / Débito) -->
+                  <div id="donate-card-section" class="sub-box" hidden>
+                    <h3 class="sub-box-title">Dados do cartão</h3>
+                    <div class="form-row">
+                      <div class="field">
+                        <label for="donate-card-number">Número do cartão <span aria-hidden="true">*</span></label>
+                        <span id="donate-card-number-hint" class="hint">Espaços são permitidos (13 a 19 dígitos).</span>
+                        <input
+                          type="text"
+                          id="donate-card-number"
+                          name="cc-number"
+                          autocomplete="cc-number"
+                          inputmode="numeric"
+                          maxlength="23"
+                          pattern="[\d ]{13,23}"
+                          autocorrect="off"
+                          autocapitalize="none"
+                          spellcheck="false"
+                          enterkeyhint="next"
+                          aria-describedby="donate-card-number-hint"
+                          data-error="donate-card-number-error"
+                        >
+                        <div id="donate-card-number-error" class="error-msg">
+                          <span role="img" aria-label="Erro">!</span> Informe um número de cartão válido (13 a 19 dígitos).
+                        </div>
+                      </div>
+
+                      <div class="field">
+                        <label for="donate-card-name">Nome impresso no cartão <span aria-hidden="true">*</span></label>
+                        <span id="donate-card-name-hint" class="hint">Exatamente como consta no cartão.</span>
+                        <input
+                          type="text"
+                          id="donate-card-name"
+                          name="cc-name"
+                          autocomplete="cc-name"
+                          maxlength="50"
+                          pattern="[\p{L} \-\.]+"
+                          enterkeyhint="next"
+                          aria-describedby="donate-card-name-hint"
+                          data-error="donate-card-name-error"
+                        >
+                        <div id="donate-card-name-error" class="error-msg">
+                          <span role="img" aria-label="Erro">!</span> Informe o nome impresso no cartão.
+                        </div>
+                      </div>
+                    </div>
+
+                    <div class="form-row">
+                      <div class="field">
+                        <label for="donate-card-exp">Validade <span aria-hidden="true">*</span></label>
+                        <span id="donate-card-exp-hint" class="hint">Formato: MM/AA ou MM/AAAA</span>
+                        <input
+                          type="text"
+                          id="donate-card-exp"
+                          name="cc-exp"
+                          autocomplete="cc-exp"
+                          inputmode="numeric"
+                          maxlength="7"
+                          pattern="(0[1-9]|1[0-2])\s*\/\s*(\d{2}|\d{4})"
+                          autocorrect="off"
+                          autocapitalize="none"
+                          spellcheck="false"
+                          enterkeyhint="next"
+                          aria-describedby="donate-card-exp-hint"
+                          data-error="donate-card-exp-error"
+                        >
+                        <div id="donate-card-exp-error" class="error-msg">
+                          <span role="img" aria-label="Erro">!</span> Informe a validade no formato MM/AA ou MM/AAAA.
+                        </div>
+                      </div>
+
+                      <div class="field">
+                        <label for="donate-card-csc">Código de segurança (CVV) <span aria-hidden="true">*</span></label>
+                        <span id="donate-card-csc-hint" class="hint">3 ou 4 dígitos no verso do cartão.</span>
+                        <input
+                          type="text"
+                          id="donate-card-csc"
+                          name="cc-csc"
+                          autocomplete="cc-csc"
+                          inputmode="numeric"
+                          maxlength="4"
+                          pattern="[0-9]{3,4}"
+                          autocorrect="off"
+                          autocapitalize="none"
+                          spellcheck="false"
+                          enterkeyhint="next"
+                          aria-describedby="donate-card-csc-hint"
+                          data-error="donate-card-csc-error"
+                        >
+                        <div id="donate-card-csc-error" class="error-msg">
+                          <span role="img" aria-label="Erro">!</span> Informe o código de segurança com 3 ou 4 dígitos.
+                        </div>
+                      </div>
+
+                      <div class="field">
+                        <label for="donate-card-email">E-mail do portador <span aria-hidden="true">*</span></label>
+                        <span id="donate-card-email-hint" class="hint">Exigido na tokenização/3DS (ex: nome@dominio.com).</span>
+                        <input
+                          type="email"
+                          id="donate-card-email"
+                          name="card_email"
+                          autocomplete="email"
+                          maxlength="255"
+                          autocorrect="off"
+                          autocapitalize="none"
+                          spellcheck="false"
+                          enterkeyhint="next"
+                          aria-describedby="donate-card-email-hint"
+                          data-error="donate-card-email-error"
+                        >
+                        <div id="donate-card-email-error" class="error-msg">
+                          <span role="img" aria-label="Erro">!</span> Informe um e-mail válido.
+                        </div>
+                      </div>
+                    </div>
+
+                    <div class="form-row">
+                      <div class="field">
+                        <label for="donate-card-brand">Bandeira (opcional)</label>
+                        <select id="donate-card-brand" name="bandeira">
+                          <option value="">Detectar automaticamente</option>
+                          <option value="visa">Visa</option>
+                          <option value="mastercard">Mastercard</option>
+                          <option value="elo">Elo</option>
+                        </select>
+                      </div>
+
+                      <div id="donate-installments-wrap" class="field">
+                        <label for="donate-parcelas">Parcelas</label>
+                        <select id="donate-parcelas" name="parcelas">
+                          <option value="1">1x (à vista)</option>
+                          <option value="2">2x</option>
+                          <option value="3">3x</option>
+                          <option value="4">4x</option>
+                          <option value="5">5x</option>
+                          <option value="6">6x</option>
+                          <option value="7">7x</option>
+                          <option value="8">8x</option>
+                          <option value="9">9x</option>
+                          <option value="10">10x</option>
+                          <option value="11">11x</option>
+                          <option value="12">12x</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <details class="billing-details">
+                      <summary>Endereço de cobrança para 3DS (opcional)</summary>
+                      <div class="billing-fields">
+                        <div class="form-row">
+                          <div class="field">
+                            <label for="donate-billing-address">Endereço</label>
+                            <input
+                              type="text"
+                              id="donate-billing-address"
+                              name="billing_address"
+                              autocomplete="billing address-line1"
+                              maxlength="120"
+                              enterkeyhint="next"
+                            >
+                          </div>
+                          <div class="field">
+                            <label for="donate-billing-city">Cidade</label>
+                            <input
+                              type="text"
+                              id="donate-billing-city"
+                              name="billing_city"
+                              autocomplete="billing address-level2"
+                              maxlength="80"
+                              enterkeyhint="next"
+                            >
+                          </div>
+                        </div>
+                        <div class="form-row">
+                          <div class="field">
+                            <label for="donate-billing-state">Estado (UF)</label>
+                            <input
+                              type="text"
+                              id="donate-billing-state"
+                              name="billing_state"
+                              autocomplete="billing address-level1"
+                              maxlength="2"
+                              autocapitalize="characters"
+                              enterkeyhint="next"
+                            >
+                          </div>
+                          <div class="field">
+                            <label for="donate-billing-postal">CEP</label>
+                            <input
+                              type="text"
+                              id="donate-billing-postal"
+                              name="billing_postal"
+                              autocomplete="billing postal-code"
+                              inputmode="numeric"
+                              maxlength="9"
+                              enterkeyhint="done"
+                            >
+                          </div>
+                        </div>
+                      </div>
+                    </details>
+                  </div>
+
+                  <!-- Campos para Cripto (Stellar) -->
+                  <div id="donate-crypto-section" class="sub-box" hidden>
+                    <fieldset class="radio-fieldset radio-fieldset-compact">
+                      <legend>Moeda Stellar</legend>
+                      <div class="radio-group">
+                        <div class="radio-option">
+                          <input type="radio" id="donate-currency-usdc" name="currency" value="USDC" checked>
+                          <label for="donate-currency-usdc">USDC</label>
+                        </div>
+                        <div class="radio-option">
+                          <input type="radio" id="donate-currency-xlm" name="currency" value="XLM">
+                          <label for="donate-currency-xlm">XLM</label>
+                        </div>
+                      </div>
+                    </fieldset>
+                  </div>
+
+                  <div class="form-actions">
+                    <button type="submit" id="donate-submit-btn" class="btn btn-primary">Gerar cobrança PIX</button>
+                    <button type="button" id="donate-reset-btn" class="btn btn-secondary">Limpar formulário</button>
+                  </div>
+                </form>
+
+                <div id="donate-result" class="banner" role="status" aria-live="polite" hidden></div>
+              </section>
+
+              <!-- Pagamento Gerado e Acompanhamento -->
+              <section id="donate-output-card" class="card" aria-labelledby="donate-output-heading" hidden>
+                <div class="section-header section-header-row">
+                  <div>
+                    <h2 id="donate-output-heading">Pagamento Gerado</h2>
+                    <p id="donate-output-message" class="muted"></p>
+                  </div>
+                  <button type="button" id="donate-check-status-btn" class="btn btn-secondary btn-sm">Consultar status agora</button>
+                </div>
+
+                <dl id="donate-summary" class="dialog-summary"></dl>
+
+                <!-- Bloco PIX -->
+                <div id="donate-pix-box" class="payment-output-box" hidden>
+                  <h3>Pagamento via PIX</h3>
+                  <div class="qr-box">
+                    <img id="donate-pix-qr" class="qr-image" src="" alt="QR Code PIX" width="240" height="240" hidden>
+                  </div>
+                  <div class="code-copy-box">
+                    <div id="donate-pix-brcode" class="mono-cell"></div>
+                    <button type="button" id="donate-copy-pix-btn" class="btn btn-secondary btn-sm">Copiar código Pix</button>
+                  </div>
+                </div>
+
+                <!-- Bloco 3DS -->
+                <div id="donate-3ds-box" class="payment-output-box" hidden>
+                  <h3>Autenticação 3DS necessária</h3>
+                  <p class="muted">Conclua a confirmação no pop-up de segurança do banco emissor.</p>
+                  <div class="form-actions">
+                    <button type="button" id="donate-open-3ds-btn" class="btn btn-primary">Abrir autenticação 3DS do banco</button>
+                  </div>
+                </div>
+
+                <!-- Bloco Cripto / Stellar -->
+                <div id="donate-crypto-box" class="payment-output-box" hidden>
+                  <h3>Pagamento via Stellar (<span id="donate-crypto-network"></span>)</h3>
+                  <div class="qr-box">
+                    <img id="donate-crypto-qr" class="qr-image" src="" alt="QR Code Stellar" width="240" height="240" hidden>
+                  </div>
+                  <div class="code-copy-box">
+                    <div>
+                      <strong>Endereço de destino:</strong>
+                      <div id="donate-crypto-address" class="mono-cell"></div>
+                    </div>
+                    <button type="button" id="donate-copy-address-btn" class="btn btn-secondary btn-sm">Copiar endereço</button>
+                  </div>
+                  <div class="code-copy-box">
+                    <div>
+                      <strong>Memo obrigatório:</strong>
+                      <div id="donate-crypto-memo" class="mono-cell"></div>
+                    </div>
+                    <button type="button" id="donate-copy-memo-btn" class="btn btn-secondary btn-sm">Copiar memo</button>
+                  </div>
+                  <div class="form-actions">
+                    <button type="button" id="donate-check-memo-btn" class="btn btn-primary">Já paguei, verificar pelo memo</button>
+                  </div>
+
+                  <details class="billing-details">
+                    <summary>Confirmar manualmente com hash da transação Stellar</summary>
+                    <form id="donate-hash-form" class="inline-form">
+                      <div class="field field-grow">
+                        <label for="donate-stellar-hash">Hash da transação (64 caracteres hexadecimais)</label>
+                        <input
+                          type="text"
+                          id="donate-stellar-hash"
+                          name="hash"
+                          required
+                          minlength="64"
+                          maxlength="64"
+                          pattern="[0-9a-fA-F]{64}"
+                          autocorrect="off"
+                          autocapitalize="none"
+                          spellcheck="false"
+                          enterkeyhint="done"
+                          data-error="donate-stellar-hash-error"
+                        >
+                        <div id="donate-stellar-hash-error" class="error-msg">
+                          <span role="img" aria-label="Erro">!</span> Informe um hash válido de 64 caracteres hexadecimais.
+                        </div>
+                      </div>
+                      <div class="inline-form-actions">
+                        <button type="submit" id="donate-confirm-hash-btn" class="btn btn-secondary">Confirmar hash</button>
+                      </div>
+                    </form>
+                  </details>
+                </div>
+
+                <p id="donate-poll-status" class="banner" role="status" aria-live="polite" hidden></p>
+              </section>
+            </div>
+          </div>
+
+          <!-- Aba 5: Usuários -->
           <div id="panel-admins" role="tabpanel" aria-labelledby="tab-admins" hidden>
             <div class="tabpanel-content">
               <section class="card" aria-labelledby="admins-heading">
-                <div class="section-header">
-                  <h2 id="admins-heading">Administradores Autorizados</h2>
-                  <p class="muted">
-                    O administrador <strong>root</strong> (<code>inoroel@gmail.com</code>) é permanente e gerencia quem pode acessar este painel.
-                  </p>
-                </div>
+                <h2 id="admins-heading" class="visually-hidden">Usuários</h2>
 
                 <form id="add-admin-form" class="inline-form" aria-labelledby="admins-heading" hidden>
                   <div class="field field-grow">

@@ -317,6 +317,90 @@ input[type="checkbox"] {
   cursor: pointer;
 }
 
+input[type="radio"] {
+  width: 1.2rem;
+  height: 1.2rem;
+  min-height: 0;
+  padding: 0;
+  accent-color: var(--text);
+  cursor: pointer;
+}
+
+.radio-fieldset {
+  margin: 0 0 1.25rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.radio-fieldset-compact {
+  margin-block-end: 0;
+}
+
+.radio-fieldset legend {
+  padding-inline: 0.35rem;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.radio-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.25rem;
+}
+
+.radio-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 48px;
+}
+
+.radio-option label {
+  margin: 0;
+  cursor: pointer;
+}
+
+.sub-box {
+  margin-block-end: 1.25rem;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+}
+
+.sub-box-title {
+  margin: 0 0 0.85rem;
+  font-size: 1rem;
+}
+
+.billing-details {
+  margin-block-start: 0.75rem;
+  padding: 0.5rem 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.billing-details summary {
+  display: flex;
+  align-items: center;
+  min-height: 48px;
+  font-weight: 600;
+  font-size: 0.925rem;
+  cursor: pointer;
+}
+
+.billing-details summary:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+.billing-fields {
+  padding-block: 0.5rem 0.25rem;
+}
+
 .field-checkbox-wrap {
   justify-content: flex-end;
 }
@@ -719,6 +803,49 @@ tbody th {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
+}
+
+.payment-output-box {
+  margin-block-start: 1.25rem;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  display: grid;
+  gap: 0.85rem;
+}
+
+.payment-output-box h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.qr-box {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.qr-image {
+  display: block;
+  width: 240px;
+  height: 240px;
+  object-fit: contain;
+  background: #ffffff;
+  padding: 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.code-copy-box {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
 }
 
 @container (width < 600px) {
