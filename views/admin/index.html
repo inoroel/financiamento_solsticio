@@ -775,6 +775,12 @@
                       <div class="mono-cell">/api/metas/:slug</div>
                     </div>
                   </div>
+                  <div class="endpoint-row">
+                    <div>
+                      <strong>Doadores confirmados de uma meta</strong>
+                      <div class="mono-cell">/api/metas/:slug/doadores</div>
+                    </div>
+                  </div>
                 </div>
 
                 <p id="goals-copy-status" class="banner banner-success" role="status" aria-live="polite" hidden></p>
@@ -785,7 +791,7 @@
                 <div class="section-header">
                   <h2 id="goals-heading">Criar / Editar Meta de Doação</h2>
                   <p class="muted">
-                    Configure o valor alvo, campanha (opcional) e período. A arrecadação online é somada em tempo real a partir das transações confirmadas.
+                    Configure o valor alvo e o período. Os pagamentos são vinculados automaticamente ao slug da meta e a arrecadação é somada em tempo real.
                   </p>
                 </div>
 
@@ -811,7 +817,7 @@
 
                     <div class="field">
                       <label for="goal-slug">Slug (identificador na URL) <span aria-hidden="true">*</span></label>
-                      <span id="goal-slug-hint" class="hint">Letras minúsculas, números, "-" ou "_" (ex: meta-principal).</span>
+                      <span id="goal-slug-hint" class="hint">Letras minúsculas, números, "-" ou "_" (ex: meta-principal). Usado para vincular pagamentos e listar doadores desta meta.</span>
                       <input
                         type="text"
                         id="goal-slug"
@@ -873,27 +879,6 @@
                       >
                       <div id="goal-valor-inicial-error" class="error-msg">
                         <span role="img" aria-label="Erro">!</span> Informe um valor maior ou igual a zero ou deixe em branco.
-                      </div>
-                    </div>
-
-                    <div class="field">
-                      <label for="goal-campanha-id">ID da campanha (opcional)</label>
-                      <span id="goal-campanha-id-hint" class="hint">Vazio = soma todas as campanhas (ex: campanha-01).</span>
-                      <input
-                        type="text"
-                        id="goal-campanha-id"
-                        name="campanha_id"
-                        maxlength="50"
-                        pattern="[a-zA-Z0-9_-]{1,50}"
-                        autocorrect="off"
-                        autocapitalize="none"
-                        spellcheck="false"
-                        enterkeyhint="next"
-                        aria-describedby="goal-campanha-id-hint"
-                        data-error="goal-campanha-id-error"
-                      >
-                      <div id="goal-campanha-id-error" class="error-msg">
-                        <span role="img" aria-label="Erro">!</span> Use apenas letras, números, hífens ou underscores (máx. 50).
                       </div>
                     </div>
                   </div>
@@ -1024,6 +1009,43 @@
                   </table>
                 </div>
               </section>
+
+              <!-- Doadores da Meta Selecionada -->
+              <section id="goal-donors-card" class="card" aria-labelledby="goal-donors-heading" hidden>
+                <div class="section-header section-header-row">
+                  <div>
+                    <h2 id="goal-donors-heading" tabindex="-1">Doadores da Meta</h2>
+                    <p id="goal-donors-subtitle" class="muted">Doações confirmadas vinculadas a esta meta.</p>
+                  </div>
+                  <div class="row-actions">
+                    <button type="button" id="refresh-goal-donors-btn" class="btn btn-secondary btn-sm">Atualizar</button>
+                    <button type="button" id="close-goal-donors-btn" class="btn btn-secondary btn-sm">Fechar</button>
+                  </div>
+                </div>
+
+                <div id="goal-donors-status" class="banner" role="status" aria-live="polite" hidden></div>
+
+                <div tabindex="0" role="region" aria-labelledby="goal-donors-table-caption" class="table-wrapper">
+                  <table class="table-goal-donors">
+                    <caption id="goal-donors-table-caption" class="table-caption">Doadores vinculados à meta selecionada</caption>
+                    <thead>
+                      <tr>
+                        <th scope="col">Doador</th>
+                        <th scope="col">WhatsApp</th>
+                        <th scope="col">Total doado</th>
+                        <th scope="col">Doações</th>
+                        <th scope="col">Meios</th>
+                        <th scope="col">Última doação</th>
+                      </tr>
+                    </thead>
+                    <tbody id="goal-donors-tbody">
+                      <tr>
+                        <td colspan="6" class="empty-cell">Selecione uma meta para ver os doadores.</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </section>
             </div>
           </div>
 
@@ -1084,17 +1106,26 @@
                       </div>
                     </div>
 
-                    <div class="field">
-                      <label for="donate-cid">ID da campanha <span aria-hidden="true">*</span></label>
-                      <span id="donate-cid-hint" class="hint">Letras, números, hífens ou underscores (padrão: campanha-01).</span>
+                    <div id="donate-meta-select-wrap" class="field" hidden>
+                      <label for="donate-meta-select">Meta vinculada <span aria-hidden="true">*</span></label>
+                      <span id="donate-meta-select-hint" class="hint">Carregando meta principal ativa...</span>
+                      <select
+                        id="donate-meta-select"
+                        name="meta_select"
+                        aria-describedby="donate-meta-select-hint"
+                      ></select>
+                    </div>
+
+                    <div id="donate-manual-slug-wrap" class="field">
+                      <label for="donate-cid">Slug da meta (manual) <span aria-hidden="true">*</span></label>
+                      <span id="donate-cid-hint" class="hint">Carregando metas ativas...</span>
                       <input
                         type="text"
                         id="donate-cid"
-                        name="cid"
-                        value="campanha-01"
+                        name="meta_slug"
                         required
-                        maxlength="50"
-                        pattern="[a-zA-Z0-9_-]{1,50}"
+                        maxlength="60"
+                        pattern="[a-zA-Z0-9_-]{1,60}"
                         autocorrect="off"
                         autocapitalize="none"
                         spellcheck="false"
@@ -1103,7 +1134,7 @@
                         data-error="donate-cid-error"
                       >
                       <div id="donate-cid-error" class="error-msg">
-                        <span role="img" aria-label="Erro">!</span> Informe um ID de campanha válido (máx. 50 caracteres).
+                        <span role="img" aria-label="Erro">!</span> Informe um slug de meta válido (letras, números, hífens ou underscores, máx. 60 caracteres).
                       </div>
                     </div>
                   </div>

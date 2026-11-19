@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS cobrancas (
     txid VARCHAR(35) PRIMARY KEY,
     valor DECIMAL(10, 2) NOT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'AGUARDANDO',
-    campanha_id VARCHAR(50),
+    campanha_id VARCHAR(60),
     tipo_pagamento VARCHAR(20) NOT NULL DEFAULT 'PIX',
     provider VARCHAR(50) NOT NULL DEFAULT 'REDE',
     chave_pix VARCHAR(77),
@@ -164,7 +164,7 @@ CREATE TABLE IF NOT EXISTS metas_doacao (
     descricao TEXT,
     valor_meta DECIMAL(12, 2) NOT NULL,
     valor_inicial DECIMAL(12, 2) NOT NULL DEFAULT 0,
-    campanha_id VARCHAR(50),
+    campanha_id VARCHAR(60),
     data_inicio DATE,
     data_fim DATE,
     ordem INTEGER NOT NULL DEFAULT 0,
@@ -180,6 +180,8 @@ CREATE TABLE IF NOT EXISTS metas_doacao (
 
 CREATE INDEX IF NOT EXISTS idx_metas_doacao_ativa ON metas_doacao(ativa);
 CREATE INDEX IF NOT EXISTS idx_metas_doacao_campanha ON metas_doacao(campanha_id) WHERE campanha_id IS NOT NULL;
+ALTER TABLE cobrancas ALTER COLUMN campanha_id TYPE VARCHAR(60);
+ALTER TABLE metas_doacao ALTER COLUMN campanha_id TYPE VARCHAR(60);
 
 -- Função para atualizar o campo atualizado_em automaticamente
 CREATE OR REPLACE FUNCTION update_updated_at_column()

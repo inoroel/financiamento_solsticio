@@ -735,6 +735,14 @@ tbody th {
   --label-5: "Ações";
 }
 
+.table-goal-donors {
+  --label-2: "WhatsApp";
+  --label-3: "Total doado";
+  --label-4: "Doações";
+  --label-5: "Meios";
+  --label-6: "Última doação";
+}
+
 .endpoint-list {
   display: grid;
   gap: 0.75rem;

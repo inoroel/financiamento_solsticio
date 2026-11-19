@@ -108,9 +108,9 @@ function validateWhatsapp(whatsapp) {
 }
 
 /**
- * Valida ID de campanha
- * @param {any} cid - ID da campanha
- * @returns {string|null} CID validado ou null se inválido
+ * Valida ID de campanha ou slug de meta vinculada
+ * @param {any} cid - ID da campanha ou slug da meta
+ * @returns {string|null} Identificador validado ou null se inválido
  */
 function validateCampanhaId(cid) {
   if (!cid) {
@@ -120,8 +120,8 @@ function validateCampanhaId(cid) {
   // Converte para string
   const strCid = String(cid).trim();
   
-  // Verifica tamanho (máximo 50 caracteres)
-  if (strCid.length === 0 || strCid.length > 50) {
+  // Verifica tamanho (máximo 60 caracteres)
+  if (strCid.length === 0 || strCid.length > 60) {
     return null;
   }
   

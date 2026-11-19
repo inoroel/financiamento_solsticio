@@ -132,7 +132,6 @@
     goalSlug: document.getElementById('goal-slug'),
     goalValorMeta: document.getElementById('goal-valor-meta'),
     goalValorInicial: document.getElementById('goal-valor-inicial'),
-    goalCampanhaId: document.getElementById('goal-campanha-id'),
     goalOrdem: document.getElementById('goal-ordem'),
     goalDataInicio: document.getElementById('goal-data-inicio'),
     goalDataFim: document.getElementById('goal-data-fim'),
@@ -144,9 +143,21 @@
     goalResult: document.getElementById('goal-result'),
     refreshGoalsBtn: document.getElementById('refresh-goals-btn'),
     goalsTbody: document.getElementById('goals-tbody'),
+    goalDonorsCard: document.getElementById('goal-donors-card'),
+    goalDonorsHeading: document.getElementById('goal-donors-heading'),
+    goalDonorsSubtitle: document.getElementById('goal-donors-subtitle'),
+    goalDonorsStatus: document.getElementById('goal-donors-status'),
+    refreshGoalDonorsBtn: document.getElementById('refresh-goal-donors-btn'),
+    closeGoalDonorsBtn: document.getElementById('close-goal-donors-btn'),
+    goalDonorsTbody: document.getElementById('goal-donors-tbody'),
     donateForm: document.getElementById('donate-form'),
     donateValorReq: document.getElementById('donate-valor-req'),
     donateValor: document.getElementById('donate-valor'),
+    donateMetaSelectWrap: document.getElementById('donate-meta-select-wrap'),
+    donateMetaSelectHint: document.getElementById('donate-meta-select-hint'),
+    donateMetaSelect: document.getElementById('donate-meta-select'),
+    donateManualSlugWrap: document.getElementById('donate-manual-slug-wrap'),
+    donateCidHint: document.getElementById('donate-cid-hint'),
     donateCid: document.getElementById('donate-cid'),
     donateAnonimo: document.getElementById('donate-anonimo'),
     donateDonorFields: document.getElementById('donate-donor-fields'),
@@ -207,6 +218,9 @@
   let allRewards = [];
   let allDonors = [];
   let allUsers = [];
+  let activeGoalsForDonation = [];
+  let activeMainGoalSlug = null;
+  let selectedGoalForDonors = null;
   let currentDonation = null;
   let donationPollTimer = null;
   let donationPopupTimer = null;
@@ -666,7 +680,12 @@
   async function refreshPostDonationData() {
     const tasks = [];
     if (hasTab('estornos')) tasks.push(loadTransactions());
-    if (hasTab('metas')) tasks.push(loadGoals());
+    if (hasTab('metas')) {
+      tasks.push(loadGoals());
+      if (selectedGoalForDonors && !els.goalDonorsCard.hidden) {
+        tasks.push(loadGoalDonors(selectedGoalForDonors));
+      }
+    }
     if (hasTab('recompensas')) tasks.push(loadDonors());
     if (tasks.length > 0) {
       await Promise.all(tasks);
@@ -1117,6 +1136,9 @@
     }
     if (hasTab('metas')) {
       tasks.push(loadGoals());
+    }
+    if (hasTab('doacao')) {
+      tasks.push(loadActiveGoalsForDonation());
     }
     if (canAccessUsersSection()) {
       tasks.push(loadAdmins());
@@ -1910,7 +1932,6 @@
       th.append(subSlug);
 
       const details = [];
-      if (goal.campanha_id) details.push(`Campanha: ${goal.campanha_id}`);
       if (goal.data_inicio || goal.data_fim) {
         const ini = goal.data_inicio ? formatPlainDate(goal.data_inicio) : 'Início livre';
         const fim = goal.data_fim ? formatPlainDate(goal.data_fim) : 'Sem limite';
@@ -1980,6 +2001,12 @@
       editBtn.textContent = 'Editar';
       editBtn.addEventListener('click', () => startEditGoal(goal));
 
+      const donorsBtn = document.createElement('button');
+      donorsBtn.type = 'button';
+      donorsBtn.className = 'btn btn-secondary btn-sm';
+      donorsBtn.textContent = 'Ver doadores';
+      donorsBtn.addEventListener('click', () => openGoalDonors(goal));
+
       const copyBtn = document.createElement('button');
       copyBtn.type = 'button';
       copyBtn.className = 'btn btn-secondary btn-sm';
@@ -1992,7 +2019,7 @@
       deleteBtn.textContent = 'Excluir';
       deleteBtn.addEventListener('click', () => handleDeleteGoal(goal));
 
-      actionsWrap.append(editBtn, copyBtn, deleteBtn);
+      actionsWrap.append(editBtn, donorsBtn, copyBtn, deleteBtn);
       tdActions.append(actionsWrap);
 
       tr.append(th, tdProgress, tdDonations, tdStatus, tdActions);
@@ -2000,6 +2027,80 @@
     }
 
     els.goalsTbody.replaceChildren(fragment);
+  }
+
+  async function loadGoalDonors(goal) {
+    if (!goal?.id) return;
+    hideBanner(els.goalDonorsStatus);
+    els.goalDonorsHeading.textContent = `Doadores — ${goal.titulo}`;
+    els.goalDonorsSubtitle.textContent = `Slug: ${goal.slug} · Transações confirmadas vinculadas a esta meta.`;
+
+    const { response, body } = await apiFetch(`/api/admin/metas/${goal.id}/doadores?limit=200`);
+    if (isSessionInvalidResponse(response, body)) {
+      handleUnauthorized(body?.error || 'Sessão expirada.');
+      return;
+    }
+    if (!response.ok) {
+      showBanner(els.goalDonorsStatus, body?.error || 'Erro ao carregar doadores da meta.', 'error');
+      renderEmptyRow(els.goalDonorsTbody, 6, body?.error || 'Erro ao carregar doadores da meta.');
+      return;
+    }
+
+    const donors = Array.isArray(body?.data) ? body.data : [];
+    if (donors.length === 0) {
+      renderEmptyRow(els.goalDonorsTbody, 6, 'Nenhuma doação confirmada vinculada a esta meta.');
+      return;
+    }
+
+    const fragment = document.createDocumentFragment();
+    for (const row of donors) {
+      const tr = document.createElement('tr');
+
+      const th = document.createElement('th');
+      th.scope = 'row';
+      th.textContent = row.nome || 'Anônimo';
+      if (row.anonimo) {
+        const badge = document.createElement('span');
+        badge.className = 'status-pill';
+        badge.textContent = 'Anônimo';
+        th.append(document.createTextNode(' '), badge);
+      }
+      if (row.mensagem) {
+        const subMsg = document.createElement('span');
+        subMsg.className = 'sub-meta';
+        subMsg.textContent = row.mensagem;
+        th.append(subMsg);
+      }
+
+      const tdWhatsapp = document.createElement('td');
+      tdWhatsapp.textContent = row.whatsapp || '-';
+
+      const tdTotal = document.createElement('td');
+      tdTotal.textContent = formatCurrency(row.total_doado);
+
+      const tdCount = document.createElement('td');
+      tdCount.textContent = String(row.total_doacoes || 0);
+
+      const tdMethods = document.createElement('td');
+      tdMethods.textContent =
+        Array.isArray(row.metodos) && row.metodos.length > 0 ? row.metodos.join(', ') : '-';
+
+      const tdDate = document.createElement('td');
+      tdDate.textContent = formatDate(row.ultima_doacao_em);
+
+      tr.append(th, tdWhatsapp, tdTotal, tdCount, tdMethods, tdDate);
+      fragment.append(tr);
+    }
+
+    els.goalDonorsTbody.replaceChildren(fragment);
+  }
+
+  async function openGoalDonors(goal) {
+    selectedGoalForDonors = goal;
+    els.goalDonorsCard.hidden = false;
+    await loadGoalDonors(goal);
+    els.goalDonorsCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    els.goalDonorsHeading.focus();
   }
 
   function resetGoalForm() {
@@ -2016,7 +2117,6 @@
       els.goalSlug,
       els.goalValorMeta,
       els.goalValorInicial,
-      els.goalCampanhaId,
       els.goalOrdem,
       els.goalDataInicio,
       els.goalDataFim,
@@ -2035,7 +2135,6 @@
     els.goalSlug.value = goal.slug;
     els.goalValorMeta.value = String(goal.valor_meta);
     els.goalValorInicial.value = goal.valor_inicial > 0 ? String(goal.valor_inicial) : '';
-    els.goalCampanhaId.value = goal.campanha_id || '';
     els.goalOrdem.value = String(goal.ordem ?? 0);
     els.goalDataInicio.value = goal.data_inicio || '';
     els.goalDataFim.value = goal.data_fim || '';
@@ -2050,7 +2149,6 @@
       els.goalSlug,
       els.goalValorMeta,
       els.goalValorInicial,
-      els.goalCampanhaId,
       els.goalOrdem,
       els.goalDataInicio,
       els.goalDataFim,
@@ -2080,7 +2178,6 @@
       slug: els.goalSlug.value.trim().toLowerCase(),
       valor_meta: Math.round(valorMetaNum * 100) / 100,
       valor_inicial: Math.round(valorInicialNum * 100) / 100,
-      campanha_id: els.goalCampanhaId.value.trim() || null,
       ordem: parseInt(els.goalOrdem.value.trim() || '0', 10),
       data_inicio: els.goalDataInicio.value || null,
       data_fim: els.goalDataFim.value || null,
@@ -2115,8 +2212,17 @@
           : `Meta "${body.meta.titulo}" cadastrada com sucesso.`,
         'success'
       );
+      if (selectedGoalForDonors?.id === body.meta?.id) {
+        selectedGoalForDonors = body.meta;
+      }
       resetGoalForm();
       await loadGoals();
+      if (selectedGoalForDonors && !els.goalDonorsCard.hidden) {
+        await loadGoalDonors(selectedGoalForDonors);
+      }
+      if (hasTab('doacao')) {
+        await loadActiveGoalsForDonation();
+      }
     } catch (_) {
       showBanner(els.goalResult, 'Erro de comunicação ao salvar a meta.', 'error');
     } finally {
@@ -2149,8 +2255,17 @@
         return;
       }
       if (editingGoalId === goal.id) resetGoalForm();
+      if (selectedGoalForDonors?.id === goal.id) {
+        selectedGoalForDonors = null;
+        els.goalDonorsCard.hidden = true;
+        els.goalDonorsTbody.replaceChildren();
+        hideBanner(els.goalDonorsStatus);
+      }
       showBanner(els.goalResult, `Meta "${goal.titulo}" excluída.`, 'success');
       await loadGoals();
+      if (hasTab('doacao')) {
+        await loadActiveGoalsForDonation();
+      }
     } catch (_) {
       showBanner(els.goalResult, 'Erro de comunicação ao excluir a meta.', 'error');
     }
@@ -2292,10 +2407,98 @@
     ].forEach((el) => syncAria(el));
   }
 
+  function syncDonationGoalMode() {
+    if (activeGoalsForDonation.length > 0 && els.donateMetaSelect.value && els.donateMetaSelect.value !== '__manual__') {
+      const chosen = activeGoalsForDonation.find((g) => g.slug === els.donateMetaSelect.value);
+      els.donateManualSlugWrap.hidden = true;
+      els.donateCid.required = false;
+      els.donateCid.setCustomValidity('');
+      syncAria(els.donateCid);
+      if (chosen) {
+        els.donateMetaSelectHint.textContent =
+          chosen.slug === activeMainGoalSlug
+            ? `Meta principal ativa (${chosen.slug}). Pagamentos vinculados automaticamente a esta meta.`
+            : `Meta selecionada: ${chosen.titulo} (${chosen.slug}).`;
+      }
+      return;
+    }
+
+    els.donateManualSlugWrap.hidden = false;
+    els.donateCid.required = true;
+    els.donateMetaSelectHint.textContent = 'Informe abaixo o slug da meta para vincular este pagamento.';
+    els.donateCidHint.textContent =
+      activeGoalsForDonation.length > 0
+        ? 'Informe manualmente o slug (letras, números, "-" ou "_", máx. 60 caracteres).'
+        : 'Nenhuma meta ativa encontrada. Informe manualmente o slug da meta para vincular este pagamento.';
+    syncAria(els.donateCid);
+  }
+
+  function renderDonationGoalControl({ preserveSelection = false } = {}) {
+    if (activeGoalsForDonation.length > 0) {
+      const previousValue = preserveSelection ? els.donateMetaSelect.value : '';
+      els.donateMetaSelect.replaceChildren();
+
+      for (const goal of activeGoalsForDonation) {
+        const opt = document.createElement('option');
+        opt.value = goal.slug;
+        opt.textContent = `${goal.titulo} (${goal.slug})${goal.slug === activeMainGoalSlug ? ' · Principal' : ''}`;
+        els.donateMetaSelect.append(opt);
+      }
+
+      const manualOpt = document.createElement('option');
+      manualOpt.value = '__manual__';
+      manualOpt.textContent = 'Informar slug manualmente...';
+      els.donateMetaSelect.append(manualOpt);
+
+      if (
+        preserveSelection &&
+        previousValue &&
+        (previousValue === '__manual__' || activeGoalsForDonation.some((g) => g.slug === previousValue))
+      ) {
+        els.donateMetaSelect.value = previousValue;
+      } else if (activeMainGoalSlug) {
+        els.donateMetaSelect.value = activeMainGoalSlug;
+      }
+
+      els.donateMetaSelectWrap.hidden = false;
+      syncDonationGoalMode();
+      return;
+    }
+
+    els.donateMetaSelect.replaceChildren();
+    els.donateMetaSelectWrap.hidden = true;
+    syncDonationGoalMode();
+  }
+
+  async function loadActiveGoalsForDonation() {
+    try {
+      const { response, body } = await apiFetch('/api/metas');
+      if (response.ok && Array.isArray(body?.metas)) {
+        activeGoalsForDonation = body.metas;
+        activeMainGoalSlug = body?.resumo?.meta_principal?.slug || activeGoalsForDonation[0]?.slug || null;
+      } else {
+        activeGoalsForDonation = [];
+        activeMainGoalSlug = null;
+      }
+    } catch (_) {
+      activeGoalsForDonation = [];
+      activeMainGoalSlug = null;
+    }
+    renderDonationGoalControl({ preserveSelection: true });
+  }
+
+  function getSelectedDonationMetaSlug() {
+    if (activeGoalsForDonation.length > 0 && els.donateMetaSelect.value && els.donateMetaSelect.value !== '__manual__') {
+      return els.donateMetaSelect.value;
+    }
+    return els.donateCid.value.trim();
+  }
+
   function renderDonationSummary(data) {
     els.donateSummary.replaceChildren();
     const items = [
       { label: 'TXID', value: data.txid || '-' },
+      { label: 'Meta (slug)', value: data.meta_slug || data.cid || '-' },
       { label: 'Meio', value: data.tipo_pagamento || '-' },
       { label: 'Status', value: data.status || '-' }
     ];
@@ -2431,10 +2634,11 @@
     const isCard = method === 'CREDITO' || method === 'DEBITO';
     const isCrypto = method === 'CRIPTO';
     const isAnonymous = els.donateAnonimo.checked;
+    const metaSlug = getSelectedDonationMetaSlug();
 
     const payload = {
       tipo_pagamento: method,
-      cid: els.donateCid.value.trim()
+      meta_slug: metaSlug
     };
 
     const valorRaw = els.donateValor.value.trim();
@@ -2603,8 +2807,8 @@
     if (pixRadio) pixRadio.checked = true;
     const usdcRadio = document.getElementById('donate-currency-usdc');
     if (usdcRadio) usdcRadio.checked = true;
-    els.donateCid.value = 'campanha-01';
     els.donateAnonimo.checked = false;
+    renderDonationGoalControl({ preserveSelection: false });
     els.donateOutputCard.hidden = true;
     els.donateSummary.replaceChildren();
     hideBanner(els.donateResult);
@@ -2934,6 +3138,9 @@
     allRewards = [];
     allDonors = [];
     allUsers = [];
+    activeGoalsForDonation = [];
+    activeMainGoalSlug = null;
+    selectedGoalForDonors = null;
     stopDonationTimers();
     els.txTbody.replaceChildren();
     els.estornosTbody.replaceChildren();
@@ -2942,6 +3149,8 @@
     els.rewardsTbody.replaceChildren();
     els.deliveriesTbody.replaceChildren();
     els.goalsTbody.replaceChildren();
+    els.goalDonorsTbody.replaceChildren();
+    els.goalDonorsCard.hidden = true;
     resetTierForm();
     resetRewardForm();
     resetDeliveryForm();
@@ -2955,6 +3164,7 @@
     hideBanner(els.rewardResult);
     hideBanner(els.deliveryResult);
     hideBanner(els.goalResult);
+    hideBanner(els.goalDonorsStatus);
     hideBanner(els.goalsCopyStatus);
     handleUnauthorized();
   }
@@ -2982,6 +3192,10 @@
     ]);
 
     syncDonationFormState();
+    els.tabDoacao.addEventListener('click', () => {
+      if (hasTab('doacao')) loadActiveGoalsForDonation();
+    });
+    els.donateMetaSelect.addEventListener('change', syncDonationGoalMode);
     els.donateForm.querySelectorAll('input[name="tipo_pagamento"]').forEach((radio) => {
       radio.addEventListener('change', syncDonationFormState);
     });
@@ -3046,6 +3260,15 @@
       hideBanner(els.goalResult);
     });
     els.refreshGoalsBtn.addEventListener('click', loadGoals);
+    els.refreshGoalDonorsBtn.addEventListener('click', () => {
+      if (selectedGoalForDonors) loadGoalDonors(selectedGoalForDonors);
+    });
+    els.closeGoalDonorsBtn.addEventListener('click', () => {
+      selectedGoalForDonors = null;
+      els.goalDonorsCard.hidden = true;
+      els.goalDonorsTbody.replaceChildren();
+      hideBanner(els.goalDonorsStatus);
+    });
 
     els.refundValor.addEventListener('input', validateRefundValorInput);
     els.refundValor.addEventListener('blur', validateRefundValorInput);

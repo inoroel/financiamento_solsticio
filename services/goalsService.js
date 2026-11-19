@@ -64,7 +64,7 @@ function parseOptionalCampanhaId(raw) {
   const validated = validateCampanhaId(raw);
   if (!validated) {
     throw createServiceError(
-      'ID da campanha inválido. Use apenas letras, números, hífens e underscores (máx. 50 caracteres).',
+      'ID da campanha inválido. Use apenas letras, números, hífens e underscores (máx. 60 caracteres).',
       400
     );
   }
@@ -180,7 +180,7 @@ async function ensureGoalsTable() {
         descricao TEXT,
         valor_meta DECIMAL(12, 2) NOT NULL,
         valor_inicial DECIMAL(12, 2) NOT NULL DEFAULT 0,
-        campanha_id VARCHAR(50),
+        campanha_id VARCHAR(60),
         data_inicio DATE,
         data_fim DATE,
         ordem INTEGER NOT NULL DEFAULT 0,
@@ -197,6 +197,28 @@ async function ensureGoalsTable() {
 
     await sql`CREATE INDEX IF NOT EXISTS idx_metas_doacao_ativa ON metas_doacao(ativa)`;
     await sql`CREATE INDEX IF NOT EXISTS idx_metas_doacao_campanha ON metas_doacao(campanha_id) WHERE campanha_id IS NOT NULL`;
+
+    const colSizes = await sql`
+      SELECT table_name, character_maximum_length
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name IN ('cobrancas', 'metas_doacao')
+        AND column_name = 'campanha_id'
+    `;
+    for (const col of colSizes.rows || []) {
+      const len = Number(col.character_maximum_length);
+      if (len > 0 && len < 60) {
+        if (col.table_name === 'cobrancas') {
+          try {
+            await sql`ALTER TABLE cobrancas ALTER COLUMN campanha_id TYPE VARCHAR(60)`;
+          } catch (_) {
+            // ignorar se cobrancas ainda não existir em ambiente isolado
+          }
+        } else if (col.table_name === 'metas_doacao') {
+          await sql`ALTER TABLE metas_doacao ALTER COLUMN campanha_id TYPE VARCHAR(60)`;
+        }
+      }
+    }
   })().catch((err) => {
     ensureGoalsTablePromise = null;
     throw err;
@@ -238,7 +260,10 @@ async function getGoalById(id, { isPublic = false } = {}) {
       FROM transacoes t
       JOIN cobrancas c ON c.txid = t.cobranca_txid
       WHERE t.status = 'CONFIRMADA'
-        AND (m.campanha_id IS NULL OR c.campanha_id = m.campanha_id)
+        AND (
+          LOWER(COALESCE(c.campanha_id, '')) = LOWER(m.slug)
+          OR (m.campanha_id IS NOT NULL AND c.campanha_id = m.campanha_id)
+        )
         AND (
           m.data_inicio IS NULL
           OR ((COALESCE(t.confirmado_em, t.criado_em) AT TIME ZONE 'UTC') AT TIME ZONE 'America/Sao_Paulo')::date >= m.data_inicio
@@ -295,7 +320,10 @@ async function listGoals({ includeInactive = false, campanhaId = '', onlyFeature
       FROM transacoes t
       JOIN cobrancas c ON c.txid = t.cobranca_txid
       WHERE t.status = 'CONFIRMADA'
-        AND (m.campanha_id IS NULL OR c.campanha_id = m.campanha_id)
+        AND (
+          LOWER(COALESCE(c.campanha_id, '')) = LOWER(m.slug)
+          OR (m.campanha_id IS NOT NULL AND c.campanha_id = m.campanha_id)
+        )
         AND (
           m.data_inicio IS NULL
           OR ((COALESCE(t.confirmado_em, t.criado_em) AT TIME ZONE 'UTC') AT TIME ZONE 'America/Sao_Paulo')::date >= m.data_inicio
@@ -306,7 +334,11 @@ async function listGoals({ includeInactive = false, campanhaId = '', onlyFeature
         )
     ) agg ON true
     WHERE (${includeAll}::boolean = true OR m.ativa = true)
-      AND (${campaignFilter}::text IS NULL OR m.campanha_id = ${campaignFilter})
+      AND (
+        ${campaignFilter}::text IS NULL
+        OR LOWER(m.slug) = LOWER(${campaignFilter})
+        OR (m.campanha_id IS NOT NULL AND LOWER(m.campanha_id) = LOWER(${campaignFilter}))
+      )
       AND (${featuredOnly}::boolean = false OR m.destaque = true)
     ORDER BY m.destaque DESC, m.ordem ASC, m.valor_meta ASC, m.id ASC
   `;
@@ -373,7 +405,10 @@ async function getPublicGoalBySlug(slug) {
       FROM transacoes t
       JOIN cobrancas c ON c.txid = t.cobranca_txid
       WHERE t.status = 'CONFIRMADA'
-        AND (m.campanha_id IS NULL OR c.campanha_id = m.campanha_id)
+        AND (
+          LOWER(COALESCE(c.campanha_id, '')) = LOWER(m.slug)
+          OR (m.campanha_id IS NOT NULL AND c.campanha_id = m.campanha_id)
+        )
         AND (
           m.data_inicio IS NULL
           OR ((COALESCE(t.confirmado_em, t.criado_em) AT TIME ZONE 'UTC') AT TIME ZONE 'America/Sao_Paulo')::date >= m.data_inicio
@@ -554,6 +589,14 @@ async function updateGoal(id, payload = {}, adminEmail = 'admin') {
     WHERE id = ${goalId}
   `;
 
+  if (nextSlug !== current.slug) {
+    await sql`
+      UPDATE cobrancas
+      SET campanha_id = ${nextSlug}
+      WHERE LOWER(COALESCE(campanha_id, '')) = LOWER(${current.slug})
+    `;
+  }
+
   return getGoalById(goalId, { isPublic: false });
 }
 
@@ -577,11 +620,174 @@ async function deleteGoal(id) {
   };
 }
 
+/**
+ * Retorna a meta principal ativa (destaque = true primeiro, senão a primeira ativa ordenada).
+ * @returns {Promise<{id: number, slug: string, titulo: string, destaque: boolean}|null>}
+ */
+async function getActiveMainGoal() {
+  await ensureGoalsTable();
+
+  const result = await sql`
+    SELECT id, slug, titulo, destaque, ativa
+    FROM metas_doacao
+    WHERE ativa = true
+    ORDER BY destaque DESC, ordem ASC, valor_meta ASC, id ASC
+    LIMIT 1
+  `;
+
+  if (!result.rows || result.rows.length === 0) {
+    return null;
+  }
+
+  const row = result.rows[0];
+  return {
+    id: parseInt(row.id, 10),
+    slug: row.slug,
+    titulo: row.titulo,
+    destaque: Boolean(row.destaque)
+  };
+}
+
+/**
+ * Lista os doadores com transações confirmadas vinculadas a uma meta.
+ * @param {Object} [params]
+ * @returns {Promise<{meta: Object, doadores: Array<Object>}|null>}
+ */
+async function listGoalDonors({ id = null, slug = null, isPublic = false, limit = 100, offset = 0 } = {}) {
+  await ensureGoalsTable();
+
+  let goal = null;
+  if (isPublic) {
+    goal = await getPublicGoalBySlug(slug);
+  } else if (id !== null && id !== undefined && id !== '') {
+    goal = await getGoalById(id, { isPublic: false });
+  } else if (slug) {
+    const cleanSlug = normalizeGoalSlug(slug);
+    if (!cleanSlug) return null;
+    const found = await sql`SELECT id FROM metas_doacao WHERE slug = ${cleanSlug} LIMIT 1`;
+    if (found.rows && found.rows.length > 0) {
+      goal = await getGoalById(found.rows[0].id, { isPublic: false });
+    }
+  }
+
+  if (!goal) {
+    return null;
+  }
+
+  const safeLimit = Math.min(Math.max(parseInt(limit, 10) || 100, 1), 200);
+  const safeOffset = Math.max(parseInt(offset, 10) || 0, 0);
+  const campaignId = goal.campanha_id || null;
+  const dataInicio = goal.data_inicio || null;
+  const dataFim = goal.data_fim || null;
+
+  if (isPublic) {
+    const resPublic = await sql`
+      SELECT
+        d.id AS doador_id,
+        d.nome,
+        MAX(NULLIF(TRIM(d.mensagem), '')) AS mensagem,
+        COALESCE(SUM(t.valor), 0) AS total_doado,
+        COUNT(*)::int AS total_doacoes,
+        MAX(COALESCE(t.confirmado_em, t.criado_em)) AS ultima_doacao_em
+      FROM transacoes t
+      JOIN cobrancas c ON c.txid = t.cobranca_txid
+      JOIN doadores d ON d.id = t.doador_id
+      WHERE t.status = 'CONFIRMADA'
+        AND d.anonimo = false
+        AND (
+          LOWER(COALESCE(c.campanha_id, '')) = LOWER(${goal.slug})
+          OR (${campaignId}::text IS NOT NULL AND c.campanha_id = ${campaignId})
+        )
+        AND (
+          ${dataInicio}::date IS NULL
+          OR ((COALESCE(t.confirmado_em, t.criado_em) AT TIME ZONE 'UTC') AT TIME ZONE 'America/Sao_Paulo')::date >= ${dataInicio}::date
+        )
+        AND (
+          ${dataFim}::date IS NULL
+          OR ((COALESCE(t.confirmado_em, t.criado_em) AT TIME ZONE 'UTC') AT TIME ZONE 'America/Sao_Paulo')::date <= ${dataFim}::date
+        )
+      GROUP BY d.id, d.nome
+      ORDER BY ultima_doacao_em DESC, d.id DESC
+      LIMIT ${safeLimit}
+      OFFSET ${safeOffset}
+    `;
+
+    return {
+      meta: {
+        id: goal.id,
+        slug: goal.slug,
+        titulo: goal.titulo
+      },
+      doadores: (resPublic.rows || []).map((row) => ({
+        nome: row.nome,
+        mensagem: row.mensagem || null,
+        total_doado: round2(row.total_doado),
+        total_doacoes: parseInt(row.total_doacoes || 0, 10),
+        ultima_doacao_em: row.ultima_doacao_em
+      }))
+    };
+  }
+
+  const resAdmin = await sql`
+    SELECT
+      d.id AS doador_id,
+      COALESCE(d.anonimo, true) AS anonimo,
+      CASE WHEN d.anonimo = false AND d.nome IS NOT NULL THEN d.nome ELSE 'Anônimo' END AS nome,
+      CASE WHEN d.anonimo = false THEN d.whatsapp ELSE NULL END AS whatsapp,
+      MAX(NULLIF(TRIM(d.mensagem), '')) AS mensagem,
+      COALESCE(SUM(t.valor), 0) AS total_doado,
+      COUNT(*)::int AS total_doacoes,
+      MAX(COALESCE(t.confirmado_em, t.criado_em)) AS ultima_doacao_em,
+      ARRAY_AGG(DISTINCT t.tipo_pagamento ORDER BY t.tipo_pagamento) AS metodos
+    FROM transacoes t
+    JOIN cobrancas c ON c.txid = t.cobranca_txid
+    LEFT JOIN doadores d ON d.id = t.doador_id
+    WHERE t.status = 'CONFIRMADA'
+      AND (
+        LOWER(COALESCE(c.campanha_id, '')) = LOWER(${goal.slug})
+        OR (${campaignId}::text IS NOT NULL AND c.campanha_id = ${campaignId})
+      )
+      AND (
+        ${dataInicio}::date IS NULL
+        OR ((COALESCE(t.confirmado_em, t.criado_em) AT TIME ZONE 'UTC') AT TIME ZONE 'America/Sao_Paulo')::date >= ${dataInicio}::date
+      )
+      AND (
+        ${dataFim}::date IS NULL
+        OR ((COALESCE(t.confirmado_em, t.criado_em) AT TIME ZONE 'UTC') AT TIME ZONE 'America/Sao_Paulo')::date <= ${dataFim}::date
+      )
+    GROUP BY COALESCE(d.id::text, 'tx:' || t.id::text), d.id, d.anonimo, d.nome, d.whatsapp
+    ORDER BY ultima_doacao_em DESC
+    LIMIT ${safeLimit}
+    OFFSET ${safeOffset}
+  `;
+
+  return {
+    meta: goal,
+    doadores: (resAdmin.rows || []).map((row) => ({
+      doador_id: row.doador_id ? parseInt(row.doador_id, 10) : null,
+      anonimo: Boolean(row.anonimo),
+      nome: row.nome || 'Anônimo',
+      whatsapp: row.whatsapp || null,
+      mensagem: row.mensagem || null,
+      total_doado: round2(row.total_doado),
+      total_doacoes: parseInt(row.total_doacoes || 0, 10),
+      ultima_doacao_em: row.ultima_doacao_em,
+      metodos: Array.isArray(row.metodos)
+        ? row.metodos.filter(Boolean)
+        : typeof row.metodos === 'string'
+          ? row.metodos.replace(/[{}]/g, '').split(',').filter(Boolean)
+          : []
+    }))
+  };
+}
+
 module.exports = {
   ensureGoalsTable,
   listGoals,
   getPublicGoalsPayload,
   getPublicGoalBySlug,
+  getActiveMainGoal,
+  listGoalDonors,
   createGoal,
   updateGoal,
   deleteGoal

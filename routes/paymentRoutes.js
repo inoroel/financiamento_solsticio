@@ -24,6 +24,7 @@ const { processWebhook: processStellarWebhook } = require('../services/stellarWe
 const { createChargeLimiter, consultChargeLimiter, webhookLimiter, adminActionLimiter } = require('../middleware/security');
 const { requireAdmin, requireTabAccess } = require('../middleware/authMiddleware');
 const { getCobrancaByRedeTid, markRefundedInDatabase, logEstorno } = require('../services/adminService');
+const { getActiveMainGoal } = require('../services/goalsService');
 const {
   validateValor,
   validateTxid,
@@ -190,7 +191,7 @@ function validateParcelas(parcelas) {
  * Body: { 
  *   tipo_pagamento: 'PIX' | 'CREDITO' | 'DEBITO' | 'CRIPTO',
  *   valor: number, 
- *   cid: string, 
+ *   meta_slug?: string, // usa a meta principal ativa quando omitido
  *   doador?: { nome?, whatsapp?, anonimo: boolean },
  *   cartao?: { 
  *     // Opção 1: Token já gerado
@@ -223,7 +224,7 @@ function validateParcelas(parcelas) {
  */
 router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
   try {
-    const { tipo_pagamento, valor, cid, doador, cartao, parcelas, currency } = req.body;
+    const { tipo_pagamento, valor, cid, meta_slug, metaSlug, doador, cartao, parcelas, currency } = req.body;
 
     // Validação do tipo de pagamento
     const tiposValidos = ['PIX', 'CREDITO', 'DEBITO', 'CRIPTO'];
@@ -261,12 +262,49 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
       }
     }
 
-    // Validação do ID de campanha
-    const cidValidado = validateCampanhaId(cid);
-    if (!cidValidado) {
-      return res.status(400).json({
-        error: 'ID de Campanha (cid) inválido. Deve conter apenas letras, números, hífens e underscores (máx. 50 caracteres).'
-      });
+    // Resolução do vínculo da doação: usa meta_slug/cid informado ou busca automaticamente a meta principal ativa
+    const rawMetaSlug = meta_slug ?? metaSlug;
+    const explicitMetaSlug = typeof rawMetaSlug === 'string'
+      ? rawMetaSlug.trim()
+      : (rawMetaSlug !== undefined && rawMetaSlug !== null ? String(rawMetaSlug).trim() : '');
+    const explicitCid = typeof cid === 'string'
+      ? cid.trim()
+      : (cid !== undefined && cid !== null ? String(cid).trim() : '');
+
+    let cidValidado = null;
+    if (explicitMetaSlug) {
+      const validatedSlug = validateCampanhaId(explicitMetaSlug);
+      if (!validatedSlug) {
+        return res.status(400).json({
+          error: 'Slug de meta (meta_slug) inválido. Deve conter apenas letras, números, hífens e underscores (máx. 60 caracteres).'
+        });
+      }
+      cidValidado = validatedSlug.toLowerCase();
+    } else if (explicitCid) {
+      const validatedCid = validateCampanhaId(explicitCid);
+      if (!validatedCid) {
+        return res.status(400).json({
+          error: 'ID/slug de campanha (cid) inválido. Deve conter apenas letras, números, hífens e underscores (máx. 60 caracteres).'
+        });
+      }
+      cidValidado = validatedCid.toLowerCase();
+    } else {
+      let activeGoal = null;
+      try {
+        activeGoal = await getActiveMainGoal();
+      } catch (goalErr) {
+        console.error('❌ Erro ao buscar meta principal ativa:', goalErr.message);
+        return res.status(503).json({
+          error: 'Não foi possível consultar a meta ativa no momento. Informe o slug manualmente ou tente novamente.'
+        });
+      }
+
+      if (!activeGoal || !activeGoal.slug) {
+        return res.status(400).json({
+          error: 'Nenhuma meta ativa encontrada. Informe manualmente o slug da meta (meta_slug ou cid).'
+        });
+      }
+      cidValidado = activeGoal.slug;
     }
 
     // Validação: Se o doador optou por se identificar (anonimo=false), deve informar nome E whatsapp
@@ -316,9 +354,10 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
       }
     }
 
-    // Gera o TXID único e rastreável
+    // Gera o TXID único e rastreável (sempre estritamente alfanumérico)
     const prefixo = 'solsticiocampanha';
-    const campaignId = cidValidado.slice(0, 2).padStart(2, '0');
+    const cidAlphaNum = cidValidado.replace(/[^a-zA-Z0-9]/g, '');
+    const campaignId = (cidAlphaNum.slice(0, 2) || '00').padStart(2, '0');
     const timestamp = Date.now().toString().slice(-7);
     const txid = `${prefixo}${campaignId}${timestamp}`;
 
@@ -970,7 +1009,7 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
       txid: cobranca.txid || txid,
       valor: tipoPagamento === 'CRIPTO' ? (cobranca.valor || valorValidado || 0) : (cobranca.valor || valorValidado), // Para CRIPTO, pode ser 0 se não fornecido
       status: statusInicial,
-      campanhaId: cid,
+      campanhaId: cidValidado,
       tipoPagamento: tipoPagamento,
       provider: provider,
       chavePix: null, // A chave PIX é configurada no portal e-Rede e usada automaticamente pela API
@@ -1107,7 +1146,9 @@ router.post('/gerar-pagamento', createChargeLimiter, async (req, res) => {
       provider_tid: cobranca.provider_tid || null,
       tipo_pagamento: tipoPagamento,
       valor: cobranca.valor || valorValidado,
-      status: statusInicial
+      status: statusInicial,
+      meta_slug: cidValidado,
+      cid: cidValidado
     };
 
     if (tipoPagamento === 'PIX') {
@@ -1293,6 +1334,7 @@ router.get('/cobranca/:tid', consultChargeLimiter, async (req, res) => {
       atualizadoEm: cobrancaRede.atualizadoEm,
       bandeira: cobrancaRede.bandeira,
       parcelas: cobrancaRede.parcelas,
+      meta_slug: cobrancaDB?.campanha_id || null,
       campanhaId: cobrancaDB?.campanha_id || null
     });
 
@@ -1345,6 +1387,7 @@ router.get('/cobranca/txid/:txid', consultChargeLimiter, async (req, res) => {
       brCode: cobrancaDB.brcode,
       criadoEm: cobrancaDB.criado_em,
       atualizadoEm: cobrancaDB.atualizado_em,
+      meta_slug: cobrancaDB.campanha_id || null,
       campanhaId: cobrancaDB.campanha_id || null
     });
 

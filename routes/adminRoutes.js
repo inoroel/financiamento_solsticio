@@ -30,6 +30,7 @@ const {
 } = require('../services/rewardsService');
 const {
   listGoals,
+  listGoalDonors,
   createGoal,
   updateGoal,
   deleteGoal
@@ -470,6 +471,43 @@ router.put('/metas/:id', adminActionLimiter, async (req, res) => {
     return res.status(200).json({ success: true, meta });
   } catch (error) {
     return handleServiceError(res, error, 'Erro ao atualizar meta de doação.');
+  }
+});
+
+/**
+ * GET /api/admin/metas/:id/doadores
+ * Lista doadores confirmados (identificados e anônimos) vinculados a uma meta.
+ */
+router.get('/metas/:id/doadores', async (req, res) => {
+  try {
+    const page = parseInt(req.query.page, 10) || 1;
+    const limit = parseInt(req.query.limit, 10) || 100;
+
+    if (page < 1) {
+      return res.status(400).json({ error: 'Parâmetro page deve ser maior que 0.' });
+    }
+    if (limit < 1 || limit > 200) {
+      return res.status(400).json({ error: 'Parâmetro limit deve estar entre 1 e 200.' });
+    }
+
+    const offset = (page - 1) * limit;
+    const result = await listGoalDonors({
+      id: req.params.id,
+      isPublic: false,
+      limit,
+      offset
+    });
+    if (!result) {
+      return res.status(404).json({ error: 'Meta não encontrada.' });
+    }
+
+    return res.status(200).json({
+      success: true,
+      meta: result.meta,
+      data: result.doadores
+    });
+  } catch (error) {
+    return handleServiceError(res, error, 'Erro ao listar doadores da meta.');
   }
 });
 
